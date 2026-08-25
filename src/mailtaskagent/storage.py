@@ -225,6 +225,22 @@ class SQLiteStorage:
             ).fetchone()
             return json.loads(row["result_json"]) if row else None
 
+    def list_processing_results(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT mail_id, action, task_id, result_json, processed_at
+                FROM processing_results
+                ORDER BY processed_at DESC
+                """
+            ).fetchall()
+        results = []
+        for row in rows:
+            item = dict(row)
+            item["result"] = json.loads(item.pop("result_json"))
+            results.append(item)
+        return results
+
     def find_active_task_by_conversation(self, conversation_id: str) -> TaskCandidate | None:
         candidates = self.search_candidate_tasks(conversation_id, "", include_related=False)
         return candidates[0] if candidates else None

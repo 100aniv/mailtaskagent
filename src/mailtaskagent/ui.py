@@ -31,6 +31,18 @@ STATUS_LABELS = {
     "CANCELLED": "취소",
 }
 
+INTENT_LABELS = {
+    "NEW_TASK": "신규 업무 요청",
+    "DUE_DATE_CHANGE": "기한 변경",
+    "TASK_UPDATE": "업무 내용 변경",
+    "WAITING": "자료 요청·회신 대기",
+    "INFORMATION_RECEIVED": "후속 정보 도착",
+    "COMPLETION": "완료 관련",
+    "CANCELLATION": "취소 관련",
+    "NON_TASK": "업무 아님·공지",
+    "UNCERTAIN": "사용자 확인 필요",
+}
+
 DEMO_SCENARIOS = {
     "create_update": {
         "title": "신규 업무 → 기한 변경",
@@ -217,6 +229,148 @@ def _render_mail_preview(mail) -> None:
     )
     with st.expander("기술 상세 · 원본 JSON"):
         st.json(mail.model_dump(mode="json"))
+
+
+def _mail_overview(mails, storage) -> pd.DataFrame:
+    stored_results = {
+        item["mail_id"]: item for item in storage.list_processing_results()
+    }
+    rows = []
+    for mail in mails:
+        stored = stored_results.get(mail.mail_id)
+        result = stored["result"] if stored else None
+        proposal = result.get("proposal", {}) if result else {}
+        analysis = result.get("analysis", {}) if result else {}
+        review = result.get("review_result") if result else None
+        if not result:
+            processing_status = "미처리"
+            action = "-"
+        elif proposal.get("needs_user_confirmation") and not review:
+            processing_status = "사용자 확인 필요"
+            action = proposal.get("action", "-")
+        elif review:
+            processing_status = "사용자 결정 완료"
+            action = review.get("final_action", proposal.get("action", "-"))
+        else:
+            processing_status = "자동 처리 완료"
+            action = proposal.get("action", "-")
+        task_id = None
+        if result:
+            task_id = result.get("task_id") or proposal.get("target_task_id")
+        rows.append(
+            {
+                "Mail ID": mail.mail_id,
+                "수신·발신": "수신" if mail.direction.value == "INBOUND" else "발신",
+                "시각": mail.occurred_at.strftime("%m-%d %H:%M"),
+                "제목": mail.subject,
+                "분류": INTENT_LABELS.get(analysis.get("intent"), "미분류"),
+                "처리 상태": processing_status,
+                "Agent Action": ACTION_LABELS.get(action, action),
+                "Task": task_id or "-",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _process_unprocessed_mails(storage, settings, mails) -> None:
+    pending_mails = [mail for mail in mails if not storage.is_processed(mail.mail_id)]
+    if not pending_mails:
+        st.session_state["batch_flash"] = {
+            "success": 0,
+            "failed": [],
+            "message": "모든 합성 메일이 이미 처리됐습니다.",
+        }
+        st.rerun()
+
+    workflow = MailTaskWorkflow(settings, storage, build_analyzer(settings))
+    progress = st.progress(0, text="메일 자동 정리를 시작합니다.")
+    succeeded = 0
+    failed = []
+    last_result = None
+    for index, mail in enumerate(pending_mails, start=1):
+        progress.progress(
+            index / len(pending_mails),
+            text=f"{mail.mail_id} · {mail.subject}",
+        )
+        try:
+            last_result = workflow.process(mail)
+            succeeded += 1
+        except Exception as exc:
+            failed.append({"mail_id": mail.mail_id, "error": str(exc)})
+    if last_result:
+        st.session_state["last_result"] = last_result.model_dump(mode="json")
+    st.session_state["batch_flash"] = {
+        "success": succeeded,
+        "failed": failed,
+        "message": f"미처리 합성 메일 {len(pending_mails)}건 자동 정리를 실행했습니다.",
+    }
+    st.rerun()
+
+
+def _render_mailbox(storage, settings, mails) -> None:
+    st.subheader("메일 처리함")
+    st.caption(
+        "연결된 입력 Source에서 들어온 메일의 분류와 처리 결과를 한곳에서 봅니다. "
+        "현재 Source는 합성 Dataset이며, 실제 Outlook 전체 메일함을 읽는 단계는 아닙니다."
+    )
+
+    batch_flash = st.session_state.pop("batch_flash", None)
+    if batch_flash:
+        if batch_flash["failed"]:
+            st.warning(
+                f"{batch_flash['message']} 성공 {batch_flash['success']}건, "
+                f"실패 {len(batch_flash['failed'])}건"
+            )
+            with st.expander("실패 메일 확인"):
+                st.json(batch_flash["failed"])
+        else:
+            st.success(f"{batch_flash['message']} 성공 {batch_flash['success']}건")
+
+    overview = _mail_overview(mails, storage)
+    status_options = list(overview["처리 상태"].drop_duplicates())
+    selected_statuses = st.multiselect(
+        "처리 상태 필터",
+        status_options,
+        default=status_options,
+        key="mail_status_filter",
+    )
+    st.dataframe(
+        overview[overview["처리 상태"].isin(selected_statuses)],
+        width="stretch",
+        hide_index=True,
+    )
+
+    unprocessed_count = sum(not storage.is_processed(mail.mail_id) for mail in mails)
+    button_label = f"미처리 합성 메일 전체 자동 정리 · {unprocessed_count}건"
+    if st.button(
+        button_label,
+        type="primary",
+        disabled=unprocessed_count == 0,
+        width="stretch",
+    ):
+        _process_unprocessed_mails(storage, settings, mails)
+
+    with st.expander("메일 한 건 직접 처리"):
+        selected = st.selectbox(
+            "어떤 메일이 도착했다고 가정할까요?",
+            mails,
+            format_func=_friendly_mail,
+        )
+        _render_mail_preview(selected)
+        if st.button("선택한 메일 처리", width="stretch"):
+            try:
+                workflow = MailTaskWorkflow(settings, storage, build_analyzer(settings))
+                with st.spinner("Mail Context와 현재 Task State를 분석하고 있습니다..."):
+                    result = workflow.process(selected)
+                st.session_state["last_result"] = result.model_dump(mode="json")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"처리 실패: {exc}")
+                st.info("운영 로그에 실패 단계가 남고 Task 변경은 수행되지 않습니다.")
+
+    result = st.session_state.get("last_result")
+    if result:
+        _render_agent_result(result)
 
 
 def _render_review_queue(storage, settings, mail_by_id) -> None:
@@ -454,22 +608,25 @@ def main() -> None:
     mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
     mail_by_id = {mail.mail_id: mail for mail in mails}
 
-    st.title("MailTaskAgent")
-    st.write("메일 내용을 읽고, 기존 업무와 연결한 뒤, 다음 조치를 결정하고 기록하는 업무 관리 Agent")
+    st.title("MailTaskAgent · 업무 대시보드")
+    st.write("메일을 읽고 기존 업무와 연결해, 다음 조치와 현재 상태를 한곳에서 관리합니다.")
 
     st.info(
-        "현재 화면은 **합성 메일로 핵심 기능을 검증하는 2단계 시연 버전**입니다. "
-        "아래 버튼은 새 메일 도착을 재현하는 테스트 트리거이며, 실제 Outlook 자동 수집은 핵심 기능 완성 후 Post-MVP에서 연결합니다."
+        "현재는 **합성 메일 Source로 Agent Core를 검증 중**입니다. "
+        "대시보드 구조와 처리 Workflow는 최종 Core UI 기준이며, "
+        "Outlook 자동 수집 Adapter는 Post-MVP에서 같은 입력 경계에 연결합니다."
     )
 
     tasks = storage.list_tasks()
     pending_reviews = storage.list_pending_reviews()
-    histories = storage.list_histories()
+    processed_count = len(storage.list_processing_results())
+    active_tasks = [task for task in tasks if task["status"] not in {"COMPLETED", "CANCELLED"}]
+    attention_count = sum(_task_attention(task) != "-" for task in active_tasks)
     summary_1, summary_2, summary_3, summary_4 = st.columns(4)
-    summary_1.metric("실행 모드", "MOCK" if settings.use_mock else "회사 LLM LIVE")
-    summary_2.metric("현재 업무", f"{len(tasks)}건")
-    summary_3.metric("사용자 확인 필요", f"{len(pending_reviews)}건")
-    summary_4.metric("처리 이력", f"{len(histories)}건")
+    summary_1.metric("처리된 메일", f"{processed_count}/{len(mails)}건")
+    summary_2.metric("진행 중인 업무", f"{len(active_tasks)}건")
+    summary_3.metric("확인 필요", f"{len(pending_reviews)}건")
+    summary_4.metric("일정·대기 주의", f"{attention_count}건")
 
     with st.sidebar:
         st.subheader("실행 설정")
@@ -480,6 +637,12 @@ def main() -> None:
         st.text(f"Endpoint: {settings.api_url}")
         st.text(f"API version: {settings.api_version}")
         st.caption("API 키 값은 화면과 로그에 표시하지 않습니다.")
+        st.divider()
+        st.caption(
+            "현재 메일 Source: 합성 JSON\n\n"
+            "자동 정리 범위: Source가 전달한 메일\n\n"
+            "Outlook/Graph: Post-MVP"
+        )
         if st.button("데모 DB 초기화", type="secondary"):
             storage.reset()
             st.session_state.pop("last_result", None)
@@ -490,42 +653,23 @@ def main() -> None:
     if review_flash:
         st.success(review_flash)
 
-    demo_tab, process_tab, review_tab, history_tab, log_tab = st.tabs(
-        ["빠른 시연", "메일 직접 처리", "확인 필요", "현재 업무와 이력", "실행 로그"]
+    dashboard_tab, mailbox_tab, review_tab, log_tab, demo_tab = st.tabs(
+        ["업무 현황", "메일 처리함", "확인 필요", "운영 로그", "데모 도구"]
     )
 
-    with demo_tab:
-        _render_quick_demo(storage, settings, mail_by_id)
+    with dashboard_tab:
+        _render_tasks_and_histories(storage)
 
-    with process_tab:
-        st.subheader("합성 메일 한 건 처리")
-        st.caption(
-            "지금은 개발 중이므로 원하는 메일을 골라 버튼을 누릅니다. "
-            "실제 연동 단계에서는 새 메일 수집기가 같은 Workflow를 자동 호출합니다."
-        )
-        selected = st.selectbox("어떤 메일이 도착했다고 가정할까요?", mails, format_func=_friendly_mail)
-        _render_mail_preview(selected)
-
-        if st.button("선택한 메일 처리", type="primary", width="stretch"):
-            try:
-                workflow = MailTaskWorkflow(settings, storage, build_analyzer(settings))
-                with st.spinner("Mail Context와 현재 Task State를 분석하고 있습니다..."):
-                    result = workflow.process(selected)
-                st.session_state["last_result"] = result.model_dump(mode="json")
-            except Exception as exc:
-                st.error(f"처리 실패: {exc}")
-                st.info("실행 로그에 실패 단계가 남고 Task 변경은 수행되지 않습니다.")
-
-        result = st.session_state.get("last_result")
-        if result:
-            _render_agent_result(result)
+    with mailbox_tab:
+        _render_mailbox(storage, settings, mails)
 
     with review_tab:
         st.write("Agent가 확신하지 못한 경우에는 DB 변경을 멈추고 사람의 결정을 기다립니다.")
         _render_review_queue(storage, settings, mail_by_id)
 
-    with history_tab:
-        _render_tasks_and_histories(storage)
-
     with log_tab:
         _render_event_log(storage, [mail.mail_id for mail in mails])
+
+    with demo_tab:
+        st.caption("멘토 시연과 기능 검증용 도구입니다. 실제 업무 화면과 분리했습니다.")
+        _render_quick_demo(storage, settings, mail_by_id)

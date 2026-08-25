@@ -42,6 +42,9 @@ def test_create_then_update_vertical_slice(settings: Settings) -> None:
     assert updated.before["due_date"] == "2026-08-21"
     assert updated.after["due_date"] == "2026-08-24"
     assert len(storage.list_histories()) == 2
+    processing_results = storage.list_processing_results()
+    assert [item["mail_id"] for item in processing_results] == ["MAIL-002", "MAIL-001"]
+    assert processing_results[0]["result"]["proposal"]["action"] == "UPDATE_TASK"
     update_events = storage.list_events("MAIL-002")
     assert any(event["step"] == "M-02 TASK_MATCHING" for event in update_events)
     assert any(
