@@ -7,7 +7,8 @@ import pandas as pd
 import streamlit as st
 
 from mailtaskagent.config import PROJECT_ROOT, load_settings
-from mailtaskagent.llm_client import build_analyzer
+from mailtaskagent.evaluation import run_scenario_evaluation
+from mailtaskagent.llm_client import MockMailAnalyzer, build_analyzer
 from mailtaskagent.models import AgentAction, ReviewDecision
 from mailtaskagent.storage import SQLiteStorage
 from mailtaskagent.workflow import MailTaskWorkflow, load_mails
@@ -634,6 +635,93 @@ def _render_tasks_and_histories(storage) -> None:
         )
 
 
+def _render_quality_evaluation(settings) -> None:
+    st.subheader("15개 대표 시나리오 품질 검증")
+    st.write(
+        "각 시나리오를 서로 분리된 임시 DB에서 실행하고, 저장소에 확정한 기대 Action·상태·"
+        "중복 방지·사용자 확인 여부와 실제 결과를 비교합니다."
+    )
+    st.info(
+        "이 Dataset은 애매한 경계 Case를 의도적으로 많이 포함합니다. 따라서 사용자 확인율은 "
+        "실제 운영 메일 비율 예측이 아니라 안전장치 검증 수치입니다."
+    )
+
+    mock_col, live_col = st.columns(2)
+    if mock_col.button("Mock 15개 즉시 검증", type="primary", use_container_width=True):
+        with st.spinner("결정 규칙과 DB 반영을 검증하고 있습니다..."):
+            st.session_state["mock_evaluation"] = run_scenario_evaluation(
+                settings, MockMailAnalyzer(), mode="MOCK"
+            )
+
+    live_disabled = settings.use_mock
+    if live_col.button(
+        "회사 LLM Live 15개 검증",
+        disabled=live_disabled,
+        use_container_width=True,
+    ):
+        with st.spinner("회사 LLM을 호출해 15개 Case를 검증하고 있습니다. 잠시 기다려 주세요..."):
+            st.session_state["live_evaluation"] = run_scenario_evaluation(
+                settings, build_analyzer(settings), mode="LIVE"
+            )
+    if live_disabled:
+        live_col.caption("API Key가 있는 LIVE 모드에서만 실행할 수 있습니다.")
+    else:
+        live_col.caption("최대 27회 LLM 분석 호출이 발생하며 Mock 결과와 별도로 기록됩니다.")
+
+    report_options = []
+    if st.session_state.get("mock_evaluation"):
+        report_options.append("Mock 회귀")
+    if st.session_state.get("live_evaluation"):
+        report_options.append("회사 LLM Live")
+    if not report_options:
+        st.caption("검증 버튼을 누르면 Case별 기대값과 실제 결과 비교표가 여기에 표시됩니다.")
+        return
+
+    selected = st.radio("표시할 결과", report_options, horizontal=True)
+    report_key = "mock_evaluation" if selected == "Mock 회귀" else "live_evaluation"
+    report = st.session_state[report_key]
+    metric_1, metric_2, metric_3, metric_4 = st.columns(4)
+    metric_1.metric("통과 시나리오", f"{report['passed_count']}/{report['case_count']}")
+    metric_2.metric("시나리오 통과율", f"{report['scenario_pass_rate']:.1%}")
+    metric_3.metric("Action 단계 일치율", f"{report['action_step_accuracy']:.1%}")
+    metric_4.metric("사용자 확인 비율", f"{report['review_rate']:.1%}")
+
+    frame = pd.DataFrame(report["rows"])
+    frame["결과"] = frame["passed"].map({True: "통과", False: "실패"})
+    frame["사용자 확인"] = frame["review_actual"].map({True: "필요", False: "자동 처리"})
+    frame = frame.rename(
+        columns={
+            "case_id": "Case",
+            "title": "시나리오",
+            "expected_actions": "기대 Action",
+            "actual_actions": "실제 Action",
+            "failure_reason": "불일치 원인",
+            "duration_ms": "처리 시간(ms)",
+        }
+    )
+    st.dataframe(
+        frame[
+            [
+                "Case",
+                "시나리오",
+                "기대 Action",
+                "실제 Action",
+                "결과",
+                "사용자 확인",
+                "불일치 원인",
+                "처리 시간(ms)",
+            ]
+        ],
+        width="stretch",
+        hide_index=True,
+    )
+    st.caption(
+        f"{report['mode']} · Action {report['total_action_steps']}단계 · "
+        f"총 {report['duration_ms'] / 1000:.2f}초. Mock은 Application Logic 회귀 증적이고, "
+        "Live 결과만 회사 LLM 품질 증적으로 사용합니다."
+    )
+
+
 def main() -> None:
     st.set_page_config(page_title="MailTaskAgent", page_icon="📬", layout="wide")
     _apply_styles()
@@ -688,8 +776,8 @@ def main() -> None:
     if review_flash:
         st.success(review_flash)
 
-    dashboard_tab, mailbox_tab, review_tab, log_tab, demo_tab = st.tabs(
-        ["업무 현황", "메일 처리함", "확인 필요", "운영 로그", "데모 도구"]
+    dashboard_tab, mailbox_tab, review_tab, log_tab, quality_tab, demo_tab = st.tabs(
+        ["업무 현황", "메일 처리함", "확인 필요", "운영 로그", "품질 검증", "데모 도구"]
     )
 
     with dashboard_tab:
@@ -704,6 +792,9 @@ def main() -> None:
 
     with log_tab:
         _render_event_log(storage, [mail.mail_id for mail in mails])
+
+    with quality_tab:
+        _render_quality_evaluation(settings)
 
     with demo_tab:
         st.caption("멘토 시연과 기능 검증용 도구입니다. 실제 업무 화면과 분리했습니다.")

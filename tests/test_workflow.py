@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from mailtaskagent.config import PROJECT_ROOT, Settings
+from mailtaskagent.evaluation import run_scenario_evaluation
 from mailtaskagent.llm_client import MockMailAnalyzer
 from mailtaskagent.models import AgentAction, MailIntent, ReviewDecision, TaskStatus
 from mailtaskagent.storage import SQLiteStorage
@@ -328,6 +329,18 @@ def test_scenario_expectations_use_supported_actions_and_states() -> None:
             state_values.append(case["expected_final_status_after_approval"])
         for status in state_values:
             assert status in TaskStatus._value2member_map_
+
+
+def test_mock_scenario_evaluation_reports_complete_evidence(settings: Settings) -> None:
+    report = run_scenario_evaluation(settings, MockMailAnalyzer(), mode="MOCK")
+
+    assert report["case_count"] == 15
+    assert report["passed_count"] == 15
+    assert report["scenario_pass_rate"] == 1
+    assert report["action_step_accuracy"] == 1
+    assert report["total_action_steps"] == 28
+    assert report["review_rate"] == pytest.approx(7 / 15)
+    assert all(row["error"] == "-" for row in report["rows"])
 
 
 @pytest.mark.parametrize(
