@@ -422,6 +422,30 @@ def test_duplicate_mail_does_not_add_history(settings: Settings) -> None:
     )
 
 
+def test_user_can_edit_and_complete_task_with_history(settings: Settings) -> None:
+    mail = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")[0]
+    storage = SQLiteStorage(settings.database_path)
+    workflow = MailTaskWorkflow(settings, storage, MockMailAnalyzer())
+    created = workflow.process(mail)
+
+    result = storage.update_task_by_user(
+        created.task["task_id"],
+        title="사용자가 다듬은 업무 제목",
+        description="Dashboard에서 직접 수정한 설명",
+        due_date=None,
+        status=TaskStatus.COMPLETED.value,
+        reply_required=False,
+    )
+
+    assert result["action"] == AgentAction.MARK_COMPLETED.value
+    assert result["after"]["status"] == TaskStatus.COMPLETED.value
+    assert result["after"]["due_date"] is None
+    history = storage.list_histories()[0]
+    assert history["mail_id"] == "USER-DASHBOARD"
+    assert history["action"] == AgentAction.MARK_COMPLETED.value
+    assert json.loads(history["user_decision"])["decision"] == "MANUAL_EDIT"
+
+
 def test_analyzer_failure_does_not_change_database(settings: Settings) -> None:
     class FailingAnalyzer:
         def analyze(self, mail):

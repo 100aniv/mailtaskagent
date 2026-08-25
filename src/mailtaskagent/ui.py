@@ -590,6 +590,50 @@ def _render_tasks_and_histories(storage) -> None:
             )
             columns = ["Task ID", "업무 제목", "상태", "주의", "기한", "대기 시작", "요청자"]
             st.dataframe(task_frame[columns], width="stretch", hide_index=True)
+            with st.expander("Task 직접 수정 · 완료 · 취소"):
+                selected_task = st.selectbox(
+                    "수정할 Task",
+                    tasks,
+                    format_func=lambda item: f"{item['task_id']} · {item['title']}",
+                    key="manual_task_selection",
+                )
+                current_due = (
+                    date.fromisoformat(selected_task["due_date"])
+                    if selected_task.get("due_date")
+                    else date.today()
+                )
+                with st.form("manual_task_edit_form"):
+                    edited_title = st.text_input("업무 제목", value=selected_task["title"])
+                    edited_description = st.text_area(
+                        "업무 설명", value=selected_task.get("description") or ""
+                    )
+                    edited_status = st.selectbox(
+                        "상태",
+                        list(STATUS_LABELS),
+                        index=list(STATUS_LABELS).index(selected_task["status"]),
+                        format_func=lambda value: STATUS_LABELS[value],
+                    )
+                    edited_due = st.date_input("기한", value=current_due)
+                    no_due = st.checkbox(
+                        "기한 없음", value=not bool(selected_task.get("due_date"))
+                    )
+                    edited_reply_required = st.checkbox(
+                        "회신 필요", value=bool(selected_task.get("reply_required"))
+                    )
+                    save_task = st.form_submit_button("변경 내용 저장", type="primary")
+                if save_task:
+                    result = storage.update_task_by_user(
+                        selected_task["task_id"],
+                        title=edited_title,
+                        description=edited_description,
+                        due_date=None if no_due else edited_due.isoformat(),
+                        status=edited_status,
+                        reply_required=edited_reply_required,
+                    )
+                    st.session_state["task_edit_flash"] = (
+                        f"{result['task_id']} 변경을 저장하고 History에 기록했습니다."
+                    )
+                    st.rerun()
         else:
             st.info("아직 생성된 Task가 없습니다.")
 
@@ -783,6 +827,9 @@ def main() -> None:
     review_flash = st.session_state.pop("review_flash", None)
     if review_flash:
         st.success(review_flash)
+    task_edit_flash = st.session_state.pop("task_edit_flash", None)
+    if task_edit_flash:
+        st.success(task_edit_flash)
 
     dashboard_tab, mailbox_tab, review_tab, log_tab, quality_tab, demo_tab = st.tabs(
         ["업무 현황", "메일 처리함", "확인 필요", "운영 로그", "품질 검증", "데모 도구"]

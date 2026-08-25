@@ -808,6 +808,98 @@ class SQLiteStorage:
                 pending.append(result)
         return pending
 
+    def update_task_by_user(
+        self,
+        task_id: str,
+        *,
+        title: str,
+        description: str | None,
+        due_date: str | None,
+        status: str,
+        reply_required: bool,
+    ) -> dict:
+        clean_title = title.strip()
+        if not clean_title:
+            raise ValueError("Task title is required")
+        validated_status = TaskStatus(status)
+        now = _now()
+        with self.connect() as connection:
+            try:
+                connection.execute("BEGIN")
+                before = self._fetch_task(connection, task_id)
+                if before is None:
+                    raise ValueError(f"Task not found: {task_id}")
+                waiting_since = before.get("waiting_since")
+                if validated_status == TaskStatus.WAITING_REPLY and not waiting_since:
+                    waiting_since = now
+                elif validated_status != TaskStatus.WAITING_REPLY:
+                    waiting_since = None
+                connection.execute(
+                    """
+                    UPDATE tasks
+                    SET title = ?, description = ?, due_date = ?, status = ?,
+                        reply_required = ?, waiting_since = ?, updated_at = ?
+                    WHERE task_id = ?
+                    """,
+                    (
+                        clean_title,
+                        description.strip() if description else None,
+                        due_date,
+                        validated_status.value,
+                        int(reply_required),
+                        waiting_since,
+                        now,
+                        task_id,
+                    ),
+                )
+                after = self._fetch_task(connection, task_id)
+                action = (
+                    AgentAction.MARK_COMPLETED
+                    if validated_status == TaskStatus.COMPLETED
+                    else AgentAction.UPDATE_TASK
+                )
+                changed_fields = {
+                    key: {"before": before.get(key), "after": after.get(key)}
+                    for key in (
+                        "title",
+                        "description",
+                        "due_date",
+                        "status",
+                        "reply_required",
+                        "waiting_since",
+                    )
+                    if before.get(key) != after.get(key)
+                }
+                connection.execute(
+                    """
+                    INSERT INTO histories(task_id, mail_id, action, before_json, after_json,
+                                          reason, confidence, user_decision, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        task_id,
+                        "USER-DASHBOARD",
+                        action.value,
+                        _json(before),
+                        _json(after),
+                        "사용자가 Dashboard에서 Task를 직접 수정",
+                        1.0,
+                        _json({"decision": "MANUAL_EDIT", "changes": changed_fields}),
+                        now,
+                    ),
+                )
+                connection.commit()
+                return {
+                    "task_id": task_id,
+                    "action": action.value,
+                    "before": before,
+                    "after": after,
+                    "changes": changed_fields,
+                }
+            except Exception:
+                connection.rollback()
+                raise
+
     def _fetch_task(self, connection: sqlite3.Connection, task_id: str) -> dict | None:
         row = connection.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
         if not row:
