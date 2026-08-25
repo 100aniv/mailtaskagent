@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from mailtaskagent.config import PROJECT_ROOT, load_settings
-from mailtaskagent.evaluation import run_scenario_evaluation
+from mailtaskagent.evaluation import load_saved_evaluation_report, run_scenario_evaluation
 from mailtaskagent.llm_client import MockMailAnalyzer, build_analyzer
 from mailtaskagent.models import AgentAction, ReviewDecision
 from mailtaskagent.storage import SQLiteStorage
@@ -668,6 +668,10 @@ def _render_quality_evaluation(settings) -> None:
     else:
         live_col.caption("최대 27회 LLM 분석 호출이 발생하며 Mock 결과와 별도로 기록됩니다.")
 
+    saved_live_path = PROJECT_ROOT / "evidence" / "live_evaluation_2026-08-26.json"
+    if "live_evaluation" not in st.session_state and saved_live_path.exists():
+        st.session_state["live_evaluation"] = load_saved_evaluation_report(saved_live_path)
+
     report_options = []
     if st.session_state.get("mock_evaluation"):
         report_options.append("Mock 회귀")
@@ -680,6 +684,10 @@ def _render_quality_evaluation(settings) -> None:
     selected = st.radio("표시할 결과", report_options, horizontal=True)
     report_key = "mock_evaluation" if selected == "Mock 회귀" else "live_evaluation"
     report = st.session_state[report_key]
+    if report.get("generated_at"):
+        st.success(
+            f"저장된 회사 LLM 검증 증적 · {report['generated_at']} · {report.get('model', '-')}"
+        )
     metric_1, metric_2, metric_3, metric_4 = st.columns(4)
     metric_1.metric("통과 시나리오", f"{report['passed_count']}/{report['case_count']}")
     metric_2.metric("시나리오 통과율", f"{report['scenario_pass_rate']:.1%}")

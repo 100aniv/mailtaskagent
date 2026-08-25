@@ -19,6 +19,11 @@ def load_scenario_expectations(
         return json.load(stream)
 
 
+def load_saved_evaluation_report(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as stream:
+        return json.load(stream)
+
+
 def _check_case(case: dict, results: list, storage: SQLiteStorage) -> list[str]:
     failures: list[str] = []
     actual_actions = [result.proposal.action.value for result in results]

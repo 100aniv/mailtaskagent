@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from mailtaskagent.config import PROJECT_ROOT, Settings
-from mailtaskagent.evaluation import run_scenario_evaluation
+from mailtaskagent.evaluation import load_saved_evaluation_report, run_scenario_evaluation
 from mailtaskagent.llm_client import MockMailAnalyzer
 from mailtaskagent.models import AgentAction, MailIntent, ReviewDecision, TaskStatus
 from mailtaskagent.storage import SQLiteStorage
@@ -341,6 +341,18 @@ def test_mock_scenario_evaluation_reports_complete_evidence(settings: Settings) 
     assert report["total_action_steps"] == 28
     assert report["review_rate"] == pytest.approx(7 / 15)
     assert all(row["error"] == "-" for row in report["rows"])
+
+
+def test_checked_in_live_evaluation_evidence_is_complete() -> None:
+    report = load_saved_evaluation_report(
+        PROJECT_ROOT / "evidence" / "live_evaluation_2026-08-26.json"
+    )
+
+    assert report["mode"] == "LIVE"
+    assert report["case_count"] == report["passed_count"] == 15
+    assert report["total_action_steps"] == 28
+    assert len(report["rows"]) == 15
+    assert all(row["passed"] and row["error"] == "-" for row in report["rows"])
 
 
 @pytest.mark.parametrize(

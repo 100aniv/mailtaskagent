@@ -17,13 +17,14 @@
 - SQLite Task/History/중복 처리
 - 제품형 업무 현황, 메일 처리함, 확인 필요, 운영 로그 Dashboard
 - Mock 회귀와 회사 LLM Live를 구분한 15개 시나리오 품질 검증 Dashboard
+- 2026-08-26 회사 LLM Live 평가 15/15 Case·28/28 Action 단계 일치 증적
 - 합성메일 미처리 전체 자동 정리와 분류·Action·Task 연결 현황
 - 멘토용 빠른 시연 4종을 실제 업무 화면과 분리
 - M-01~M-05 단계별 Agent 실행 로그와 오류 추적
 - 관련 후보 2개인 Mail의 `ASK_USER` 사용자 확인
 - 기존 Task 연결, 신규 Task 생성, 무시 선택 및 사용자 결정 History
 - 완료 제안 후 사용자 승인 시에만 `COMPLETED` 반영
-- 기대결과를 분리한 대표 Business Case 15개와 pytest 40건
+- 기대결과를 분리한 대표 Business Case 15개와 pytest 41건
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 
 ## API 키 입력 위치
