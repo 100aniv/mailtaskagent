@@ -71,3 +71,5 @@ Model: gpt-4.1-mini
 n8n 자동 수집은 Core E2E 완성 후 Post-MVP에서 공통 Mail Schema Adapter로 연결한다.
 테스트 Gmail은 2단계 Core가 안정된 뒤 일정에 여유가 있을 때만 선택적으로 연결하며,
 iCloud Mail은 현재 확정 범위에 포함하지 않는다.
+
+내일 시연 설명과 순서는 `Docs/IMPLEMENTATION/08_멘토_시연_브리핑.md`를 참고한다.
