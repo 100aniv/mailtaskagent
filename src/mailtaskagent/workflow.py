@@ -352,6 +352,7 @@ class MailTaskWorkflow:
         decision: ReviewDecision,
         target_task_id: str | None = None,
         new_task_title: str | None = None,
+        approved_changes: dict | None = None,
     ) -> dict:
         case_id = f"REVIEW-{uuid4().hex[:10].upper()}"
         started = perf_counter()
@@ -369,6 +370,7 @@ class MailTaskWorkflow:
                 decision=decision,
                 target_task_id=target_task_id,
                 new_task_title=new_task_title,
+                approved_changes=approved_changes,
             )
             self._event(
                 case_id,

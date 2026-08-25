@@ -23,6 +23,7 @@ COMPLETION, CANCELLATION, NON_TASK, UNCERTAIN 중 하나다.
 OUTBOUND 메일에서 업무 수행에 필요한 자료나 답변을 상대에게 명시적으로 요청하면 WAITING이다.
 INBOUND 메일에서 앞서 요청한 자료나 답변이 도착하면 INFORMATION_RECEIVED다.
 업무가 끝났다는 명확한 사실이나 완료 요청이 있으면 COMPLETION이며, 실제 완료 처리는 사용자가 승인한다.
+"거의 끝난 것 같다", "완료로 봐도 될까"처럼 완료 여부를 질문하거나 추측하면 COMPLETION으로 확정하지 말고 UNCERTAIN이다.
 기존 요청을 철회하거나 업무를 취소하라는 명확한 요청은 CANCELLATION이며, 실제 취소는 사용자가 승인한다.
 due_date는 YYYY-MM-DD 또는 null, confidence는 0부터 1 사이다.
 """
@@ -168,6 +169,61 @@ class MockMailAnalyzer:
                 reply_required=False,
                 reason="동일 Thread에서 기존 점검 요청의 철회를 명시함",
                 confidence=0.98,
+            ),
+            "MAIL-011": MailAnalysis(
+                is_task_request=True,
+                intent=MailIntent.NEW_TASK,
+                task_title="개발계 서버 미사용 계정 현황 확인",
+                request_summary="개발계 서버의 미사용 계정 현황을 확인하고 공유한다.",
+                requester=mail.sender,
+                due_date=None,
+                reply_required=True,
+                reason="명확한 신규 업무 요청이지만 요청자가 기한을 지정하지 않음",
+                confidence=0.96,
+            ),
+            "MAIL-012": MailAnalysis(
+                is_task_request=True,
+                intent=MailIntent.DUE_DATE_CHANGE,
+                task_title=None,
+                request_summary="기존 업무 기한을 2026-08-20으로 단축한다.",
+                requester=mail.sender,
+                due_date=date(2026, 8, 20),
+                reply_required=True,
+                reason="동일 Thread에서 기존 기한보다 이른 날짜를 명시함",
+                confidence=0.99,
+            ),
+            "MAIL-013": MailAnalysis(
+                is_task_request=True,
+                intent=MailIntent.UNCERTAIN,
+                task_title=None,
+                request_summary="기존 업무가 완료됐는지 확인한다.",
+                requester=mail.sender,
+                due_date=None,
+                reply_required=True,
+                reason="완료 여부를 확정하지 않고 질문 형태로 표현함",
+                confidence=0.58,
+            ),
+            "MAIL-014": MailAnalysis(
+                is_task_request=True,
+                intent=MailIntent.TASK_UPDATE,
+                task_title=None,
+                request_summary="기존 DDC 점검 업무에 추가 내용을 반영한다.",
+                requester=mail.sender,
+                due_date=None,
+                reply_required=True,
+                reason="다른 Thread의 유사 업무를 가리키지만 대상 Task가 명확하지 않음",
+                confidence=0.64,
+            ),
+            "MAIL-015": MailAnalysis(
+                is_task_request=True,
+                intent=MailIntent.UNCERTAIN,
+                task_title="운영 서버 상태 확인",
+                request_summary="운영 서버 상태를 확인하고 결과를 공유한다.",
+                requester=mail.sender,
+                due_date=None,
+                reply_required=True,
+                reason="'다음 주 중'은 단일 날짜로 확정할 수 없는 모호한 기한",
+                confidence=0.60,
             ),
             "MAIL-005": MailAnalysis(
                 is_task_request=False,

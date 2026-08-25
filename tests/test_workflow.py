@@ -1,13 +1,19 @@
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
 
 from mailtaskagent.config import PROJECT_ROOT, Settings
 from mailtaskagent.llm_client import MockMailAnalyzer
-from mailtaskagent.models import AgentAction, ReviewDecision, TaskStatus
+from mailtaskagent.models import AgentAction, MailIntent, ReviewDecision, TaskStatus
 from mailtaskagent.storage import SQLiteStorage
 from mailtaskagent.workflow import MailTaskWorkflow, load_mails
+
+
+SCENARIO_EXPECTATIONS = json.loads(
+    (PROJECT_ROOT / "data" / "scenario_expectations.json").read_text(encoding="utf-8")
+)
 
 
 @pytest.fixture
@@ -174,6 +180,33 @@ def test_lifecycle_intent_is_not_ignored_when_live_llm_marks_it_non_request(
     assert completion.proposal.needs_user_confirmation is True
 
 
+def test_ambiguous_due_phrase_is_reviewed_even_if_llm_calls_it_new_task(
+    settings: Settings,
+) -> None:
+    class LiveLikeAnalyzer(MockMailAnalyzer):
+        def analyze(self, mail):
+            analysis = super().analyze(mail)
+            return analysis.model_copy(
+                update={
+                    "intent": MailIntent.NEW_TASK,
+                    "confidence": 0.96,
+                    "due_date": date(2026, 8, 31),
+                }
+            )
+
+    mail = {
+        item.mail_id: item
+        for item in load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
+    }["MAIL-015"]
+    storage = SQLiteStorage(settings.database_path)
+    workflow = MailTaskWorkflow(settings, storage, LiveLikeAnalyzer())
+
+    result = workflow.process(mail)
+
+    assert result.proposal.action == AgentAction.ASK_USER
+    assert storage.list_tasks() == []
+
+
 @pytest.mark.parametrize(
     ("decision", "expected_action", "expected_status"),
     [
@@ -209,6 +242,56 @@ def test_cancellation_requires_user_approval(
     assert storage.list_pending_reviews() == []
 
 
+@pytest.mark.parametrize(
+    ("decision", "approved_changes", "expected_action", "expected_due_date"),
+    [
+        (
+            ReviewDecision.APPROVE_PROPOSAL,
+            None,
+            AgentAction.UPDATE_TASK,
+            "2026-08-20",
+        ),
+        (
+            ReviewDecision.APPROVE_PROPOSAL,
+            {"due_date": "2026-08-22"},
+            AgentAction.UPDATE_TASK,
+            "2026-08-22",
+        ),
+        (ReviewDecision.IGNORE, None, AgentAction.IGNORE, "2026-08-21"),
+    ],
+)
+def test_due_date_shortening_requires_review_and_supports_user_edit(
+    settings: Settings,
+    decision: ReviewDecision,
+    approved_changes: dict | None,
+    expected_action: AgentAction,
+    expected_due_date: str,
+) -> None:
+    mails = {
+        mail.mail_id: mail
+        for mail in load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
+    }
+    storage = SQLiteStorage(settings.database_path)
+    workflow = MailTaskWorkflow(settings, storage, MockMailAnalyzer())
+
+    created = workflow.process(mails["MAIL-001"])
+    proposed = workflow.process(mails["MAIL-012"])
+
+    assert proposed.proposal.action == AgentAction.ASK_USER
+    assert proposed.proposal.changes == {"due_date": "2026-08-20"}
+    assert created.task is not None
+    assert storage.get_task(created.task["task_id"])["due_date"] == "2026-08-21"
+
+    review = workflow.resolve_review(
+        mail=mails["MAIL-012"],
+        decision=decision,
+        approved_changes=approved_changes,
+    )
+
+    assert review["final_action"] == expected_action.value
+    assert storage.get_task(created.task["task_id"])["due_date"] == expected_due_date
+
+
 @pytest.mark.parametrize("mail_id", ["MAIL-005", "MAIL-007"])
 def test_non_task_and_prompt_injection_are_ignored(
     settings: Settings,
@@ -229,11 +312,8 @@ def test_non_task_and_prompt_injection_are_ignored(
 
 
 def test_scenario_expectations_use_supported_actions_and_states() -> None:
-    expectation_path = PROJECT_ROOT / "data" / "scenario_expectations.json"
-    expectations = json.loads(expectation_path.read_text(encoding="utf-8"))
-
-    assert 7 <= len(expectations) <= 15
-    for case in expectations:
+    assert len(SCENARIO_EXPECTATIONS) == 15
+    for case in SCENARIO_EXPECTATIONS:
         for action in case["expected_actions"]:
             assert action in AgentAction._value2member_map_
         state_values = []
@@ -246,6 +326,46 @@ def test_scenario_expectations_use_supported_actions_and_states() -> None:
             state_values.append(case["expected_final_status_after_approval"])
         for status in state_values:
             assert status in TaskStatus._value2member_map_
+
+
+@pytest.mark.parametrize(
+    "case",
+    SCENARIO_EXPECTATIONS,
+    ids=[case["case_id"] for case in SCENARIO_EXPECTATIONS],
+)
+def test_expected_business_scenario_actions(settings: Settings, case: dict) -> None:
+    mails = {
+        mail.mail_id: mail
+        for mail in load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
+    }
+    storage = SQLiteStorage(settings.database_path)
+    workflow = MailTaskWorkflow(settings, storage, MockMailAnalyzer())
+
+    results = [workflow.process(mails[mail_id]) for mail_id in case["mail_ids"]]
+
+    assert [result.proposal.action.value for result in results] == case["expected_actions"]
+    if case.get("review_required"):
+        assert results[-1].proposal.needs_user_confirmation is True
+    if "expected_candidate_count" in case:
+        assert len(results[-1].candidate_tasks) == case["expected_candidate_count"]
+    if "expected_task_count" in case:
+        assert len(storage.list_tasks()) == case["expected_task_count"]
+    if "expected_history_count" in case:
+        assert len(storage.list_histories()) == case["expected_history_count"]
+    if case.get("second_result_duplicate"):
+        assert results[-1].duplicate is True
+
+    tasks = storage.list_tasks()
+    if "expected_final_status" in case and tasks:
+        assert tasks[0]["status"] == case["expected_final_status"]
+    if "expected_final_status_before_review" in case and tasks:
+        assert tasks[0]["status"] == case["expected_final_status_before_review"]
+    if "expected_due_date" in case and tasks:
+        assert tasks[0]["due_date"] == case["expected_due_date"]
+    if "expected_due_date_before_review" in case and tasks:
+        assert tasks[0]["due_date"] == case["expected_due_date_before_review"]
+    if "expected_status_sequence" in case:
+        assert [result.task["status"] for result in results] == case["expected_status_sequence"]
 
 
 def test_duplicate_mail_does_not_add_history(settings: Settings) -> None:

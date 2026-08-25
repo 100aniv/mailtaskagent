@@ -391,6 +391,8 @@ def _render_review_queue(storage, settings, mail_by_id) -> None:
     proposal_action = selected_review["proposal"]["action"]
     proposed_status = selected_review["proposal"].get("changes", {}).get("status")
     is_cancellation_review = proposed_status == "CANCELLED"
+    proposed_due_date = selected_review["proposal"].get("changes", {}).get("due_date")
+    is_due_date_review = bool(proposed_due_date)
     st.warning(
         f"Agent가 자동 변경을 중단했습니다: "
         f"{_action_label(proposal_action)} · {selected_review['proposal']['reason']}"
@@ -409,6 +411,9 @@ def _render_review_queue(storage, settings, mail_by_id) -> None:
     elif is_cancellation_review:
         labels["취소 승인"] = ReviewDecision.APPROVE_PROPOSAL
         labels["취소하지 않음"] = ReviewDecision.IGNORE
+    elif is_due_date_review:
+        labels["기한 변경 승인"] = ReviewDecision.APPROVE_PROPOSAL
+        labels["기존 기한 유지"] = ReviewDecision.IGNORE
     else:
         if candidates:
             labels["기존 Task 연결"] = ReviewDecision.LINK_EXISTING
@@ -419,6 +424,7 @@ def _render_review_queue(storage, settings, mail_by_id) -> None:
 
     target_task_id = None
     new_task_title = None
+    approved_changes = None
     if decision == ReviewDecision.LINK_EXISTING:
         selected_candidate = st.selectbox(
             "연결할 Task",
@@ -440,6 +446,15 @@ def _render_review_queue(storage, settings, mail_by_id) -> None:
     elif is_cancellation_review:
         target_task_id = selected_review["proposal"].get("target_task_id")
         st.caption(f"대상 Task: {target_task_id} · 승인 전에는 취소하지 않습니다.")
+    elif is_due_date_review:
+        target_task_id = selected_review["proposal"].get("target_task_id")
+        approved_due_date = st.date_input(
+            "확정할 기한",
+            value=date.fromisoformat(proposed_due_date),
+            help="Agent 제안 날짜를 그대로 승인하거나 사용자가 날짜를 수정할 수 있습니다.",
+        )
+        approved_changes = {"due_date": approved_due_date.isoformat()}
+        st.caption(f"대상 Task: {target_task_id} · 사용자 확정 전에는 기존 기한을 유지합니다.")
 
     if st.button("사용자 결정 확정", type="primary"):
         try:
@@ -449,6 +464,7 @@ def _render_review_queue(storage, settings, mail_by_id) -> None:
                 decision=decision,
                 target_task_id=target_task_id,
                 new_task_title=new_task_title,
+                approved_changes=approved_changes,
             )
             st.session_state["review_flash"] = (
                 f"{mail_id}: {review_result['final_action']} 반영 및 History 저장 완료"

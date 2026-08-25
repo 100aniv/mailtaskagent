@@ -517,6 +517,7 @@ class SQLiteStorage:
         decision: ReviewDecision,
         target_task_id: str | None = None,
         new_task_title: str | None = None,
+        approved_changes: dict | None = None,
     ) -> dict:
         now = _now()
         with self.connect() as connection:
@@ -625,6 +626,42 @@ class SQLiteStorage:
                     else:
                         raise ValueError("Cancellation review supports approve or ignore only")
 
+                elif stored_proposal.action == AgentAction.ASK_USER and stored_proposal.changes:
+                    task_id = stored_proposal.target_task_id
+                    if not task_id or task_id not in candidate_ids:
+                        raise ValueError("Change target must be a listed candidate Task")
+                    before = self._fetch_task(connection, task_id)
+                    if not before:
+                        raise ValueError(f"Task not found: {task_id}")
+                    if decision == ReviewDecision.APPROVE_PROPOSAL:
+                        changes = approved_changes or stored_proposal.changes
+                        allowed = {"due_date"}
+                        invalid = set(changes) - allowed
+                        if invalid or not changes:
+                            raise ValueError("Review change supports due_date only")
+                        connection.execute(
+                            "UPDATE tasks SET due_date = ?, updated_at = ? WHERE task_id = ?",
+                            (changes.get("due_date"), now, task_id),
+                        )
+                        after = self._fetch_task(connection, task_id)
+                        task = after
+                        final_action = AgentAction.UPDATE_TASK
+                        self._insert_link(
+                            connection,
+                            mail.mail_id,
+                            task_id,
+                            final_action.value,
+                            "사용자가 중요 변경 값을 확인하고 승인",
+                            1.0,
+                            now,
+                        )
+                    elif decision == ReviewDecision.IGNORE:
+                        task = before
+                        after = before
+                        final_action = AgentAction.IGNORE
+                    else:
+                        raise ValueError("Change review supports approve or ignore only")
+
                 elif decision == ReviewDecision.LINK_EXISTING:
                     if not target_task_id or target_task_id not in candidate_ids:
                         raise ValueError("A listed candidate Task must be selected")
@@ -693,6 +730,7 @@ class SQLiteStorage:
                     "decision": decision.value,
                     "target_task_id": task_id,
                     "new_task_title": new_task_title if decision == ReviewDecision.CREATE_NEW else None,
+                    "approved_changes": approved_changes,
                 }
                 reason = (
                     f"사용자가 {stored_proposal.action.value} 검토 결과를 "

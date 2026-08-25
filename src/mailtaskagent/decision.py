@@ -19,6 +19,13 @@ def decide_action(
     settings: Settings,
 ) -> ActionProposal:
     candidate = candidates[0] if len(candidates) == 1 else None
+    ambiguous_due_markers = (
+        "다음 주 중",
+        "이번 주 중",
+        "가능한 빨리",
+        "조만간",
+        "여유될 때",
+    )
 
     if analysis.is_task_request and len(candidates) > 1:
         return ActionProposal(
@@ -54,6 +61,18 @@ def decide_action(
             confidence=analysis.confidence,
         )
 
+    if (
+        analysis.intent == MailIntent.NEW_TASK
+        and candidate is None
+        and any(marker in f"{mail.subject} {mail.body}" for marker in ambiguous_due_markers)
+    ):
+        return ActionProposal(
+            action=AgentAction.ASK_USER,
+            reason="요청은 명확하지만 기한 표현을 단일 날짜로 확정할 수 없음",
+            confidence=min(analysis.confidence, 0.70),
+            needs_user_confirmation=True,
+        )
+
     if analysis.intent == MailIntent.NEW_TASK and candidate is None:
         if not analysis.task_title or not analysis.request_summary:
             raise ValueError("CREATE_TASK requires task_title and request_summary")
@@ -78,6 +97,18 @@ def decide_action(
                 action=AgentAction.ASK_USER,
                 target_task_id=candidate.task_id,
                 reason="변경 기한을 명확한 날짜로 확정할 수 없음",
+                confidence=analysis.confidence,
+                needs_user_confirmation=True,
+            )
+        if candidate.due_date and analysis.due_date < candidate.due_date:
+            return ActionProposal(
+                action=AgentAction.ASK_USER,
+                target_task_id=candidate.task_id,
+                changes={"due_date": analysis.due_date.isoformat()},
+                reason=(
+                    f"기한 단축은 중요 변경이므로 사용자 승인을 요청함: "
+                    f"{candidate.due_date.isoformat()} -> {analysis.due_date.isoformat()}"
+                ),
                 confidence=analysis.confidence,
                 needs_user_confirmation=True,
             )

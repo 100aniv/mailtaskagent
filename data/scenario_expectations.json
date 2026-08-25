@@ -7,6 +7,14 @@
     "expected_final_status": "TODO"
   },
   {
+    "case_id": "BC-02",
+    "title": "기한 없는 명확한 신규 업무",
+    "mail_ids": ["MAIL-011"],
+    "expected_actions": ["CREATE_TASK"],
+    "expected_final_status": "TODO",
+    "expected_due_date": null
+  },
+  {
     "case_id": "BC-03",
     "title": "조치 불필요 공지 제외",
     "mail_ids": ["MAIL-005"],
@@ -19,6 +27,15 @@
     "mail_ids": ["MAIL-001", "MAIL-002"],
     "expected_actions": ["CREATE_TASK", "UPDATE_TASK"],
     "expected_due_date": "2026-08-24"
+  },
+  {
+    "case_id": "BC-05",
+    "title": "기한 단축 사용자 승인",
+    "mail_ids": ["MAIL-001", "MAIL-012"],
+    "expected_actions": ["CREATE_TASK", "ASK_USER"],
+    "expected_due_date_before_review": "2026-08-21",
+    "proposed_due_date": "2026-08-20",
+    "review_required": true
   },
   {
     "case_id": "BC-06",
@@ -43,11 +60,34 @@
     "review_required": true
   },
   {
+    "case_id": "BC-10",
+    "title": "불명확한 완료 표현",
+    "mail_ids": ["MAIL-001", "MAIL-013"],
+    "expected_actions": ["CREATE_TASK", "ASK_USER"],
+    "expected_final_status_before_review": "TODO",
+    "review_required": true
+  },
+  {
     "case_id": "BC-11",
     "title": "후보 두 개의 사용자 확인",
     "mail_ids": ["MAIL-001", "MAIL-008", "MAIL-006"],
     "expected_actions": ["CREATE_TASK", "CREATE_TASK", "ASK_USER"],
     "expected_candidate_count": 2,
+    "review_required": true
+  },
+  {
+    "case_id": "BC-12",
+    "title": "다른 Thread의 유사 업무",
+    "mail_ids": ["MAIL-001", "MAIL-008", "MAIL-014"],
+    "expected_actions": ["CREATE_TASK", "CREATE_TASK", "ASK_USER"],
+    "review_required": true
+  },
+  {
+    "case_id": "BC-13",
+    "title": "모호한 기한",
+    "mail_ids": ["MAIL-015"],
+    "expected_actions": ["ASK_USER"],
+    "expected_task_count": 0,
     "review_required": true
   },
   {
