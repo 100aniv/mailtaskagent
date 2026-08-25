@@ -1,0 +1,1 @@
+"""MailTaskAgent vertical slice."""

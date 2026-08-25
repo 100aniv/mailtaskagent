@@ -1,0 +1,5 @@
+pydantic>=2.13,<3
+openai>=1.109,<2
+streamlit>=1.62,<2
+python-dotenv>=1.2,<2
+pytest>=8.4,<9

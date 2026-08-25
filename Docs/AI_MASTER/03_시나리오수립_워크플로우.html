@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mail Task Agent — 시나리오 수립</title>
+<style>
+  :root{
+    --bg:#f5f7fa;
+    --card:#ffffff;
+    --ink:#1f2937;
+    --muted:#64748b;
+    --line:#d9e1e8;
+    --accent:#2459a6;
+    --accent2:#3a7d6e;
+    --accent3:#9a6330;
+    --soft1:#eef4ff;
+    --soft2:#eef8f5;
+    --soft3:#fff6ea;
+    --danger:#a54141;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:
+      linear-gradient(rgba(36,89,166,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(36,89,166,.035) 1px, transparent 1px),
+      var(--bg);
+    background-size:24px 24px;
+    color:var(--ink);
+    font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Segoe UI",sans-serif;
+    line-height:1.55;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:46px 28px 72px}
+  .eyebrow{font-size:12px;font-weight:800;letter-spacing:.12em;color:var(--accent);text-transform:uppercase}
+  h1{font-size:34px;line-height:1.2;margin:10px 0 10px;letter-spacing:-.03em}
+  .lead{color:var(--muted);font-size:15px;max-width:850px;margin:0 0 28px}
+  .summary{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:24px 0 32px
+  }
+  .summary .box{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;
+    box-shadow:0 4px 14px rgba(15,23,42,.04)
+  }
+  .summary .n{font-size:26px;font-weight:900;color:var(--accent)}
+  .summary .t{font-size:13px;color:var(--muted);margin-top:2px}
+  .section{margin-top:38px}
+  .section-title{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .section-title h2{font-size:21px;margin:0;letter-spacing:-.02em}
+  .section-title:after{content:"";height:1px;background:var(--line);flex:1}
+  .modules{
+    display:grid;grid-template-columns:repeat(5,1fr);gap:10px
+  }
+  .module{
+    min-height:128px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px
+  }
+  .module .id{font:700 11px/1.2 Consolas,monospace;color:var(--accent);margin-bottom:7px}
+  .module h3{font-size:14px;margin:0 0 7px}
+  .module p{font-size:12px;color:var(--muted);margin:0}
+  .flow{
+    background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px 20px;
+    overflow:auto;box-shadow:0 4px 14px rgba(15,23,42,.04)
+  }
+  .flow-row{display:flex;align-items:center;justify-content:center;gap:8px;min-width:1020px}
+  .node{
+    min-width:140px;text-align:center;border:1px solid var(--line);background:#fff;border-radius:10px;padding:13px 12px;
+    font-size:13px;font-weight:800
+  }
+  .node small{display:block;font-size:10px;color:var(--muted);font-weight:600;margin-top:4px}
+  .arrow{font-size:18px;color:#8292a3}
+  .decision{background:var(--soft3);border-color:#e7c89f}
+  .agent{background:var(--soft1);border-color:#b9ceef}
+  .human{background:var(--soft2);border-color:#b9d9cf}
+  .scenarios{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .scenario{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;
+    box-shadow:0 4px 14px rgba(15,23,42,.04)
+  }
+  .scenario .badge{
+    display:inline-block;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:800;margin-bottom:10px
+  }
+  .s1 .badge{background:var(--soft1);color:var(--accent)}
+  .s2 .badge{background:var(--soft2);color:var(--accent2)}
+  .s3 .badge{background:var(--soft3);color:var(--accent3)}
+  .scenario h3{font-size:17px;margin:0 0 7px}
+  .scenario p{font-size:13px;color:var(--muted);margin:0 0 12px}
+  .mini-flow{font-family:Consolas,monospace;background:#f8fafc;border:1px solid #e5eaf0;border-radius:10px;padding:11px 12px;font-size:11px;line-height:1.65}
+  .kv{margin-top:12px}
+  .kv div{font-size:12px;margin:6px 0}
+  .kv b{color:#334155}
+  .actions{
+    display:flex;flex-wrap:wrap;gap:7px;margin-top:8px
+  }
+  .action{
+    font:700 11px/1 Consolas,monospace;border:1px solid var(--line);background:#fff;padding:7px 9px;border-radius:8px
+  }
+  .matrix{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .matrix th,.matrix td{border-bottom:1px solid var(--line);padding:12px 14px;text-align:left;font-size:13px}
+  .matrix th{background:#f8fafc;font-size:12px}
+  .matrix tr:last-child td{border-bottom:0}
+  .note{
+    margin-top:28px;background:#182434;color:#f8fafc;border-radius:14px;padding:18px 20px;font-size:13px
+  }
+  .note b{color:#a9c5ff}
+  @media(max-width:900px){
+    .summary,.scenarios{grid-template-columns:1fr}
+    .modules{grid-template-columns:1fr 1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">AI MASTER PROJECT · TASK 3</div>
+  <h1>메일 기반 업무요청 관리 Agent — 시나리오 수립</h1>
+  <p class="lead">
+    메일을 단순 분류·요약하는 것이 아니라, 현재 Mail Context와 기존 Task State를 함께 보고
+    다음 업무 Action을 선택한 뒤 변경된 상태를 다음 Mail 판단에 다시 활용하는 Agentic AI 서비스의 핵심 시나리오를 정리한다.
+  </p>
+
+  <div class="summary">
+    <div class="box"><div class="n">3</div><div class="t">핵심 사용자 시나리오</div></div>
+    <div class="box"><div class="n">5</div><div class="t">재사용 공통 모듈</div></div>
+    <div class="box"><div class="n">7</div><div class="t">Agent Action</div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title"><h2>공통 처리 모듈</h2></div>
+    <div class="modules">
+      <div class="module"><div class="id">M-01</div><h3>Mail Input & Analyzer</h3><p>메일 정규화, 업무 여부·요청사항·요청자·기한 추출</p></div>
+      <div class="module"><div class="id">M-02</div><h3>Task Context Matcher</h3><p>기존 Task와 선행·후행 Mail을 조회해 연관관계 판단</p></div>
+      <div class="module"><div class="id">M-03</div><h3>Agent Action Decision</h3><p>현재 Context와 State를 바탕으로 다음 Action 결정</p></div>
+      <div class="module"><div class="id">M-04</div><h3>Task State & History</h3><p>Task 생성·변경·상태전이·History 저장</p></div>
+      <div class="module"><div class="id">M-05</div><h3>User Review & Dashboard</h3><p>Agent 판단 표시, 승인·수정·거절 및 업무현황 관리</p></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title"><h2>공통 Agent 처리 흐름</h2></div>
+    <div class="flow">
+      <div class="flow-row">
+        <div class="node">Mail Input<small>JSON / Test Gmail</small></div>
+        <div class="arrow">→</div>
+        <div class="node agent">M-01 Analyzer<small>LLM 정보 추출</small></div>
+        <div class="arrow">→</div>
+        <div class="node">M-02 Matcher<small>Task 후보 검색</small></div>
+        <div class="arrow">→</div>
+        <div class="node agent">M-03 Decision<small>Action 선택</small></div>
+        <div class="arrow">→</div>
+        <div class="node decision">Validation<small>Schema / Rule</small></div>
+        <div class="arrow">→</div>
+        <div class="node human">User Review<small>필요 시 승인·수정</small></div>
+        <div class="arrow">→</div>
+        <div class="node">M-04 State/History<small>DB 반영</small></div>
+        <div class="arrow">→</div>
+        <div class="node">M-05 Dashboard<small>결과 확인</small></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title"><h2>핵심 사용자 시나리오</h2></div>
+    <div class="scenarios">
+      <div class="scenario s1">
+        <span class="badge">SC-001</span>
+        <h3>신규 업무 요청 → Task 생성</h3>
+        <p>새로운 업무 요청 Mail을 분석하고 기존 관련 Task가 없으면 신규 Task를 생성한다.</p>
+        <div class="mini-flow">Mail → Analyze → Match 없음 → CREATE_TASK → DB → Dashboard</div>
+        <div class="kv">
+          <div><b>Input</b> 신규 업무 요청 Mail</div>
+          <div><b>Output</b> TODO 상태의 신규 Task</div>
+          <div><b>핵심 Value</b> 업무 요청 누락 및 수동 등록 감소</div>
+        </div>
+      </div>
+
+      <div class="scenario s2">
+        <span class="badge">SC-002</span>
+        <h3>후속 Mail → 기존 Task 상태 갱신</h3>
+        <p>기존 Task와 후속 Mail의 관계를 판단하여 기한·요청사항·회신대기·완료 상태를 갱신한다.</p>
+        <div class="mini-flow">Follow-up Mail → Task Match → UPDATE / WAITING / COMPLETE → History</div>
+        <div class="kv">
+          <div><b>Input</b> 기한 변경·자료 요청·자료 회신·완료 Mail</div>
+          <div><b>Output</b> 기존 Task 변경 및 History</div>
+          <div><b>핵심 Value</b> 업무 Lifecycle의 지속적 추적</div>
+        </div>
+      </div>
+
+      <div class="scenario s3">
+        <span class="badge">SC-003</span>
+        <h3>판단 불명확 → 사용자 확인</h3>
+        <p>연관 Task 후보가 여러 개이거나 의도가 모호하면 Agent가 임의로 변경하지 않고 사용자에게 확인한다.</p>
+        <div class="mini-flow">Ambiguous Mail → Candidate Tasks → ASK_USER → User Decision → DB</div>
+        <div class="kv">
+          <div><b>Input</b> 모호한 요청·기한·완료 표현</div>
+          <div><b>Output</b> 후보 Task와 선택 가능한 Action</div>
+          <div><b>핵심 Value</b> Human-in-the-loop로 오판 방지</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title"><h2>Agent Action</h2></div>
+    <div class="actions">
+      <span class="action">CREATE_TASK</span>
+      <span class="action">UPDATE_TASK</span>
+      <span class="action">LINK_TO_TASK</span>
+      <span class="action">SET_WAITING</span>
+      <span class="action">MARK_COMPLETED</span>
+      <span class="action">ASK_USER</span>
+      <span class="action">IGNORE</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title"><h2>시나리오 우선순위 매트릭스</h2></div>
+    <table class="matrix">
+      <thead>
+        <tr><th>시나리오</th><th>비즈니스 가치</th><th>구현 난이도</th><th>PoC 포함</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>SC-001 신규 업무 요청 메일의 Task 자동 생성</td><td>높음</td><td>중간</td><td>예</td></tr>
+        <tr><td>SC-002 후속 메일 기반 기존 Task 연결 및 상태 갱신</td><td>높음</td><td>높음</td><td>예</td></tr>
+        <tr><td>SC-003 판단이 불명확한 메일의 사용자 확인</td><td>높음</td><td>중간</td><td>예</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <b>Agentic AI 핵심:</b>
+    현재 Mail만 보는 것이 아니라 기존 Mail Context와 Task State를 함께 분석해 다음 Action을 결정하고,
+    변경된 State를 다음 Mail 판단에 다시 활용한다. SC-001~003은 별도 기능을 중복 구현하지 않고 M-01~M-05를 재사용한다.
+  </div>
+</div>
+</body>
+</html>
