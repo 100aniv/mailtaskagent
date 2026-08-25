@@ -102,6 +102,8 @@ class TaskCandidate(BaseModel):
     reply_required: bool = False
     status: TaskStatus
     waiting_since: datetime | None = None
+    match_score: float = Field(default=0, ge=0, le=1)
+    match_reason: str = ""
 
 
 class ActionProposal(BaseModel):

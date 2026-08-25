@@ -47,6 +47,8 @@ def test_create_then_update_vertical_slice(settings: Settings) -> None:
     assert updated.after is not None
     assert updated.before["due_date"] == "2026-08-21"
     assert updated.after["due_date"] == "2026-08-24"
+    assert updated.candidate_tasks[0].match_score == 1.0
+    assert updated.candidate_tasks[0].match_reason == "동일 conversation_id"
     assert len(storage.list_histories()) == 2
     processing_results = storage.list_processing_results()
     assert [item["mail_id"] for item in processing_results] == ["MAIL-002", "MAIL-001"]
@@ -444,6 +446,8 @@ def test_ask_user_review_flow(
 
     assert ambiguous.proposal.action == AgentAction.ASK_USER
     assert len(ambiguous.candidate_tasks) == 2
+    assert all(candidate.match_score > 0 for candidate in ambiguous.candidate_tasks)
+    assert all(candidate.match_reason for candidate in ambiguous.candidate_tasks)
     assert len(storage.list_pending_reviews()) == 1
 
     target_task_id = ambiguous.candidate_tasks[0].task_id if decision == ReviewDecision.LINK_EXISTING else None

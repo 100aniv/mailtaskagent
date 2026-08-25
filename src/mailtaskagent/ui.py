@@ -97,6 +97,25 @@ def _friendly_mail(mail) -> str:
     return f"{mail.mail_id} · {mail.subject}"
 
 
+def _candidate_frame(candidates: list[dict]) -> pd.DataFrame:
+    frame = pd.DataFrame(candidates)
+    if "match_score" not in frame:
+        frame["match_score"] = 0.0
+    if "match_reason" not in frame:
+        frame["match_reason"] = "기존 처리 결과"
+    frame["매칭 점수"] = frame["match_score"].apply(lambda value: f"{value:.0%}")
+    frame = frame.rename(
+        columns={
+            "task_id": "Task ID",
+            "title": "업무 제목",
+            "status": "상태",
+            "due_date": "기한",
+            "match_reason": "매칭 근거",
+        }
+    )
+    return frame[["Task ID", "업무 제목", "상태", "기한", "매칭 점수", "매칭 근거"]]
+
+
 def _parse_json(value):
     if not value:
         return None
@@ -153,7 +172,7 @@ def _render_agent_result(result: dict) -> None:
     if candidates:
         st.markdown("**관련 Task 후보**")
         st.dataframe(
-            pd.DataFrame(candidates)[["task_id", "title", "status", "due_date"]],
+            _candidate_frame(candidates),
             width="stretch",
             hide_index=True,
         )
@@ -399,7 +418,7 @@ def _render_review_queue(storage, settings, mail_by_id) -> None:
     )
     if candidates:
         st.dataframe(
-            pd.DataFrame(candidates)[["task_id", "title", "status", "due_date"]],
+            _candidate_frame(candidates),
             width="stretch",
             hide_index=True,
         )

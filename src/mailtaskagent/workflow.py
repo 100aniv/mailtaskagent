@@ -207,7 +207,15 @@ class MailTaskWorkflow:
                 "기존 활성 Task 후보 검색 시작",
             )
             query_text = " ".join(
-                filter(None, [mail.subject, analysis.task_title, analysis.request_summary])
+                filter(
+                    None,
+                    [
+                        mail.subject,
+                        analysis.task_title,
+                        analysis.request_summary,
+                        analysis.requester,
+                    ],
+                )
             )
             candidates = self.storage.search_candidate_tasks(
                 mail.conversation_id,
@@ -223,7 +231,13 @@ class MailTaskWorkflow:
                 details={
                     "candidate_count": len(candidates),
                     "candidates": [
-                        {"task_id": item.task_id, "title": item.title, "status": item.status.value}
+                        {
+                            "task_id": item.task_id,
+                            "title": item.title,
+                            "status": item.status.value,
+                            "match_score": item.match_score,
+                            "match_reason": item.match_reason,
+                        }
                         for item in candidates
                     ],
                 },

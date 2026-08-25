@@ -10,8 +10,8 @@
 - Azure OpenAI 호환 회사 LLM API 또는 명시적인 Mock 분석
 - 고정 7 Action Schema와 `CREATE_TASK`, `UPDATE_TASK`, `LINK_TO_TASK`,
   `SET_WAITING`, `MARK_COMPLETED`, `ASK_USER`, `IGNORE` 실행 경로
-- `TODO`, `IN_PROGRESS`, `WAITING_REPLY`, `COMPLETED` 상태 전이
-- `conversation_id` 우선 기존 Task 매칭
+- `TODO`, `IN_PROGRESS`, `WAITING_REPLY`, `COMPLETED`, `CANCELLED` 상태 전이
+- `conversation_id` 우선 기존 Task 매칭과 후보별 점수·근거 표시
 - Pydantic 구조화 결과 검증
 - 잘못된 LLM 구조화 출력 1회 재시도
 - SQLite Task/History/중복 처리

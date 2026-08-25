@@ -265,7 +265,15 @@ class SQLiteStorage:
                 (conversation_id,),
             ).fetchall()
             if exact_rows:
-                return [self._candidate_from_row(row) for row in exact_rows[:limit]]
+                return [
+                    self._candidate_from_row(row).model_copy(
+                        update={
+                            "match_score": 1.0,
+                            "match_reason": "동일 conversation_id",
+                        }
+                    )
+                    for row in exact_rows[:limit]
+                ]
             if not include_related:
                 return []
             rows = connection.execute(
@@ -285,10 +293,18 @@ class SQLiteStorage:
             candidate_tokens = _match_tokens(
                 " ".join(filter(None, [candidate.title, candidate.description, candidate.requester]))
             )
-            score = len(query_tokens & candidate_tokens)
+            matched_tokens = sorted(query_tokens & candidate_tokens)
+            score = len(matched_tokens)
             if score:
+                normalized_score = min(1.0, score / max(1, len(query_tokens)))
+                candidate = candidate.model_copy(
+                    update={
+                        "match_score": normalized_score,
+                        "match_reason": f"제목·요청자·내용 일치: {', '.join(matched_tokens)}",
+                    }
+                )
                 ranked.append((score, candidate))
-        ranked.sort(key=lambda item: (-item[0], item[1].task_id))
+        ranked.sort(key=lambda item: (-item[0], -item[1].match_score, item[1].task_id))
         return [candidate for _, candidate in ranked[:limit]]
 
     @staticmethod
