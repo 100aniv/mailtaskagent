@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MailTaskAgent — Product UI Concept</title>
+  <style>
+    :root{--ink:#18243b;--muted:#6d7890;--line:#e6eaf1;--panel:#f6f8fb;--blue:#4468e8;--blue2:#edf1ff;--green:#20866b;--amber:#a86d14;--red:#c04a59;--shadow:0 18px 50px rgba(32,46,78,.09)}
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,"Pretendard","Noto Sans KR",system-ui,sans-serif;background:#eef2f7;color:var(--ink)}
+    button{font:inherit}.app{width:1440px;min-height:900px;margin:0 auto;background:#fff;display:grid;grid-template-columns:230px 1fr;box-shadow:var(--shadow)}
+    aside{background:#172038;color:#dce3f5;padding:28px 20px;display:flex;flex-direction:column;gap:28px}
+    .brand{display:flex;align-items:center;gap:12px;padding:0 8px}.logo{width:36px;height:36px;border-radius:11px;background:linear-gradient(145deg,#6c86ff,#3c5ee5);display:grid;place-items:center;font-weight:800;color:#fff}.brand b{font-size:17px}.brand small{display:block;color:#8f9bb6;font-size:11px;margin-top:2px}
+    nav{display:grid;gap:6px}.nav{border:0;background:transparent;color:#9ca8c3;text-align:left;padding:12px 14px;border-radius:10px;cursor:pointer;display:flex;justify-content:space-between}.nav:hover,.nav.active{background:#26324f;color:#fff}.count{background:#3e5fdc;color:#fff;border-radius:999px;padding:1px 7px;font-size:11px}
+    .sync{margin-top:auto;border:1px solid #33415e;border-radius:13px;padding:14px;background:#1d2945}.sync strong{font-size:12px}.sync p{margin:7px 0 0;color:#94a2bf;font-size:11px;line-height:1.5}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#4bd4a8;margin-right:7px;box-shadow:0 0 0 4px rgba(75,212,168,.13)}
+    main{background:#fbfcfe}.topbar{height:76px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 34px}.search{width:360px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 15px;color:#96a0b3}.profile{display:flex;align-items:center;gap:12px}.avatar{width:34px;height:34px;border-radius:50%;background:#dfe5ff;color:#3c5ee5;display:grid;place-items:center;font-weight:700}
+    .content{padding:28px 34px 36px}.view{display:none}.view.active{display:block}.heading{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px}.heading h1{font-size:28px;margin:0 0 6px}.heading p{margin:0;color:var(--muted);font-size:14px}.primary{border:0;border-radius:11px;background:var(--blue);color:white;padding:11px 16px;font-weight:700}
+    .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.metric{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px}.metric small{color:var(--muted)}.metric strong{display:block;font-size:25px;margin-top:8px}.metric em{font-style:normal;font-size:12px;color:var(--green)}
+    .layout{display:grid;grid-template-columns:1.65fr .85fr;gap:18px}.card{background:#fff;border:1px solid var(--line);border-radius:15px}.card-head{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.card-head h2{font-size:16px;margin:0}.link{color:var(--blue);font-size:12px}
+    table{width:100%;border-collapse:collapse}th{text-align:left;color:#9099aa;font-size:11px;font-weight:600;padding:12px 18px;background:#fafbfc}td{font-size:13px;padding:16px 18px;border-top:1px solid #f0f2f6}.task-title{font-weight:700}.sub{font-size:11px;color:var(--muted);margin-top:5px}.pill{display:inline-block;padding:5px 9px;border-radius:999px;font-size:10px;font-weight:700}.todo{background:#edf1ff;color:#4765cf}.waiting{background:#fff4df;color:#9b691a}.progress{background:#e7f7f2;color:#247861}.danger{background:#ffecef;color:#aa4350}
+    .priority{padding:10px 18px}.priority-item{padding:15px 0;border-bottom:1px solid #eff1f5}.priority-item:last-child{border:0}.priority-item b{font-size:13px}.priority-item p{font-size:11px;color:var(--muted);line-height:1.5;margin:6px 0}.bar{height:5px;background:#e9edf4;border-radius:5px;overflow:hidden}.bar i{display:block;height:100%;background:var(--blue);border-radius:5px}
+    .review-box{margin-top:18px;background:#202d4a;color:#fff;border-radius:15px;padding:20px;display:flex;justify-content:space-between;align-items:center}.review-box small{color:#aeb9d2}.review-box h3{margin:6px 0;font-size:16px}.review-box p{margin:0;color:#b7c0d6;font-size:12px}.review-actions{display:flex;gap:8px}.review-actions button{border:1px solid #455573;background:transparent;color:#fff;border-radius:9px;padding:9px 12px}.review-actions .accept{background:#fff;color:#23314f;border-color:#fff}
+    .mail-list{display:grid;gap:10px}.mail{display:grid;grid-template-columns:24px 1fr 115px 110px;gap:14px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}.mail.unread{border-left:4px solid var(--blue)}.mail h3{font-size:13px;margin:0}.mail p{font-size:11px;color:var(--muted);margin:5px 0 0}.time{font-size:11px;color:var(--muted)}
+    .review-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.review-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px}.review-card h3{font-size:15px;margin:10px 0 6px}.review-card p{font-size:12px;color:var(--muted);line-height:1.6}.reason{background:var(--panel);border-radius:10px;padding:12px;font-size:11px;margin:14px 0}.footer-note{margin-top:20px;color:#98a1b3;font-size:11px;text-align:right}
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand"><div class="logo">M</div><div><b>MailTaskAgent</b><small>Personal work copilot</small></div></div>
+    <nav>
+      <button class="nav active" data-view="today"><span>오늘의 업무</span></button>
+      <button class="nav" data-view="mail"><span>메일</span><span class="count">3</span></button>
+      <button class="nav" data-view="tasks"><span>전체 업무</span></button>
+      <button class="nav" data-view="review"><span>확인 필요</span><span class="count">2</span></button>
+      <button class="nav" data-view="activity"><span>활동 기록</span></button>
+    </nav>
+    <div class="sync"><strong><span class="dot"></span>메일 동기화 정상</strong><p>마지막 동기화 2분 전<br>새 메일은 자동 분석됩니다.</p></div>
+  </aside>
+  <main>
+    <div class="topbar"><div class="search">⌕&nbsp;&nbsp;메일, 업무, 요청자 검색</div><div class="profile"><span>알림 2</span><div class="avatar">백</div><div><b style="font-size:12px">백승훈</b><div class="sub">개인 업무공간</div></div></div></div>
+    <div class="content">
+      <section id="today" class="view active">
+        <div class="heading"><div><h1>오늘의 업무</h1><p>메일에서 정리된 업무와 확인이 필요한 변경을 모았습니다.</p></div><button class="primary">+ 업무 직접 추가</button></div>
+        <div class="metrics">
+          <div class="metric"><small>오늘 처리할 업무</small><strong>5</strong><em>어제보다 2건 적음</em></div>
+          <div class="metric"><small>기한 임박</small><strong>2</strong><em style="color:var(--amber)">3일 이내</em></div>
+          <div class="metric"><small>회신 대기</small><strong>3</strong><em>평균 1.8일</em></div>
+          <div class="metric"><small>Agent 확인 필요</small><strong>2</strong><em style="color:var(--red)">자동 변경 보류</em></div>
+        </div>
+        <div class="layout">
+          <div class="card"><div class="card-head"><h2>우선 처리 업무</h2><span class="link">전체 업무 보기 →</span></div><table>
+            <thead><tr><th>업무</th><th>상태</th><th>기한</th><th>요청자</th></tr></thead>
+            <tbody>
+              <tr><td><div class="task-title">DDC 서버 패치 적용 여부 확인</div><div class="sub">MAIL-001 · 후속 메일 2건 연결</div></td><td><span class="pill progress">진행 중</span></td><td>8월 24일</td><td>요청자 A</td></tr>
+              <tr><td><div class="task-title">접근통제 서버 보안 설정 점검</div><div class="sub">MAIL-008 · 완료 전 확인 필요</div></td><td><span class="pill todo">할 일</span></td><td><b style="color:var(--red)">오늘</b></td><td>보안 담당</td></tr>
+              <tr><td><div class="task-title">개발계 미사용 계정 현황 공유</div><div class="sub">MAIL-011 · 기한 미지정</div></td><td><span class="pill todo">할 일</span></td><td>없음</td><td>플랫폼 담당</td></tr>
+              <tr><td><div class="task-title">대상 서버 목록 회신 확인</div><div class="sub">상대방 답변을 기다리는 중</div></td><td><span class="pill waiting">회신 대기</span></td><td>8월 28일</td><td>요청자 A</td></tr>
+            </tbody>
+          </table></div>
+          <div class="card"><div class="card-head"><h2>오늘의 주의 항목</h2><span class="link">자동 분석</span></div><div class="priority">
+            <div class="priority-item"><b>접근통제 점검 · 오늘 기한</b><p>기한이 임박했지만 완료 근거가 없습니다.</p><div class="bar"><i style="width:91%"></i></div></div>
+            <div class="priority-item"><b>서버 목록 회신 · 4일 대기</b><p>대기 기준 3일을 넘어 확인이 필요합니다.</p><div class="bar"><i style="width:68%;background:#e3a23b"></i></div></div>
+            <div class="priority-item"><b>DDC 추가 요청 · 연결 보류</b><p>관련 업무 후보가 두 개라 사용자가 선택해야 합니다.</p></div>
+          </div></div>
+        </div>
+        <div class="review-box"><div><small>AGENT 제안 · MAIL-006</small><h3>“DDC 관련 추가 확인” 메일의 연결 업무를 확인해 주세요.</h3><p>후보가 2개이므로 Task 변경을 멈췄습니다.</p></div><div class="review-actions"><button>나중에</button><button class="accept" data-go="review">후보 확인</button></div></div>
+      </section>
+      <section id="mail" class="view"><div class="heading"><div><h1>메일</h1><p>동기화된 메일과 Agent의 분류·처리 결과입니다.</p></div><button class="primary">지금 동기화</button></div><div class="mail-list">
+        <div class="mail unread"><span>●</span><div><h3>DDC 관련 추가 확인</h3><p>lead@example.test · 관련 Task 후보 2개</p></div><span class="pill danger">확인 필요</span><span class="time">10분 전</span></div>
+        <div class="mail"><span>○</span><div><h3>RE: DDC 서버 확인 요청</h3><p>requester.a@example.test · 기존 업무에 연결됨</p></div><span class="pill progress">업데이트</span><span class="time">오늘 09:30</span></div>
+        <div class="mail"><span>○</span><div><h3>정기 점검 안내</h3><p>office@example.test · 별도 조치 불필요</p></div><span class="pill todo">업무 제외</span><span class="time">어제</span></div>
+      </div></section>
+      <section id="tasks" class="view"><div class="heading"><div><h1>전체 업무</h1><p>Agent가 만든 업무와 사용자가 직접 추가한 업무를 함께 관리합니다.</p></div><button class="primary">+ 새 업무</button></div><div class="card"><div class="card-head"><h2>업무 7건</h2><span class="link">상태 · 요청자 · 기한 필터</span></div><table><thead><tr><th>업무</th><th>상태</th><th>기한</th><th>최근 변경</th></tr></thead><tbody><tr><td class="task-title">DDC 서버 패치 적용 여부 확인</td><td><span class="pill progress">진행 중</span></td><td>8월 24일</td><td>후속 메일 기한 연장</td></tr><tr><td class="task-title">접근통제 서버 보안 설정 점검</td><td><span class="pill todo">할 일</span></td><td>8월 26일</td><td>완료 승인 대기</td></tr><tr><td class="task-title">대상 서버 목록 회신 확인</td><td><span class="pill waiting">회신 대기</span></td><td>8월 28일</td><td>4일 전 자료 요청</td></tr></tbody></table></div></section>
+      <section id="review" class="view"><div class="heading"><div><h1>확인 필요</h1><p>중요하거나 애매해 Agent가 자동 반영하지 않은 결정입니다.</p></div></div><div class="review-grid">
+        <div class="review-card"><span class="pill danger">후보 2개</span><h3>DDC 관련 추가 확인</h3><p>기존 DDC 업무 중 어느 업무와 연결할지 명확하지 않습니다.</p><div class="reason"><b>Agent 근거</b><br>제목·내용에 “DDC, 확인”이 일치하지만 동일 Thread가 아닙니다.</div><button class="primary">후보 Task 비교</button></div>
+        <div class="review-card"><span class="pill waiting">완료 제안</span><h3>서버 패치 확인 완료</h3><p>메일에는 완료 근거가 있지만 Task 종료는 사용자의 승인이 필요합니다.</p><div class="reason"><b>변경 제안</b><br>TODO → COMPLETED · 원본 MAIL-009</div><button class="primary">승인 또는 거절</button></div>
+      </div></section>
+      <section id="activity" class="view"><div class="heading"><div><h1>활동 기록</h1><p>Agent 판단, 사용자 결정과 Task 변경 전·후 값을 추적합니다.</p></div></div><div class="card"><table><thead><tr><th>시각</th><th>Source</th><th>Action</th><th>결과</th></tr></thead><tbody><tr><td>10:32</td><td>MAIL-006</td><td>ASK_USER</td><td>후보 2개 · 변경 보류</td></tr><tr><td>09:31</td><td>MAIL-002</td><td>UPDATE_TASK</td><td>기한 8/21 → 8/24</td></tr><tr><td>09:04</td><td>MAIL-001</td><td>CREATE_TASK</td><td>TASK-001 생성</td></tr></tbody></table></div></section>
+      <div class="footer-note">MailTaskAgent · 운영용 Product UI Concept · 합성 데이터</div>
+    </div>
+  </main>
+</div>
+<script>
+  const buttons=[...document.querySelectorAll('.nav')],views=[...document.querySelectorAll('.view')];
+  function show(id){buttons.forEach(b=>b.classList.toggle('active',b.dataset.view===id));views.forEach(v=>v.classList.toggle('active',v.id===id));}
+  buttons.forEach(b=>b.addEventListener('click',()=>show(b.dataset.view)));
+  document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.go)));
+</script>
+</body>
+</html>

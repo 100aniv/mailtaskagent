@@ -73,3 +73,6 @@ n8n 자동 수집은 Core E2E 완성 후 Post-MVP에서 공통 Mail Schema Adapt
 iCloud Mail은 현재 확정 범위에 포함하지 않는다.
 
 내일 시연 설명과 순서는 `Docs/IMPLEMENTATION/08_멘토_시연_브리핑.md`를 참고한다.
+
+멘토 리뷰용 발표자료는 `Docs/PRESENTATION/MailTaskAgent_멘토리뷰_2026-08-26.pptx`,
+운영 UI 콘셉트는 `prototype/final_ui_mockup.html`에서 확인한다.
