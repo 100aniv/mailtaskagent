@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime
+from time import perf_counter
 
 import pandas as pd
 import streamlit as st
@@ -9,6 +10,11 @@ import streamlit as st
 from mailtaskagent.config import PROJECT_ROOT, load_settings
 from mailtaskagent.evaluation import load_saved_evaluation_report, run_scenario_evaluation
 from mailtaskagent.llm_client import MockMailAnalyzer, build_analyzer
+from mailtaskagent.manual_benchmark import (
+    calculate_manual_benchmark_result,
+    load_manual_benchmark_cases,
+    save_manual_benchmark_evidence,
+)
 from mailtaskagent.models import AgentAction, ReviewDecision
 from mailtaskagent.storage import SQLiteStorage
 from mailtaskagent.workflow import MailTaskWorkflow, load_mails
@@ -856,6 +862,179 @@ def _render_quality_evaluation(settings) -> None:
         f"총 {report['duration_ms'] / 1000:.2f}초. Mock은 Application Logic 회귀 증적이고, "
         "Live 결과만 회사 LLM 품질 증적으로 사용합니다."
     )
+    _render_manual_time_benchmark(st.session_state.get("live_evaluation"))
+
+
+def _clear_manual_benchmark_inputs() -> None:
+    for key in list(st.session_state):
+        if key.startswith("manual_benchmark_action_"):
+            st.session_state.pop(key, None)
+    st.session_state.pop("manual_benchmark_work_confirmed", None)
+
+
+def _render_manual_time_benchmark(live_report: dict | None) -> None:
+    st.divider()
+    st.subheader("업무 정리시간 비교 · 실사용자 측정")
+    st.write(
+        "SC-001 신규 업무, SC-002 후속 변경, SC-003 사용자 확인의 대표 Case를 사람이 "
+        "직접 읽고 정리한 시간과 같은 Live Case의 Agent 처리시간을 비교합니다."
+    )
+    st.info(
+        "사람의 실제 수행시간이 필요한 KPI입니다. 측정 완료 전에는 시간 단축률을 달성값으로 "
+        "기록하지 않습니다. 정답 Action은 측정 종료 후에만 표시됩니다."
+    )
+
+    if not live_report or live_report.get("mode") != "LIVE":
+        st.warning("저장된 회사 LLM Live 평가 증적이 있어야 같은 Case의 Agent 시간과 비교할 수 있습니다.")
+        return
+
+    benchmark_cases = load_manual_benchmark_cases()
+    total_steps = sum(len(case["steps"]) for case in benchmark_cases)
+    st.caption(
+        f"측정 범위: BC-01·BC-04·BC-11, 총 {total_steps}개 Mail 처리 단계 · "
+        f"Agent 기준 증적: {live_report.get('generated_at', '-')}"
+    )
+
+    started = st.session_state.get("manual_benchmark_started_perf")
+    if started is None:
+        if st.button("수동 업무 정리 측정 시작", key="manual_benchmark_start"):
+            _clear_manual_benchmark_inputs()
+            st.session_state.pop("manual_benchmark_result", None)
+            st.session_state.pop("manual_benchmark_evidence_path", None)
+            st.session_state["manual_benchmark_started_perf"] = perf_counter()
+            st.session_state["manual_benchmark_started_at"] = (
+                datetime.now().astimezone().isoformat(timespec="seconds")
+            )
+            st.rerun()
+    else:
+        st.warning(
+            "타이머가 실행 중입니다. 각 Case를 순서대로 읽고 업무 여부·요청사항·기한·연결 "
+            "대상을 별도 메모한 뒤, 화면에는 최종 Action을 선택하세요."
+        )
+        action_options = ["선택"] + [action.value for action in AgentAction]
+        for case in benchmark_cases:
+            with st.expander(f"{case['case_id']} · {case['title']}", expanded=True):
+                st.caption("각 Case는 독립된 업무 상황입니다. 위 단계에서 만든 Task 상태를 다음 단계에 이어서 적용합니다.")
+                for step in case["steps"]:
+                    st.markdown(
+                        f"**{step['step_index'] + 1}단계 · {step['mail_id']} · "
+                        f"{step['direction']}**"
+                    )
+                    st.write(f"제목: {step['subject']}")
+                    st.write(step["body"])
+                    action_key = (
+                        f"manual_benchmark_action_{case['case_id']}_{step['step_index']}"
+                    )
+                    st.selectbox(
+                        "내가 판단한 다음 Action",
+                        action_options,
+                        key=action_key,
+                        format_func=lambda value: (
+                            value
+                            if value == "선택"
+                            else f"{ACTION_LABELS[value]} ({value})"
+                        ),
+                    )
+
+        st.checkbox(
+            "모든 단계에서 업무 여부·요청사항·기한·연결 대상을 메모하고 Action 선택을 완료했습니다.",
+            key="manual_benchmark_work_confirmed",
+        )
+        stop_col, cancel_col = st.columns(2)
+        if stop_col.button(
+            "측정 종료 및 결과 계산",
+            type="primary",
+            key="manual_benchmark_stop",
+            use_container_width=True,
+        ):
+            answers = {}
+            incomplete = []
+            for case in benchmark_cases:
+                for step in case["steps"]:
+                    widget_key = (
+                        f"manual_benchmark_action_{case['case_id']}_{step['step_index']}"
+                    )
+                    selected_action = st.session_state.get(widget_key, "선택")
+                    answer_key = f"{case['case_id']}:{step['step_index']}"
+                    if selected_action == "선택":
+                        incomplete.append(answer_key)
+                    else:
+                        answers[answer_key] = selected_action
+            if incomplete:
+                st.warning("모든 Mail 단계의 Action을 선택해야 측정을 종료할 수 있습니다.")
+            elif not st.session_state.get("manual_benchmark_work_confirmed"):
+                st.warning("수동 정리 항목을 모두 메모했는지 확인해 주세요.")
+            else:
+                completed_at = datetime.now().astimezone().isoformat(timespec="seconds")
+                duration_ms = max(
+                    1,
+                    round(
+                        (perf_counter() - st.session_state["manual_benchmark_started_perf"])
+                        * 1000
+                    ),
+                )
+                result = calculate_manual_benchmark_result(
+                    answers,
+                    manual_duration_ms=duration_ms,
+                    agent_report=live_report,
+                    started_at=st.session_state["manual_benchmark_started_at"],
+                    completed_at=completed_at,
+                )
+                evidence_path = save_manual_benchmark_evidence(result)
+                st.session_state["manual_benchmark_result"] = result
+                st.session_state["manual_benchmark_evidence_path"] = str(evidence_path)
+                st.session_state.pop("manual_benchmark_started_perf", None)
+                st.session_state.pop("manual_benchmark_started_at", None)
+                _clear_manual_benchmark_inputs()
+                st.rerun()
+        if cancel_col.button(
+            "측정 취소",
+            key="manual_benchmark_cancel",
+            use_container_width=True,
+        ):
+            st.session_state.pop("manual_benchmark_started_perf", None)
+            st.session_state.pop("manual_benchmark_started_at", None)
+            _clear_manual_benchmark_inputs()
+            st.rerun()
+
+    result = st.session_state.get("manual_benchmark_result")
+    if result:
+        time_rate = result["time_reduction_rate"]
+        result_1, result_2, result_3, result_4 = st.columns(4)
+        result_1.metric("사람 수동 정리", f"{result['manual_duration_ms'] / 1000:.2f}초")
+        result_2.metric("Agent 동일 Case", f"{result['agent_duration_ms'] / 1000:.2f}초")
+        result_3.metric(
+            "시간 단축률",
+            "산정 제외" if time_rate is None else f"{time_rate:.1%}",
+        )
+        result_4.metric(
+            "수동 Action 정확도",
+            f"{result['manual_action_correct']}/{result['manual_action_total']}",
+        )
+        if not result["kpi_eligible"]:
+            st.warning(
+                "수동 Action이 정답과 달라 동등 정확도 조건을 충족하지 못했습니다. 이 실행의 "
+                "시간 단축률은 공식 KPI에서 제외하고 다시 측정하세요."
+            )
+        elif result["target_met"]:
+            st.success("동일 Case·동등 정확도 조건에서 업무 정리시간 30% 이상 단축 목표를 달성했습니다.")
+        else:
+            st.warning("동일 Case·동등 정확도 조건에서 시간 단축률 30% 목표에 미달했습니다.")
+
+        result_frame = pd.DataFrame(result["rows"]).rename(
+            columns={
+                "case_id": "Case",
+                "step_index": "단계 Index",
+                "mail_id": "Mail ID",
+                "expected_action": "기대 Action",
+                "actual_action": "수동 판단 Action",
+                "passed": "일치",
+            }
+        )
+        st.dataframe(result_frame, width="stretch", hide_index=True)
+        evidence_path = st.session_state.get("manual_benchmark_evidence_path")
+        if evidence_path:
+            st.caption(f"측정 증적 저장: {evidence_path}")
 
 
 def main() -> None:

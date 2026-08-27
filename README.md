@@ -27,7 +27,8 @@
 - 기존 Task 연결, 신규 Task 생성, 무시 선택 및 사용자 결정 History
 - 완료 제안 후 사용자 승인 시에만 `COMPLETED` 반영
 - Dashboard에서 Task 제목·설명·기한·상태·회신 필요 여부 직접 수정과 History 저장
-- 기대결과를 분리한 대표 Business Case 15개와 pytest 44건
+- 기대결과를 분리한 대표 Business Case 15개와 pytest 48건
+- SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 
 ## API 키 입력 위치
@@ -71,7 +72,8 @@ Model: gpt-4.1-mini
 
 최신 Live 증적은 `evidence/live_evaluation_2026-08-27.json`이며 Prompt 보강 전 결과는
 `evidence/live_evaluation_2026-08-27_before_prompt.json`에 분리해 보존한다. 현재 남은 공식
-KPI는 동일 Case의 사람 수작업 시간 Baseline과 Agent 처리시간 비교다.
+KPI는 `품질 검증` 화면에서 동일 Case의 사람 수작업 시간 Baseline을 실제로 1회 측정하는
+것이다. 수동 Action 6/6일 때만 시간 단축률을 공식 KPI 후보로 계산한다.
 
 `데모 도구`에서는 아래 흐름을 한 번에 실행할 수 있다.
 
