@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from mailtaskagent.config import PROJECT_ROOT, Settings
-from mailtaskagent.evaluation import load_saved_evaluation_report, run_scenario_evaluation
+from mailtaskagent.evaluation import (
+    load_kpi_ground_truth,
+    load_saved_evaluation_report,
+    run_scenario_evaluation,
+)
 from mailtaskagent.llm_client import MockMailAnalyzer
 from mailtaskagent.models import AgentAction, MailIntent, ReviewDecision, TaskStatus
 from mailtaskagent.storage import SQLiteStorage
@@ -331,6 +335,24 @@ def test_scenario_expectations_use_supported_actions_and_states() -> None:
             assert status in TaskStatus._value2member_map_
 
 
+def test_kpi_ground_truth_covers_every_mail_and_supported_intents() -> None:
+    ground_truth = load_kpi_ground_truth()
+    dataset_mail_ids = {
+        mail.mail_id for mail in load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
+    }
+    ground_truth_mail_ids = {row["mail_id"] for row in ground_truth["mails"]}
+
+    assert ground_truth["version"] == 1
+    assert ground_truth_mail_ids == dataset_mail_ids
+    assert len(ground_truth["mails"]) == len(ground_truth_mail_ids) == 15
+    assert len(ground_truth["task_links"]) == 8
+    for row in ground_truth["mails"]:
+        assert row["intent"] in MailIntent._value2member_map_
+        if row["evaluate_fields"]:
+            assert row["is_task_request"] is True
+            assert row["request_summary_term_groups"]
+
+
 def test_mock_scenario_evaluation_reports_complete_evidence(settings: Settings) -> None:
     report = run_scenario_evaluation(settings, MockMailAnalyzer(), mode="MOCK")
 
@@ -340,17 +362,33 @@ def test_mock_scenario_evaluation_reports_complete_evidence(settings: Settings) 
     assert report["action_step_accuracy"] == 1
     assert report["total_action_steps"] == 28
     assert report["review_rate"] == pytest.approx(7 / 15)
+    assert report["mail_classification_accuracy"] == 1
+    assert report["mail_classification_correct"] == report["mail_classification_total"] == 15
+    assert report["intent_accuracy"] == 1
+    assert report["field_extraction_accuracy"] == 1
+    assert report["field_extraction_correct"] == report["field_extraction_total"] == 26
+    assert report["task_link_accuracy"] == 1
+    assert report["task_link_correct"] == report["task_link_total"] == 8
+    assert len(report["mail_kpi_rows"]) == 15
+    assert len(report["task_link_rows"]) == 8
     assert all(row["error"] == "-" for row in report["rows"])
 
 
 def test_checked_in_live_evaluation_evidence_is_complete() -> None:
     report = load_saved_evaluation_report(
-        PROJECT_ROOT / "evidence" / "live_evaluation_2026-08-26.json"
+        PROJECT_ROOT / "evidence" / "live_evaluation_2026-08-27.json"
     )
 
     assert report["mode"] == "LIVE"
     assert report["case_count"] == report["passed_count"] == 15
     assert report["total_action_steps"] == 28
+    assert report["mail_classification_accuracy"] == 1
+    assert report["field_extraction_accuracy"] == 1
+    assert report["task_link_accuracy"] == 1
+    assert report["intent_accuracy"] == pytest.approx(13 / 15)
+    assert report["ground_truth_version"] == 1
+    assert len(report["mail_kpi_rows"]) == 15
+    assert len(report["task_link_rows"]) == 8
     assert len(report["rows"]) == 15
     assert all(row["passed"] and row["error"] == "-" for row in report["rows"])
 

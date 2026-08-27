@@ -712,9 +712,17 @@ def _render_quality_evaluation(settings) -> None:
     else:
         live_col.caption("최대 27회 LLM 분석 호출이 발생하며 Mock 결과와 별도로 기록됩니다.")
 
-    saved_live_path = PROJECT_ROOT / "evidence" / "live_evaluation_2026-08-26.json"
-    if "live_evaluation" not in st.session_state and saved_live_path.exists():
-        st.session_state["live_evaluation"] = load_saved_evaluation_report(saved_live_path)
+    saved_live_paths = list(
+        (PROJECT_ROOT / "evidence").glob("live_evaluation_*.json")
+    )
+    if "live_evaluation" not in st.session_state and saved_live_paths:
+        saved_live_reports = [
+            load_saved_evaluation_report(path) for path in saved_live_paths
+        ]
+        st.session_state["live_evaluation"] = max(
+            saved_live_reports,
+            key=lambda item: item.get("generated_at", ""),
+        )
 
     report_options = []
     if st.session_state.get("mock_evaluation"):
@@ -737,6 +745,82 @@ def _render_quality_evaluation(settings) -> None:
     metric_2.metric("시나리오 통과율", f"{report['scenario_pass_rate']:.1%}")
     metric_3.metric("Action 단계 일치율", f"{report['action_step_accuracy']:.1%}")
     metric_4.metric("사용자 확인 비율", f"{report['review_rate']:.1%}")
+
+    if "mail_classification_accuracy" in report:
+        st.subheader("세부 Ground Truth KPI")
+        detail_1, detail_2, detail_3, detail_4 = st.columns(4)
+        detail_1.metric(
+            "업무 요청 분류 정확도",
+            f"{report['mail_classification_accuracy']:.1%}",
+            help=(
+                f"{report['mail_classification_correct']}/"
+                f"{report['mail_classification_total']} Mail"
+            ),
+        )
+        detail_2.metric(
+            "요청사항·기한 추출 정확도",
+            f"{report['field_extraction_accuracy']:.1%}",
+            help=(
+                f"{report['field_extraction_correct']}/"
+                f"{report['field_extraction_total']} 필수 필드"
+            ),
+        )
+        detail_3.metric(
+            "기존 Task 연결 정확도",
+            f"{report['task_link_accuracy']:.1%}",
+            help=(
+                f"{report['task_link_correct']}/"
+                f"{report['task_link_total']} 단일 정답 연결"
+            ),
+        )
+        detail_4.metric(
+            "Intent 진단 정확도",
+            f"{report['intent_accuracy']:.1%}",
+            help=f"{report['intent_correct']}/{report['intent_total']} Mail",
+        )
+        st.caption(
+            "요청사항은 정답 문장과의 단순 문자열 일치가 아니라 사전에 확정한 핵심 의미 "
+            "Token Group 포함 여부로 평가합니다. 복수 후보처럼 정답 Task가 하나가 아닌 Case는 "
+            "Task ID KPI 분모에서 제외합니다."
+        )
+
+        with st.expander("Mail 분류·필드 Ground Truth 상세"):
+            mail_kpi_frame = pd.DataFrame(report["mail_kpi_rows"]).rename(
+                columns={
+                    "mail_id": "Mail ID",
+                    "expected_is_task_request": "기대 업무 여부",
+                    "actual_is_task_request": "실제 업무 여부",
+                    "classification_passed": "분류 일치",
+                    "expected_intent": "기대 Intent",
+                    "actual_intent": "실제 Intent",
+                    "intent_passed": "Intent 일치",
+                    "expected_summary_terms": "요청사항 정답 Token",
+                    "actual_request_summary": "실제 요청사항",
+                    "request_summary_passed": "요청사항 일치",
+                    "expected_due_date": "기대 기한",
+                    "actual_due_date": "실제 기한",
+                    "due_date_passed": "기한 일치",
+                }
+            )
+            st.dataframe(mail_kpi_frame, width="stretch", hide_index=True)
+
+        with st.expander("기존 Task ID 연결 Ground Truth 상세"):
+            task_link_frame = pd.DataFrame(report["task_link_rows"]).rename(
+                columns={
+                    "case_id": "Case",
+                    "step_index": "단계 Index",
+                    "mail_id": "Mail ID",
+                    "expected_task_id": "기대 Task ID",
+                    "actual_task_id": "실제 Task ID",
+                    "passed": "일치",
+                }
+            )
+            st.dataframe(task_link_frame, width="stretch", hide_index=True)
+    else:
+        st.warning(
+            "이 저장 증적은 세부 Ground Truth KPI 추가 전 결과입니다. 최신 평가를 실행하면 "
+            "분류·요청사항/기한·Task ID 정확도를 함께 표시합니다."
+        )
 
     frame = pd.DataFrame(report["rows"])
     frame["결과"] = frame["passed"].map({True: "통과", False: "실패"})

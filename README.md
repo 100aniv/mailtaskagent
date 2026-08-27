@@ -1,8 +1,8 @@
 # MailTaskAgent
 
 현재 Mail, 기존 Mail Context, 현재 Task State를 함께 보고 다음 Agent Action을 결정하는
-메일 기반 개인 업무관리 Agent다. 현재는 합성 Mail 기반 2단계 중간시연 기능을 구현하고
-회사 LLM API Live로 핵심 상태 흐름을 검증한 상태다.
+메일 기반 개인 업무관리 Agent다. 현재는 합성 Mail 기반 3단계 Core E2E를 구현하고
+회사 LLM API Live로 상태 흐름과 세부 KPI를 검증한 상태다.
 
 ## 현재 구현 범위
 
@@ -17,7 +17,9 @@
 - SQLite Task/History/중복 처리
 - 제품형 업무 현황, 메일 처리함, 확인 필요, 운영 로그 Dashboard
 - Mock 회귀와 회사 LLM Live를 구분한 15개 시나리오 품질 검증 Dashboard
-- 2026-08-26 회사 LLM Live 평가 15/15 Case·28/28 Action 단계 일치 증적
+- 2026-08-27 회사 LLM Live 평가 15/15 Case·28/28 Action 단계 일치 증적
+- 세부 Ground Truth 기준 업무 요청 분류 15/15, 요청사항·기한 26/26,
+  기존 Task 연결 8/8 Live 증적
 - 합성메일 미처리 전체 자동 정리와 분류·Action·Task 연결 현황
 - 멘토용 빠른 시연 4종을 실제 업무 화면과 분리
 - M-01~M-05 단계별 Agent 실행 로그와 오류 추적
@@ -25,7 +27,7 @@
 - 기존 Task 연결, 신규 Task 생성, 무시 선택 및 사용자 결정 History
 - 완료 제안 후 사용자 승인 시에만 `COMPLETED` 반영
 - Dashboard에서 Task 제목·설명·기한·상태·회신 필요 여부 직접 수정과 History 저장
-- 기대결과를 분리한 대표 Business Case 15개와 pytest 42건
+- 기대결과를 분리한 대표 Business Case 15개와 pytest 44건
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 
 ## API 키 입력 위치
@@ -52,6 +54,7 @@ Model: gpt-4.1-mini
 ```powershell
 .venv\Scripts\python.exe -m pytest
 .venv\Scripts\python.exe -m streamlit run app.py
+.venv\Scripts\python.exe -m mailtaskagent.evaluation_cli --mode MOCK
 ```
 
 브라우저에서 `http://localhost:8501`을 연다. 기본 화면은 실제 제품 흐름에 가까운
@@ -59,6 +62,16 @@ Model: gpt-4.1-mini
 확인하거나 미처리 메일을 한 번에 자동 정리할 수 있다. 멘토용 재현 버튼은 `데모 도구`로
 분리했다. `품질 검증`에서는 Mock 15개 회귀를 즉시 실행하고, LIVE 모드에서는 같은
 기대값으로 회사 LLM 결과를 별도 검증할 수 있다.
+
+회사 LLM Live 전체 평가는 API 호출이 발생하므로 필요할 때만 아래처럼 실행한다.
+
+```powershell
+.venv\Scripts\python.exe -m mailtaskagent.evaluation_cli --mode LIVE
+```
+
+최신 Live 증적은 `evidence/live_evaluation_2026-08-27.json`이며 Prompt 보강 전 결과는
+`evidence/live_evaluation_2026-08-27_before_prompt.json`에 분리해 보존한다. 현재 남은 공식
+KPI는 동일 Case의 사람 수작업 시간 Baseline과 Agent 처리시간 비교다.
 
 `데모 도구`에서는 아래 흐름을 한 번에 실행할 수 있다.
 

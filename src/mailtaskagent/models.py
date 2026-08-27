@@ -88,7 +88,7 @@ class MailAnalysis(BaseModel):
     requester: str | None = None
     due_date: date | None = None
     reply_required: bool = False
-    reason: str
+    reason: str = Field(min_length=1)
     confidence: float = Field(ge=0, le=1)
 
 

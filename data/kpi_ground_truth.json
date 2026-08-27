@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "description": "합성 Mail 15건의 분류·Intent·요청사항·기한과 기존 Task 연결 KPI 정답",
+  "field_policy": "업무 Mail은 요청사항 핵심 의미 Token Group과 기한을 각각 1개 필드로 평가하며 비업무 Mail은 필드 추출 KPI 분모에서 제외한다.",
+  "mails": [
+    {
+      "mail_id": "MAIL-001",
+      "is_task_request": true,
+      "intent": "NEW_TASK",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [["DDC"], ["서버"], ["패치"], ["확인"], ["공유"]],
+      "due_date": "2026-08-21"
+    },
+    {
+      "mail_id": "MAIL-002",
+      "is_task_request": true,
+      "intent": "DUE_DATE_CHANGE",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [["기한"], ["연장", "연기", "변경"], ["월요일", "2026-08-24"]],
+      "due_date": "2026-08-24"
+    },
+    {
+      "mail_id": "MAIL-003",
+      "is_task_request": true,
+      "intent": "WAITING",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [["서버"], ["목록"], ["요청"]],
+      "due_date": null
+    },
+    {
+      "mail_id": "MAIL-004",
+      "is_task_request": true,
+      "intent": "INFORMATION_RECEIVED",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [["서버"], ["목록"], ["전달", "도착", "수신"]],
+      "due_date": null
+    },
+    {
+      "mail_id": "MAIL-005",
+      "is_task_request": false,
+      "intent": "NON_TASK",
+      "evaluate_fields": false,
+      "request_summary_term_groups": [],
+      "due_date": null
+    },
+    {
+      "mail_id": "MAIL-006",
+      "is_task_request": true,
+      "intent": "UNCERTAIN",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [["DDC"], ["확인"]],
+      "due_date": null
+    },
+    {
+      "mail_id": "MAIL-007",
+      "is_task_request": false,
+      "intent": "NON_TASK",
+      "evaluate_fields": false,
+      "request_summary_term_groups": [],
+      "due_date": null
+    },
+    {
+      "mail_id": "MAIL-008",
+      "is_task_request": true,
+      "intent": "NEW_TASK",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [["DDC", "접근통제"], ["보안"], ["설정"], ["점검"], ["공유"]],
+      "due_date": "2026-08-26"
+    },
+    {
+      "mail_id": "MAIL-009",
+      "is_task_request": true,
+      "intent": "COMPLETION",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [["DDC"], ["패치"], ["완료", "끝", "종료"]],
+      "due_date": null
+    },
+    {
+      "mail_id": "MAIL-010",
+      "is_task_request": true,
+      "intent": "CANCELLATION",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [["접근통제"], ["점검"], ["취소", "철회", "종료"]],
+      "due_date": null
+    },
+    {
+      "mail_id": "MAIL-011",
+      "is_task_request": true,
+      "intent": "NEW_TASK",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [["개발계"], ["미사용"], ["계정"], ["현황"], ["확인", "공유"]],
+      "due_date": null
+    },
+    {
+      "mail_id": "MAIL-012",
+      "is_task_request": true,
+      "intent": "DUE_DATE_CHANGE",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [["기한"], ["단축", "변경", "당겨"], ["2026-08-20", "8월 20일", "목요일"]],
+      "due_date": "2026-08-20"
+    },
+    {
+      "mail_id": "MAIL-013",
+      "is_task_request": true,
+      "intent": "UNCERTAIN",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [["완료"], ["확인", "여부", "질문"]],
+      "due_date": null
+    },
+    {
+      "mail_id": "MAIL-014",
+      "is_task_request": true,
+      "intent": "TASK_UPDATE",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [["DDC"], ["점검", "업무"], ["추가", "반영"]],
+      "due_date": null
+    },
+    {
+      "mail_id": "MAIL-015",
+      "is_task_request": true,
+      "intent": "UNCERTAIN",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [["운영"], ["서버"], ["상태"], ["확인", "공유"]],
+      "due_date": null
+    }
+  ],
+  "task_links": [
+    {"case_id": "BC-04", "step_index": 1, "mail_id": "MAIL-002", "expected_task_id": "TASK-001"},
+    {"case_id": "BC-05", "step_index": 1, "mail_id": "MAIL-012", "expected_task_id": "TASK-001"},
+    {"case_id": "BC-06", "step_index": 1, "mail_id": "MAIL-004", "expected_task_id": "TASK-001"},
+    {"case_id": "BC-07-08", "step_index": 1, "mail_id": "MAIL-003", "expected_task_id": "TASK-001"},
+    {"case_id": "BC-07-08", "step_index": 2, "mail_id": "MAIL-004", "expected_task_id": "TASK-001"},
+    {"case_id": "BC-09", "step_index": 1, "mail_id": "MAIL-009", "expected_task_id": "TASK-001"},
+    {"case_id": "BC-10", "step_index": 1, "mail_id": "MAIL-013", "expected_task_id": "TASK-001"},
+    {"case_id": "BC-14", "step_index": 1, "mail_id": "MAIL-010", "expected_task_id": "TASK-001"}
+  ]
+}

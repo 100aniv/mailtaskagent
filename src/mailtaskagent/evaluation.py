@@ -24,6 +24,115 @@ def load_saved_evaluation_report(path: Path) -> dict:
         return json.load(stream)
 
 
+def load_kpi_ground_truth(
+    path: Path = PROJECT_ROOT / "data" / "kpi_ground_truth.json",
+) -> dict:
+    with path.open("r", encoding="utf-8") as stream:
+        return json.load(stream)
+
+
+def _summary_matches(actual: str | None, term_groups: list[list[str]]) -> bool:
+    if not actual:
+        return False
+    normalized = actual.casefold()
+    return all(any(term.casefold() in normalized for term in group) for group in term_groups)
+
+
+def _calculate_detailed_kpis(
+    ground_truth: dict,
+    analyses_by_mail: dict[str, dict],
+    actual_task_links: dict[tuple[str, int], str | None],
+) -> dict:
+    mail_rows: list[dict] = []
+    classification_correct = 0
+    intent_correct = 0
+    field_correct = 0
+    field_total = 0
+
+    for expected in ground_truth["mails"]:
+        mail_id = expected["mail_id"]
+        actual = analyses_by_mail.get(mail_id)
+        expected_task = expected["is_task_request"]
+        actual_task = actual.get("is_task_request") if actual else None
+        classification_passed = actual_task == expected_task
+        classification_correct += classification_passed
+
+        expected_intent = expected["intent"]
+        actual_intent = actual.get("intent") if actual else None
+        intent_passed = actual_intent == expected_intent
+        intent_correct += intent_passed
+
+        summary_passed: bool | None = None
+        due_date_passed: bool | None = None
+        if expected["evaluate_fields"]:
+            summary_passed = _summary_matches(
+                actual.get("request_summary") if actual else None,
+                expected["request_summary_term_groups"],
+            )
+            actual_due_date = actual.get("due_date") if actual else None
+            due_date_passed = actual_due_date == expected["due_date"]
+            field_correct += int(summary_passed) + int(due_date_passed)
+            field_total += 2
+
+        mail_rows.append(
+            {
+                "mail_id": mail_id,
+                "expected_is_task_request": expected_task,
+                "actual_is_task_request": actual_task,
+                "classification_passed": classification_passed,
+                "expected_intent": expected_intent,
+                "actual_intent": actual_intent,
+                "intent_passed": intent_passed,
+                "expected_summary_terms": " AND ".join(
+                    "/".join(group) for group in expected["request_summary_term_groups"]
+                )
+                or "-",
+                "actual_request_summary": actual.get("request_summary") if actual else None,
+                "request_summary_passed": summary_passed,
+                "expected_due_date": expected["due_date"],
+                "actual_due_date": actual.get("due_date") if actual else None,
+                "due_date_passed": due_date_passed,
+            }
+        )
+
+    task_link_rows: list[dict] = []
+    for expected in ground_truth["task_links"]:
+        key = (expected["case_id"], expected["step_index"])
+        actual_task_id = actual_task_links.get(key)
+        task_link_rows.append(
+            {
+                **expected,
+                "actual_task_id": actual_task_id,
+                "passed": actual_task_id == expected["expected_task_id"],
+            }
+        )
+
+    classification_total = len(mail_rows)
+    intent_total = len(mail_rows)
+    task_link_correct = sum(row["passed"] for row in task_link_rows)
+    task_link_total = len(task_link_rows)
+    return {
+        "mail_classification_accuracy": (
+            classification_correct / classification_total if classification_total else 0
+        ),
+        "mail_classification_correct": classification_correct,
+        "mail_classification_total": classification_total,
+        "intent_accuracy": intent_correct / intent_total if intent_total else 0,
+        "intent_correct": intent_correct,
+        "intent_total": intent_total,
+        "field_extraction_accuracy": field_correct / field_total if field_total else 0,
+        "field_extraction_correct": field_correct,
+        "field_extraction_total": field_total,
+        "task_link_accuracy": (
+            task_link_correct / task_link_total if task_link_total else 0
+        ),
+        "task_link_correct": task_link_correct,
+        "task_link_total": task_link_total,
+        "mail_kpi_rows": mail_rows,
+        "task_link_rows": task_link_rows,
+    }
+
+
 def _check_case(case: dict, results: list, storage: SQLiteStorage) -> list[str]:
     failures: list[str] = []
     actual_actions = [result.proposal.action.value for result in results]
@@ -76,6 +185,7 @@ def run_scenario_evaluation(
 ) -> dict:
     """Run every scenario in an isolated DB and compare it with checked-in expectations."""
     expectations = load_scenario_expectations()
+    ground_truth = load_kpi_ground_truth()
     mails = {
         mail.mail_id: mail
         for mail in load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
@@ -83,6 +193,8 @@ def run_scenario_evaluation(
     rows: list[dict] = []
     total_action_steps = 0
     correct_action_steps = 0
+    analyses_by_mail: dict[str, dict] = {}
+    actual_task_links: dict[tuple[str, int], str | None] = {}
     started = perf_counter()
     temp_root = PROJECT_ROOT / "tmp"
     temp_root.mkdir(exist_ok=True)
@@ -99,6 +211,14 @@ def run_scenario_evaluation(
             try:
                 results = [workflow.process(mails[mail_id]) for mail_id in case["mail_ids"]]
                 failures = _check_case(case, results, storage)
+                for step_index, result in enumerate(results):
+                    analyses_by_mail.setdefault(
+                        result.mail.mail_id,
+                        result.analysis.model_dump(mode="json"),
+                    )
+                    actual_task_links[(case["case_id"], step_index)] = (
+                        result.proposal.target_task_id
+                    )
             except Exception as exc:  # one failed case must not hide the remaining evidence
                 failures = ["실행 오류"]
                 error = f"{type(exc).__name__}: {exc}"
@@ -131,6 +251,11 @@ def run_scenario_evaluation(
     passed_count = sum(row["passed"] for row in rows)
     review_count = sum(row["review_actual"] for row in rows)
     case_count = len(rows)
+    detailed_kpis = _calculate_detailed_kpis(
+        ground_truth,
+        analyses_by_mail,
+        actual_task_links,
+    )
     return {
         "mode": mode,
         "case_count": case_count,
@@ -144,4 +269,5 @@ def run_scenario_evaluation(
         "total_action_steps": total_action_steps,
         "duration_ms": round((perf_counter() - started) * 1000),
         "rows": rows,
+        **detailed_kpis,
     }

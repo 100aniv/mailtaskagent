@@ -51,3 +51,65 @@ def test_live_analyzer_retries_once_after_invalid_structured_output(tmp_path) ->
 
     assert result.intent == MailIntent.NON_TASK
     assert len(calls) == 2
+
+
+def test_live_analyzer_retries_schema_null_reason_with_contract_reminder(tmp_path) -> None:
+    settings = Settings(
+        api_url="https://example.test",
+        api_key="test-key",
+        model="test-model",
+        api_version="test-version",
+        timeout_seconds=1,
+        use_mock=False,
+        database_path=tmp_path / "unused.db",
+        confidence_threshold=0.75,
+        schema_retries=1,
+    )
+    invalid_content = json.dumps(
+        {
+            "is_task_request": True,
+            "intent": "CANCELLATION",
+            "task_title": None,
+            "request_summary": "기존 요청 취소",
+            "requester": "requester@example.test",
+            "due_date": None,
+            "reply_required": False,
+            "reason": None,
+            "confidence": 0.98,
+        }
+    )
+    valid_content = json.dumps(
+        {
+            "is_task_request": True,
+            "intent": "CANCELLATION",
+            "task_title": None,
+            "request_summary": "기존 요청 취소",
+            "requester": "requester@example.test",
+            "due_date": None,
+            "reply_required": False,
+            "reason": "기존 요청을 명시적으로 취소함",
+            "confidence": 0.98,
+        }
+    )
+    contents = iter([invalid_content, valid_content])
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=next(contents)))]
+        )
+
+    analyzer = AzureMailAnalyzer(settings)
+    analyzer.client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    mail = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")[9]
+
+    result = analyzer.analyze(mail)
+
+    assert result.reason == "기존 요청을 명시적으로 취소함"
+    assert len(calls) == 2
+    assert "이전 응답이 JSON/Pydantic Schema 검증에 실패" in calls[1]["messages"][-1][
+        "content"
+    ]
