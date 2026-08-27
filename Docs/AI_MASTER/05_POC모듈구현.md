@@ -6,7 +6,7 @@
 
 * **구현 기능:** 합성 Mail 입력부터 의미 분석, Task 후보 검색, 7개 Action 결정, Validation, 사용자 확인, Task·History 저장까지 연결한 단일 Agent Workflow
 
-* **동작 원리:** M-01이 회사 LLM API로 Mail Intent와 요청사항·기한을 구조화하고, M-02가 `conversation_id`와 제목·요청자·요약을 이용해 기존 Task 후보를 찾습니다. M-03의 Python Application Logic이 현재 Task 상태와 후보 수를 바탕으로 `CREATE_TASK`, `UPDATE_TASK`, `LINK_TO_TASK`, `SET_WAITING`, `MARK_COMPLETED`, `ASK_USER`, `IGNORE` 중 하나를 결정합니다. Pydantic Validation을 통과한 결과만 M-04가 SQLite에 반영하며, 중요하거나 불명확한 변경은 M-05 사용자 확인 이후 반영합니다.
+* **동작 원리:** M-01이 회사 LLM API로 Mail Intent와 요청사항·기한을 구조화하고, M-02가 `conversation_id`와 제목·요청자·요약을 이용해 기존 Task 후보를 찾습니다. M-03의 Python Application Logic이 현재 Task 상태와 후보 수를 바탕으로 `CREATE_TASK`, `UPDATE_TASK`, `LINK_TO_TASK`, `SET_WAITING`, `MARK_COMPLETED`, `ASK_USER`, `IGNORE` 중 하나를 결정합니다. Pydantic Validation을 통과한 결과만 M-04가 SQLite에 반영하며, 중요하거나 불명확한 변경은 M-05 사용자 확인 이후 반영합니다. Streamlit 첫 화면에서는 실제 업무 모드와 MVP 시연 모드를 선택하고, 동일 Agent Core를 공유하되 실제 업무 DB와 시연 DB를 분리합니다.
 
 * **주요 기술:** Python 3.12.13 로컬 실행 환경, OpenAI Python SDK의 `AzureOpenAI` 호환 Client, 회사 LLM `gpt-4.1-mini`, Pydantic, SQLite, Streamlit
 

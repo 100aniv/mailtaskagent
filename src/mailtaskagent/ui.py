@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime
+from pathlib import Path
 from time import perf_counter
 
 import pandas as pd
@@ -80,6 +81,8 @@ DEMO_SCENARIOS = {
 
 SYNTHETIC_MAIL_SOURCE = "합성 데모"
 GMAIL_TEST_SOURCE = "Gmail 테스트"
+OPERATION_MODE = "실제 업무 모드"
+DEMO_MODE = "MVP 시연 모드"
 
 HISTORY_FIELD_LABELS = {
     "title": "업무 제목",
@@ -130,6 +133,48 @@ def _detail_rows(details) -> list[dict]:
         {"항목": key.replace("_", " "), "값": _display_value(value)}
         for key, value in details.items()
     ]
+
+
+def _render_mode_entry() -> str | None:
+    selected_mode = st.session_state.get("app_mode")
+    if selected_mode in {OPERATION_MODE, DEMO_MODE}:
+        return selected_mode
+
+    st.title("MailTaskAgent")
+    st.write("사용 목적에 맞는 화면을 선택하세요. 언제든 사이드바에서 다시 바꿀 수 있습니다.")
+    operation_col, demo_col = st.columns(2)
+    with operation_col:
+        with st.container(border=True):
+            st.markdown("### 실제 업무 모드")
+            st.write("오늘의 업무, 메일 처리, 확인 대기와 운영 로그만 간결하게 표시합니다.")
+            st.caption("현재는 Gmail 테스트 입력을 사용하는 운영 UI 미리보기입니다.")
+            if st.button(
+                "실제 업무 모드로 시작",
+                type="primary",
+                width="stretch",
+            ):
+                st.session_state["app_mode"] = OPERATION_MODE
+                st.rerun()
+    with demo_col:
+        with st.container(border=True):
+            st.markdown("### MVP 시연 모드")
+            st.write("합성 시나리오, 품질 검증, 기술 설정과 데모 초기화 도구를 함께 표시합니다.")
+            st.caption("멘토 시연과 AI Master 검증 증적 확인에 사용합니다.")
+            if st.button("MVP 시연 모드로 시작", width="stretch"):
+                st.session_state["app_mode"] = DEMO_MODE
+                st.rerun()
+    st.info(
+        "두 모드는 동일한 Agent Core를 사용하지만 실제 업무와 시연 데이터는 분리 저장합니다. "
+        "회사 운영 전환 시에는 MVP 시연 모드를 제거할 수 있습니다."
+    )
+    return None
+
+
+def _database_path_for_mode(database_path: Path | str, app_mode: str) -> Path:
+    path = Path(database_path)
+    if app_mode != DEMO_MODE:
+        return path
+    return path.with_name(f"{path.stem}-demo{path.suffix}")
 
 
 def _gmail_connection_summary() -> dict:
@@ -554,7 +599,13 @@ def _process_unprocessed_mails(
     st.rerun()
 
 
-def _render_mailbox(storage, settings, mails, source_name: str) -> None:
+def _render_mailbox(
+    storage,
+    settings,
+    mails,
+    source_name: str,
+    demo_mode: bool = True,
+) -> None:
     st.subheader("메일 처리함")
     if source_name == GMAIL_TEST_SOURCE:
         st.caption(
@@ -605,7 +656,11 @@ def _render_mailbox(storage, settings, mails, source_name: str) -> None:
     source_batch_name = (
         "Gmail 테스트 메일" if source_name == GMAIL_TEST_SOURCE else "합성 메일"
     )
-    button_label = f"미처리·실패 {source_batch_name} 전체 자동 정리 · {unprocessed_count}건"
+    button_label = (
+        f"미처리·실패 {source_batch_name} 전체 자동 정리 · {unprocessed_count}건"
+        if demo_mode
+        else f"새 메일 자동 정리 · {unprocessed_count}건"
+    )
     if st.button(
         button_label,
         type="primary",
@@ -619,28 +674,31 @@ def _render_mailbox(storage, settings, mails, source_name: str) -> None:
             source_batch_name=source_batch_name,
         )
 
-    with st.expander("메일 한 건 직접 처리"):
-        selected = st.selectbox(
-            "어떤 메일이 도착했다고 가정할까요?",
-            mails,
-            format_func=_friendly_mail,
-        )
-        _render_mail_preview(selected)
-        selected_failed = any(
-            event["step"] == "PROCESS_FAILED"
-            for event in storage.list_events(selected.mail_id)
-        ) and not storage.is_processed(selected.mail_id)
-        selected_button_label = "선택한 메일 재처리" if selected_failed else "선택한 메일 처리"
-        if st.button(selected_button_label, width="stretch"):
-            try:
-                workflow = MailTaskWorkflow(settings, storage, build_analyzer(settings))
-                with st.spinner("Mail Context와 현재 Task State를 분석하고 있습니다..."):
-                    result = workflow.process(selected)
-                st.session_state["last_result"] = result.model_dump(mode="json")
-                st.rerun()
-            except Exception as exc:
-                st.error(f"처리 실패: {exc}")
-                st.info("운영 로그에 실패 단계가 남고 Task 변경은 수행되지 않습니다.")
+    if demo_mode:
+        with st.expander("메일 한 건 직접 처리"):
+            selected = st.selectbox(
+                "어떤 메일이 도착했다고 가정할까요?",
+                mails,
+                format_func=_friendly_mail,
+            )
+            _render_mail_preview(selected)
+            selected_failed = any(
+                event["step"] == "PROCESS_FAILED"
+                for event in storage.list_events(selected.mail_id)
+            ) and not storage.is_processed(selected.mail_id)
+            selected_button_label = (
+                "선택한 메일 재처리" if selected_failed else "선택한 메일 처리"
+            )
+            if st.button(selected_button_label, width="stretch"):
+                try:
+                    workflow = MailTaskWorkflow(settings, storage, build_analyzer(settings))
+                    with st.spinner("Mail Context와 현재 Task State를 분석하고 있습니다..."):
+                        result = workflow.process(selected)
+                    st.session_state["last_result"] = result.model_dump(mode="json")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"처리 실패: {exc}")
+                    st.info("운영 로그에 실패 단계가 남고 Task 변경은 수행되지 않습니다.")
 
     result = st.session_state.get("last_result")
     if result:
@@ -1357,18 +1415,29 @@ def _render_manual_time_benchmark(live_report: dict | None) -> None:
 def main() -> None:
     st.set_page_config(page_title="MailTaskAgent", page_icon="📬", layout="wide")
     _apply_styles()
+    app_mode = _render_mode_entry()
+    if app_mode is None:
+        return
+    demo_mode = app_mode == DEMO_MODE
     settings = load_settings()
-    storage = SQLiteStorage(settings.database_path)
+    storage = SQLiteStorage(_database_path_for_mode(settings.database_path, app_mode))
     storage.initialize()
     synthetic_mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
     gmail_summary = _gmail_connection_summary()
 
-    st.title("MailTaskAgent")
-    st.write("메일을 업무로 바꾸고, 후속 변경과 확인이 필요한 결정을 놓치지 않게 관리합니다.")
+    st.title("MailTaskAgent" if demo_mode else "내 업무")
+    st.write(
+        "메일을 업무로 바꾸고, 후속 변경과 확인이 필요한 결정을 놓치지 않게 관리합니다."
+    )
 
     with st.sidebar:
         st.title("MailTaskAgent")
-        st.caption("Personal work copilot")
+        st.caption(app_mode)
+        if st.button("화면 모드 다시 선택", width="stretch"):
+            st.session_state.pop("app_mode", None)
+            st.session_state.pop("selected_mail_source", None)
+            st.session_state.pop("gmail_test_mails", None)
+            st.rerun()
         st.divider()
         st.subheader("연동 상태")
         if settings.use_mock:
@@ -1378,11 +1447,14 @@ def main() -> None:
         gmail_connected = (
             gmail_summary["credentials_ready"] and gmail_summary["token_ready"]
         )
-        source_options = [SYNTHETIC_MAIL_SOURCE]
-        if gmail_connected:
-            source_options.append(GMAIL_TEST_SOURCE)
+        if gmail_connected and not demo_mode:
+            source_options = [GMAIL_TEST_SOURCE, SYNTHETIC_MAIL_SOURCE]
+        else:
+            source_options = [SYNTHETIC_MAIL_SOURCE]
+            if gmail_connected:
+                source_options.append(GMAIL_TEST_SOURCE)
         selected_source = st.radio(
-            "입력 Source",
+            "입력 Source" if demo_mode else "메일 연결",
             source_options,
             key="selected_mail_source",
         )
@@ -1419,16 +1491,19 @@ def main() -> None:
         else:
             st.caption("합성 Mail 15건 · 전체 Agent Core 검증")
         st.divider()
-        with st.expander("기술 설정"):
-            st.text(f"Endpoint: {settings.api_url}")
-            st.text(f"API version: {settings.api_version}")
-            st.caption("API 키 값은 화면과 로그에 표시하지 않습니다.")
-            st.caption("Outlook/Graph · Post-MVP")
-        if st.button("데모 DB 초기화", type="secondary"):
-            storage.reset()
-            st.session_state.pop("last_result", None)
-            st.session_state.pop("demo_flash", None)
-            st.rerun()
+        if demo_mode:
+            with st.expander("기술 설정"):
+                st.text(f"Endpoint: {settings.api_url}")
+                st.text(f"API version: {settings.api_version}")
+                st.caption("API 키 값은 화면과 로그에 표시하지 않습니다.")
+                st.caption("Outlook/Graph · Post-MVP")
+            if st.button("데모 DB 초기화", type="secondary"):
+                storage.reset()
+                st.session_state.pop("last_result", None)
+                st.session_state.pop("demo_flash", None)
+                st.rerun()
+        else:
+            st.caption("현재 Gmail 테스트 연결 · 상시 자동 수집은 운영 배포 단계에서 적용")
 
     gmail_mails = st.session_state.get("gmail_test_mails", [])
     mails = gmail_mails if selected_source == GMAIL_TEST_SOURCE else synthetic_mails
@@ -1443,15 +1518,23 @@ def main() -> None:
     if task_edit_flash:
         st.success(task_edit_flash)
 
-    dashboard_tab, mailbox_tab, review_tab, log_tab, quality_tab, demo_tab = st.tabs(
-        ["업무 현황", "메일 처리함", "확인 필요", "운영 로그", "품질 검증", "데모 도구"]
-    )
+    tab_labels = ["업무 현황", "메일 처리함", "확인 필요", "운영 로그"]
+    if demo_mode:
+        tab_labels.extend(["품질 검증", "데모 도구"])
+    tabs = st.tabs(tab_labels)
+    dashboard_tab, mailbox_tab, review_tab, log_tab = tabs[:4]
 
     with dashboard_tab:
         _render_product_dashboard(storage, mails)
 
     with mailbox_tab:
-        _render_mailbox(storage, settings, mails, selected_source)
+        _render_mailbox(
+            storage,
+            settings,
+            mails,
+            selected_source,
+            demo_mode=demo_mode,
+        )
 
     with review_tab:
         st.write("Agent가 확신하지 못한 경우에는 DB 변경을 멈추고 사람의 결정을 기다립니다.")
@@ -1460,9 +1543,10 @@ def main() -> None:
     with log_tab:
         _render_event_log(storage, [mail.mail_id for mail in mails])
 
-    with quality_tab:
-        _render_quality_evaluation(settings)
+    if demo_mode:
+        with tabs[4]:
+            _render_quality_evaluation(settings)
 
-    with demo_tab:
-        st.caption("멘토 시연과 기능 검증용 도구입니다. 실제 업무 화면과 분리했습니다.")
-        _render_quick_demo(storage, settings, mail_by_id)
+        with tabs[5]:
+            st.caption("멘토 시연과 기능 검증용 도구입니다. 실제 업무 화면과 분리했습니다.")
+            _render_quick_demo(storage, settings, mail_by_id)

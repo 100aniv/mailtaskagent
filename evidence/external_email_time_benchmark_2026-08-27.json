@@ -1,0 +1,57 @@
+{
+  "prepared_at": "2026-08-27",
+  "classification": "external benchmark scenario, not MailTaskAgent measured KPI",
+  "assumed_workweek_hours": 40,
+  "assumed_workweeks_per_year": 48,
+  "sources": [
+    {
+      "publisher": "Microsoft",
+      "title": "2023 Work Trend Index - Will AI Fix Work?",
+      "url": "https://www.microsoft.com/en-us/worklab/work-trend-index/will-ai-fix-work",
+      "facts_used": {
+        "average_email_share_of_m365_time": 0.15,
+        "heaviest_email_users_hours_per_week": 8.8
+      }
+    },
+    {
+      "publisher": "McKinsey Global Institute",
+      "title": "Social media's productivity payoff",
+      "url": "https://www.mckinsey.com/mgi/media-center/social-media-productivity-payoff",
+      "facts_used": {
+        "interaction_worker_email_share": 0.28,
+        "estimated_communication_efficiency_low": 0.20,
+        "estimated_communication_efficiency_high": 0.25
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "Microsoft average employee",
+      "baseline_email_hours_per_week": 6.0,
+      "potential_savings_hours_per_week_low": 1.2,
+      "potential_savings_hours_per_week_high": 1.5,
+      "potential_savings_hours_per_year_low": 57.6,
+      "potential_savings_hours_per_year_high": 72.0,
+      "project_target_30_percent_hours_per_week": 1.8
+    },
+    {
+      "name": "Microsoft heaviest email users top 25 percent",
+      "baseline_email_hours_per_week": 8.8,
+      "potential_savings_hours_per_week_low": 1.76,
+      "potential_savings_hours_per_week_high": 2.2,
+      "potential_savings_hours_per_year_low": 84.48,
+      "potential_savings_hours_per_year_high": 105.6,
+      "project_target_30_percent_hours_per_week": 2.64
+    },
+    {
+      "name": "McKinsey interaction worker",
+      "baseline_email_hours_per_week": 11.2,
+      "potential_savings_hours_per_week_low": 2.24,
+      "potential_savings_hours_per_week_high": 2.8,
+      "potential_savings_hours_per_year_low": 107.52,
+      "potential_savings_hours_per_year_high": 134.4,
+      "project_target_30_percent_hours_per_week": 3.36
+    }
+  ],
+  "interpretation": "The 20-25 percent factor is an external communication-technology estimate applied as a scenario. It does not prove MailTaskAgent saves this amount. The project's 30 percent target remains unmeasured until an equivalent-accuracy user benchmark is completed."
+}
