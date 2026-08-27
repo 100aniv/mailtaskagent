@@ -28,9 +28,11 @@
 - 기존 Task 연결, 신규 Task 생성, 무시 선택 및 사용자 결정 History
 - 완료 제안 후 사용자 승인 시에만 `COMPLETED` 반영
 - Dashboard에서 Task 제목·설명·기한·상태·회신 필요 여부 직접 수정과 History 저장
-- 기대결과를 분리한 대표 Business Case 15개와 제품형 Dashboard 회귀를 포함한 pytest 50건
+- 기대결과를 분리한 대표 Business Case 15개와 제품형 Dashboard·Gmail Adapter Contract
+  회귀를 포함한 pytest 55건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
+- Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀
 
 ## API 키 입력 위치
 
@@ -62,7 +64,8 @@ Copy-Item .env.example .env
 ```
 
 회사 LLM Live 모드를 사용할 때만 `.env`의 `COMPANY_LLM_API_KEY`를 채운다. 키 없이
-기능을 확인하려면 `COMPANY_LLM_USE_MOCK=true`로 설정한다.
+기능을 확인하려면 `COMPANY_LLM_USE_MOCK=true`로 설정한다. 설치 명령은 프로젝트를
+Editable Package로 함께 등록하므로 별도의 `PYTHONPATH` 설정 없이 아래 CLI를 실행할 수 있다.
 
 ## 실행
 
@@ -100,6 +103,39 @@ KPI는 `품질 검증` 화면에서 동일 Case의 사람 수작업 시간 Basel
 n8n 자동 수집은 Core E2E 완성 후 Post-MVP에서 공통 Mail Schema Adapter로 연결한다.
 테스트 Gmail은 3단계 Core MVP 완료 판정 뒤 일정에 여유가 있을 때만 선택적으로 연결하며,
 iCloud Mail은 현재 확정 범위에 포함하지 않는다.
+
+## 선택적 테스트 Gmail Adapter
+
+읽기 전용 Gmail Adapter의 코드와 합성 Gmail API Payload 테스트는 구현돼 있다. 실제 Gmail
+계정에는 아직 연결하지 않았으며, 별도 테스트 계정의 `MailTaskAgent-Demo` 라벨에 넣은
+합성메일만 대상으로 한다. Agent Core와 SQLite 구조는 변경하지 않는다.
+
+Google 공식 Python Quickstart 방식으로 Gmail API와 Desktop OAuth Client를 준비한 뒤 진행한다.
+
+```powershell
+.venv\Scripts\python.exe -m pip install -r requirements-gmail.txt
+```
+
+다운로드한 OAuth Client JSON은 채팅이나 GitHub에 올리지 말고 아래 로컬 경로에만 둔다.
+
+```text
+.secrets/gmail_credentials.json
+```
+
+`.secrets/`는 Git에서 제외된다. 처음 실행할 때 브라우저에서 사용자가 직접 읽기 전용 권한을
+승인하면 `.secrets/gmail_token.json`이 생성된다.
+
+```powershell
+# 제목·방향·시각만 확인하고 Agent는 실행하지 않음
+.venv\Scripts\python.exe -m mailtaskagent.gmail_cli
+
+# 확인한 합성 Gmail을 기존 Agent Core로 처리
+.venv\Scripts\python.exe -m mailtaskagent.gmail_cli --process
+```
+
+기본 쿼리 `label:MailTaskAgent-Demo`, 최대 25건이며 빈 쿼리와 100건 초과 입력은 차단한다.
+공식 참고 문서는 [Gmail API Python Quickstart](https://developers.google.com/workspace/gmail/api/quickstart/python)와
+[messages.list](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list)다.
 
 내일 시연 설명과 순서는 `Docs/IMPLEMENTATION/08_멘토_시연_브리핑.md`를 참고한다.
 

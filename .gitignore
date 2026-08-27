@@ -1,9 +1,11 @@
 .venv/
 .env
 __pycache__/
+*.egg-info/
 *.py[cod]
 .pytest_cache/
 .streamlit/
+.secrets/
 data/*.db
 data/*.db-*
 logs/

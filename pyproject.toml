@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=75,<82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mailtaskagent"
+version = "0.1.0"
+description = "Mail-driven personal task lifecycle Agentic AI Core"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+
+[project.scripts]
+mailtaskagent-evaluate = "mailtaskagent.evaluation_cli:main"
+mailtaskagent-gmail = "mailtaskagent.gmail_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

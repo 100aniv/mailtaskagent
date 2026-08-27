@@ -1,0 +1,232 @@
+from __future__ import annotations
+
+import base64
+import os
+import re
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.header import decode_header
+from email.utils import getaddresses, parseaddr
+from html.parser import HTMLParser
+from pathlib import Path
+from typing import Any
+
+from mailtaskagent.config import PROJECT_ROOT
+from mailtaskagent.models import MailDirection, MailInput
+
+
+GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+DEFAULT_GMAIL_QUERY = "label:MailTaskAgent-Demo"
+EMAIL_ADDRESS_PATTERN = re.compile(
+    r"[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class GmailSourceSettings:
+    credentials_path: Path
+    token_path: Path
+    query: str = DEFAULT_GMAIL_QUERY
+    max_results: int = 25
+
+
+class _HTMLTextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        value = data.strip()
+        if value:
+            self.parts.append(value)
+
+    def text(self) -> str:
+        return "\n".join(self.parts)
+
+
+def _resolve_project_path(raw_path: str) -> Path:
+    path = Path(raw_path)
+    return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+def load_gmail_source_settings() -> GmailSourceSettings:
+    query = os.getenv("GMAIL_QUERY", DEFAULT_GMAIL_QUERY).strip()
+    if not query:
+        raise ValueError("GMAIL_QUERY must restrict the test mailbox input")
+    max_results = int(os.getenv("GMAIL_MAX_RESULTS", "25"))
+    if not 1 <= max_results <= 100:
+        raise ValueError("GMAIL_MAX_RESULTS must be between 1 and 100")
+    return GmailSourceSettings(
+        credentials_path=_resolve_project_path(
+            os.getenv("GMAIL_CREDENTIALS_PATH", ".secrets/gmail_credentials.json")
+        ),
+        token_path=_resolve_project_path(
+            os.getenv("GMAIL_TOKEN_PATH", ".secrets/gmail_token.json")
+        ),
+        query=query,
+        max_results=max_results,
+    )
+
+
+def build_gmail_service(settings: GmailSourceSettings) -> Any:
+    try:
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        from googleapiclient.discovery import build
+    except ImportError as error:
+        raise RuntimeError(
+            "Gmail dependencies are missing. Install requirements-gmail.txt first."
+        ) from error
+
+    if not settings.credentials_path.exists():
+        raise FileNotFoundError(
+            f"Gmail OAuth desktop credentials were not found: {settings.credentials_path}"
+        )
+
+    credentials = None
+    if settings.token_path.exists():
+        credentials = Credentials.from_authorized_user_file(
+            str(settings.token_path), [GMAIL_READONLY_SCOPE]
+        )
+    if not credentials or not credentials.valid:
+        if credentials and credentials.expired and credentials.refresh_token:
+            credentials.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                str(settings.credentials_path), [GMAIL_READONLY_SCOPE]
+            )
+            credentials = flow.run_local_server(port=0)
+        settings.token_path.parent.mkdir(parents=True, exist_ok=True)
+        settings.token_path.write_text(credentials.to_json(), encoding="utf-8")
+
+    return build("gmail", "v1", credentials=credentials, cache_discovery=False)
+
+
+def _decode_header(raw_value: str) -> str:
+    values = []
+    for value, encoding in decode_header(raw_value):
+        if isinstance(value, bytes):
+            values.append(value.decode(encoding or "utf-8", errors="replace"))
+        else:
+            values.append(value)
+    return "".join(values).strip()
+
+
+def _decode_body(data: str | None) -> str:
+    if not data:
+        return ""
+    padded = data + "=" * (-len(data) % 4)
+    return base64.urlsafe_b64decode(padded).decode("utf-8", errors="replace").strip()
+
+
+def _extract_addresses(raw_values: list[str]) -> list[str]:
+    parsed = [address for _, address in getaddresses(raw_values) if address]
+    extracted = EMAIL_ADDRESS_PATTERN.findall(", ".join(raw_values))
+    unique: list[str] = []
+    seen: set[str] = set()
+    for address in [*parsed, *extracted]:
+        normalized = address.casefold()
+        if normalized not in seen:
+            seen.add(normalized)
+            unique.append(address)
+    return unique
+
+
+def _extract_body(payload: dict[str, Any]) -> str:
+    plain_parts: list[str] = []
+    html_parts: list[str] = []
+
+    def visit(part: dict[str, Any]) -> None:
+        mime_type = part.get("mimeType", "")
+        content = _decode_body(part.get("body", {}).get("data"))
+        if mime_type == "text/plain" and content:
+            plain_parts.append(content)
+        elif mime_type == "text/html" and content:
+            html_parts.append(content)
+        for child in part.get("parts", []):
+            visit(child)
+
+    visit(payload)
+    if plain_parts:
+        return "\n\n".join(plain_parts).strip()
+    if html_parts:
+        extractor = _HTMLTextExtractor()
+        extractor.feed("\n".join(html_parts))
+        return extractor.text().strip()
+    return ""
+
+
+def gmail_message_to_mail_input(message: dict[str, Any]) -> MailInput:
+    payload = message.get("payload", {})
+    headers = {
+        item.get("name", "").casefold(): _decode_header(item.get("value", ""))
+        for item in payload.get("headers", [])
+    }
+    raw_sender = headers.get("from", "")
+    sender_addresses = _extract_addresses([raw_sender])
+    sender = (
+        sender_addresses[0]
+        if sender_addresses
+        else parseaddr(raw_sender)[1] or raw_sender
+    )
+    recipient_headers = [
+        headers.get("to", ""),
+        headers.get("cc", ""),
+        headers.get("bcc", ""),
+    ]
+    recipients = _extract_addresses(recipient_headers)
+    direction = (
+        MailDirection.OUTBOUND
+        if "SENT" in set(message.get("labelIds", []))
+        else MailDirection.INBOUND
+    )
+    occurred_at = datetime.fromtimestamp(
+        int(message["internalDate"]) / 1000,
+        tz=timezone.utc,
+    )
+    timestamp_fields = (
+        {"sent_at": occurred_at}
+        if direction == MailDirection.OUTBOUND
+        else {"received_at": occurred_at}
+    )
+    return MailInput(
+        mail_id=f"GMAIL-{message['id']}",
+        conversation_id=f"GMAIL-THREAD-{message['threadId']}",
+        direction=direction,
+        sender=sender,
+        recipients=recipients,
+        subject=headers.get("subject", ""),
+        body=_extract_body(payload),
+        **timestamp_fields,
+    )
+
+
+class GmailReadOnlySource:
+    def __init__(self, service: Any, settings: GmailSourceSettings) -> None:
+        self.service = service
+        self.settings = settings
+
+    def load(self) -> list[MailInput]:
+        response = (
+            self.service.users()
+            .messages()
+            .list(
+                userId="me",
+                q=self.settings.query,
+                maxResults=self.settings.max_results,
+                includeSpamTrash=False,
+            )
+            .execute()
+        )
+        messages = []
+        for item in response.get("messages", []):
+            raw_message = (
+                self.service.users()
+                .messages()
+                .get(userId="me", id=item["id"], format="full")
+                .execute()
+            )
+            messages.append(gmail_message_to_mail_input(raw_message))
+        return sorted(messages, key=lambda mail: (mail.occurred_at, mail.mail_id))
