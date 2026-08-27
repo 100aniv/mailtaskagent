@@ -18,6 +18,7 @@ from mailtaskagent.models import (
     TaskCandidate,
     WorkflowResult,
 )
+from mailtaskagent.policy import validate_status_transition
 from mailtaskagent.storage import SQLiteStorage
 
 
@@ -39,6 +40,7 @@ def _needs_related_search(mail: MailInput, analysis: MailAnalysis) -> bool:
 
 def _validate_proposal(proposal: ActionProposal, candidates: list[TaskCandidate]) -> None:
     candidate_ids = {candidate.task_id for candidate in candidates}
+    candidates_by_id = {candidate.task_id: candidate for candidate in candidates}
     if proposal.action == AgentAction.CREATE_TASK:
         required = {"conversation_id", "title", "description", "status"}
         missing = required - set(proposal.task_payload)
@@ -54,6 +56,11 @@ def _validate_proposal(proposal: ActionProposal, candidates: list[TaskCandidate]
             or not proposal.changes.get("waiting_since")
         ):
             raise ValueError("SET_WAITING requires WAITING_REPLY status and waiting_since")
+        if "status" in proposal.changes:
+            validate_status_transition(
+                candidates_by_id[proposal.target_task_id].status,
+                proposal.changes["status"],
+            )
     elif proposal.action == AgentAction.LINK_TO_TASK:
         if not proposal.target_task_id or proposal.target_task_id not in candidate_ids:
             raise ValueError("LINK_TO_TASK target must be a matched Task")
@@ -64,6 +71,10 @@ def _validate_proposal(proposal: ActionProposal, candidates: list[TaskCandidate]
             raise ValueError("MARK_COMPLETED must propose COMPLETED status")
         if not proposal.needs_user_confirmation:
             raise ValueError("MARK_COMPLETED requires user confirmation")
+        validate_status_transition(
+            candidates_by_id[proposal.target_task_id].status,
+            proposal.changes["status"],
+        )
     elif proposal.action == AgentAction.ASK_USER:
         if not proposal.needs_user_confirmation:
             raise ValueError("ASK_USER must require user confirmation")
@@ -71,6 +82,11 @@ def _validate_proposal(proposal: ActionProposal, candidates: list[TaskCandidate]
             not proposal.target_task_id or proposal.target_task_id not in candidate_ids
         ):
             raise ValueError("Cancellation review target must be a matched Task")
+        if proposal.changes.get("status") == "CANCELLED":
+            validate_status_transition(
+                candidates_by_id[proposal.target_task_id].status,
+                proposal.changes["status"],
+            )
 
 
 class MailTaskWorkflow:
@@ -131,10 +147,13 @@ class MailTaskWorkflow:
                     mail=mail,
                     analysis=MailAnalysis.model_validate(previous["analysis"]),
                     proposal=ActionProposal.model_validate(previous["proposal"]),
+                    thread_history=previous.get("thread_history", []),
                     candidate_tasks=[
                         TaskCandidate.model_validate(item)
                         for item in previous.get("candidate_tasks", [])
                     ],
+                    current_task_context=previous.get("current_task_context"),
+                    validation_result=previous.get("validation_result", {}),
                     task=previous.get("task"),
                     before=previous.get("before"),
                     after=previous.get("after"),
@@ -206,6 +225,7 @@ class MailTaskWorkflow:
                 "STARTED",
                 "기존 활성 Task 후보 검색 시작",
             )
+            thread_history = self.storage.list_thread_mails(mail.conversation_id)
             query_text = " ".join(
                 filter(
                     None,
@@ -222,6 +242,11 @@ class MailTaskWorkflow:
                 query_text,
                 include_related=_needs_related_search(mail, analysis),
             )
+            current_task_context = (
+                self.storage.get_task_context(candidates[0].task_id)
+                if len(candidates) == 1
+                else None
+            )
             self._event(
                 case_id,
                 mail.mail_id,
@@ -230,6 +255,10 @@ class MailTaskWorkflow:
                 f"활성 Task 후보 {len(candidates)}개 검색",
                 details={
                     "candidate_count": len(candidates),
+                    "thread_mail_count": len(thread_history),
+                    "selected_task_history_count": len(
+                        (current_task_context or {}).get("recent_histories", [])
+                    ),
                     "candidates": [
                         {
                             "task_id": item.task_id,
@@ -284,6 +313,11 @@ class MailTaskWorkflow:
                 "Pydantic 및 Action 실행 정책 검증 통과",
                 duration_ms=_duration_ms(validation_started),
             )
+            validation_result = {
+                "passed": True,
+                "schema": "Pydantic",
+                "policy": "Action Enum, Task ID, payload and status transition",
+            }
 
             db_started = perf_counter()
             self._event(
@@ -295,7 +329,14 @@ class MailTaskWorkflow:
             )
             try:
                 task, before, after = self.storage.apply(
-                    case_id, mail, analysis, proposal, candidates
+                    case_id,
+                    mail,
+                    analysis,
+                    proposal,
+                    candidates,
+                    thread_history=thread_history,
+                    current_task_context=current_task_context,
+                    validation_result=validation_result,
                 )
             except Exception as exc:
                 self._event(
@@ -342,7 +383,10 @@ class MailTaskWorkflow:
                 mail=mail,
                 analysis=analysis,
                 proposal=proposal,
+                thread_history=thread_history,
                 candidate_tasks=candidates,
+                current_task_context=current_task_context,
+                validation_result=validation_result,
                 task=task,
                 before=before,
                 after=after,

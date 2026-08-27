@@ -183,6 +183,27 @@ def _render_agent_result(result: dict) -> None:
             width="stretch",
             hide_index=True,
         )
+    with st.expander("판단에 사용한 Mail·Task Context"):
+        thread_history = result.get("thread_history", [])
+        task_context = result.get("current_task_context")
+        validation_result = result.get("validation_result", {})
+        st.write(f"동일 Thread 선행 Mail: {len(thread_history)}건")
+        if thread_history:
+            st.dataframe(
+                pd.DataFrame(thread_history)[
+                    ["mail_id", "direction", "occurred_at", "subject"]
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+        if task_context:
+            st.write(
+                f"선택 Task: {task_context['task']['task_id']} · "
+                f"최근 History {len(task_context.get('recent_histories', []))}건"
+            )
+        else:
+            st.caption("단일 선택 Task Context 없음")
+        st.json({"validation_result": validation_result})
     with st.expander("기술 상세 · 구조화된 Mail 분석"):
         st.json(result["analysis"])
     if result.get("before") or result.get("after"):
@@ -261,6 +282,10 @@ def _mail_overview(mails, storage) -> pd.DataFrame:
     stored_results = {
         item["mail_id"]: item for item in storage.list_processing_results()
     }
+    failed_events = {}
+    for event in storage.list_events():
+        if event["step"] == "PROCESS_FAILED" and event["mail_id"] not in failed_events:
+            failed_events[event["mail_id"]] = event
     rows = []
     for mail in mails:
         stored = stored_results.get(mail.mail_id)
@@ -268,7 +293,10 @@ def _mail_overview(mails, storage) -> pd.DataFrame:
         proposal = result.get("proposal", {}) if result else {}
         analysis = result.get("analysis", {}) if result else {}
         review = result.get("review_result") if result else None
-        if not result:
+        if not result and mail.mail_id in failed_events:
+            processing_status = "실패 · 재처리 가능"
+            action = "-"
+        elif not result:
             processing_status = "미처리"
             action = "-"
         elif proposal.get("needs_user_confirmation") and not review:
@@ -367,7 +395,7 @@ def _render_mailbox(storage, settings, mails) -> None:
     )
 
     unprocessed_count = sum(not storage.is_processed(mail.mail_id) for mail in mails)
-    button_label = f"미처리 합성 메일 전체 자동 정리 · {unprocessed_count}건"
+    button_label = f"미처리·실패 합성 메일 전체 자동 정리 · {unprocessed_count}건"
     if st.button(
         button_label,
         type="primary",
@@ -383,7 +411,12 @@ def _render_mailbox(storage, settings, mails) -> None:
             format_func=_friendly_mail,
         )
         _render_mail_preview(selected)
-        if st.button("선택한 메일 처리", width="stretch"):
+        selected_failed = any(
+            event["step"] == "PROCESS_FAILED"
+            for event in storage.list_events(selected.mail_id)
+        ) and not storage.is_processed(selected.mail_id)
+        selected_button_label = "선택한 메일 재처리" if selected_failed else "선택한 메일 처리"
+        if st.button(selected_button_label, width="stretch"):
             try:
                 workflow = MailTaskWorkflow(settings, storage, build_analyzer(settings))
                 with st.spinner("Mail Context와 현재 Task State를 분석하고 있습니다..."):
@@ -628,18 +661,21 @@ def _render_tasks_and_histories(storage) -> None:
                     )
                     save_task = st.form_submit_button("변경 내용 저장", type="primary")
                 if save_task:
-                    result = storage.update_task_by_user(
-                        selected_task["task_id"],
-                        title=edited_title,
-                        description=edited_description,
-                        due_date=None if no_due else edited_due.isoformat(),
-                        status=edited_status,
-                        reply_required=edited_reply_required,
-                    )
-                    st.session_state["task_edit_flash"] = (
-                        f"{result['task_id']} 변경을 저장하고 History에 기록했습니다."
-                    )
-                    st.rerun()
+                    try:
+                        result = storage.update_task_by_user(
+                            selected_task["task_id"],
+                            title=edited_title,
+                            description=edited_description,
+                            due_date=None if no_due else edited_due.isoformat(),
+                            status=edited_status,
+                            reply_required=edited_reply_required,
+                        )
+                        st.session_state["task_edit_flash"] = (
+                            f"{result['task_id']} 변경을 저장하고 History에 기록했습니다."
+                        )
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(f"변경할 수 없는 상태 또는 입력입니다: {exc}")
         else:
             st.info("아직 생성된 Task가 없습니다.")
 

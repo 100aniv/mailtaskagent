@@ -48,6 +48,11 @@ def test_create_then_update_vertical_slice(settings: Settings) -> None:
 
     updated = workflow.process(mails[1])
     assert updated.proposal.action == AgentAction.UPDATE_TASK
+    assert [item["mail_id"] for item in updated.thread_history] == ["MAIL-001"]
+    assert updated.current_task_context is not None
+    assert updated.current_task_context["task"]["task_id"] == "TASK-001"
+    assert len(updated.current_task_context["recent_histories"]) == 1
+    assert updated.validation_result["passed"] is True
     assert updated.before is not None
     assert updated.after is not None
     assert updated.before["due_date"] == "2026-08-21"
@@ -482,6 +487,36 @@ def test_user_can_edit_and_complete_task_with_history(settings: Settings) -> Non
     assert history["mail_id"] == "USER-DASHBOARD"
     assert history["action"] == AgentAction.MARK_COMPLETED.value
     assert json.loads(history["user_decision"])["decision"] == "MANUAL_EDIT"
+
+
+def test_terminal_task_cannot_be_reopened_by_dashboard(settings: Settings) -> None:
+    mail = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")[0]
+    storage = SQLiteStorage(settings.database_path)
+    workflow = MailTaskWorkflow(settings, storage, MockMailAnalyzer())
+    created = workflow.process(mail)
+    task_id = created.task["task_id"]
+    storage.update_task_by_user(
+        task_id,
+        title=created.task["title"],
+        description=created.task["description"],
+        due_date=created.task["due_date"],
+        status=TaskStatus.COMPLETED.value,
+        reply_required=created.task["reply_required"],
+    )
+    history_count = len(storage.list_histories())
+
+    with pytest.raises(ValueError, match="status transition is not allowed"):
+        storage.update_task_by_user(
+            task_id,
+            title=created.task["title"],
+            description=created.task["description"],
+            due_date=created.task["due_date"],
+            status=TaskStatus.IN_PROGRESS.value,
+            reply_required=created.task["reply_required"],
+        )
+
+    assert storage.get_task(task_id)["status"] == TaskStatus.COMPLETED.value
+    assert len(storage.list_histories()) == history_count
 
 
 def test_analyzer_failure_does_not_change_database(settings: Settings) -> None:

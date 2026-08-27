@@ -22,7 +22,7 @@
 
 * **구현 기능:** Mail, Task, Mail–Task Link, Processing Result, Task History, Processing Event를 SQLite에 구조화하여 저장
 
-* **동작 원리:** 한 건의 Mail을 처리하는 동안 Mail 분석 결과, 후보 Task, Action 제안과 실행 결과를 Pydantic 객체로 유지합니다. 처리가 끝나면 Task 현재 상태, 원본 Mail ID, 변경 전·후 값, 판단 근거, 신뢰도, 사용자 결정을 SQLite에 저장하고 다음 Mail 처리 시 필요한 Context만 다시 조회합니다. 동일 `mail_id`는 기존 결과를 반환하여 LLM과 DB 변경을 재실행하지 않습니다.
+* **동작 원리:** 한 건의 Mail을 처리하는 동안 동일 Thread의 선행 Mail, Mail 분석 결과, 후보 Task, 선택 Task의 최근 History, Action 제안, Validation과 실행 결과를 Pydantic 객체로 유지합니다. 처리가 끝나면 Task 현재 상태, 원본 Mail ID, 변경 전·후 값, 판단 근거, 신뢰도, 사용자 결정을 SQLite에 저장하고 다음 Mail 처리 시 필요한 Context만 다시 조회합니다. 동일 `mail_id`는 기존 결과를 반환하여 LLM과 DB 변경을 재실행하지 않습니다.
 
 * **주요 기술:** SQLite, Pydantic State Model, `conversation_id` Metadata 우선 검색, 설명 가능한 Token 기반 후보 점수. 현재 문제는 문서 지식검색이 아니라 Mail–Task 관계와 상태 관리이므로 RAG·Embedding·Vector DB는 사용하지 않았습니다.
 

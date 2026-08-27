@@ -121,7 +121,10 @@ class WorkflowResult(BaseModel):
     mail: MailInput
     analysis: MailAnalysis
     proposal: ActionProposal
+    thread_history: list[dict[str, Any]] = Field(default_factory=list)
     candidate_tasks: list[TaskCandidate] = Field(default_factory=list)
+    current_task_context: dict[str, Any] | None = None
+    validation_result: dict[str, Any] = Field(default_factory=dict)
     task: dict[str, Any] | None = None
     before: dict[str, Any] | None = None
     after: dict[str, Any] | None = None

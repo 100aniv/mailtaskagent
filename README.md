@@ -27,7 +27,7 @@
 - 기존 Task 연결, 신규 Task 생성, 무시 선택 및 사용자 결정 History
 - 완료 제안 후 사용자 승인 시에만 `COMPLETED` 반영
 - Dashboard에서 Task 제목·설명·기한·상태·회신 필요 여부 직접 수정과 History 저장
-- 기대결과를 분리한 대표 Business Case 15개와 pytest 48건
+- 기대결과를 분리한 대표 Business Case 15개와 pytest 49건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 
@@ -49,6 +49,19 @@ Base URL: https://skax.ai-talentlab.com
 API version: 2024-12-01-preview
 Model: gpt-4.1-mini
 ```
+
+## 처음 설치
+
+Python 3.12.13이 설치된 Windows PowerShell에서 실행한다.
+
+```powershell
+py -3.12 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+회사 LLM Live 모드를 사용할 때만 `.env`의 `COMPANY_LLM_API_KEY`를 채운다. 키 없이
+기능을 확인하려면 `COMPANY_LLM_USE_MOCK=true`로 설정한다.
 
 ## 실행
 
@@ -84,7 +97,7 @@ KPI는 `품질 검증` 화면에서 동일 Case의 사람 수작업 시간 Basel
 
 현재 버튼은 합성 Mail 도착을 재현하는 테스트 트리거다. 실제 Outlook/Microsoft Graph와
 n8n 자동 수집은 Core E2E 완성 후 Post-MVP에서 공통 Mail Schema Adapter로 연결한다.
-테스트 Gmail은 2단계 Core가 안정된 뒤 일정에 여유가 있을 때만 선택적으로 연결하며,
+테스트 Gmail은 3단계 Core MVP 완료 판정 뒤 일정에 여유가 있을 때만 선택적으로 연결하며,
 iCloud Mail은 현재 확정 범위에 포함하지 않는다.
 
 내일 시연 설명과 순서는 `Docs/IMPLEMENTATION/08_멘토_시연_브리핑.md`를 참고한다.

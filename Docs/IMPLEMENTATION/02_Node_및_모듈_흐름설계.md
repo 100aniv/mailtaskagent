@@ -72,7 +72,7 @@ END
 4. 활성 Task 여부
 5. 요청 요약과 Task 내용의 의미 관련성
 
-Metadata로 관계가 명확하면 Rule 결과를 우선한다. 의미 비교는 후보 수를 제한한 후 회사 LLM API에 필요한 Context만 전달한다.
+Metadata로 관계가 명확하면 Rule 결과를 우선한다. 현재 구현은 `conversation_id`와 제목·요청자·요청요약 Token 기반 점수로 후보를 검색하며, 복수 후보나 근거 부족은 `ASK_USER`로 전환한다. 제한적 LLM 의미 비교는 이 방식의 실측 정확도가 목표에 미달할 때만 검토한다.
 
 ### 주요 함수 계약
 
@@ -99,7 +99,7 @@ M-03이 `ASK_USER`를 선택한다. 현재 점수는 설명 가능한 1차 Rule 
 
 ### 출력 계약
 
-정의된 7개 중 정확히 하나의 Action, 대상 Task ID, 생성/변경 Payload, 이유, 신뢰도, 사용자 확인 필요 여부를 JSON으로 반환한다.
+Python Application Logic이 정의된 7개 중 정확히 하나의 Action, 대상 Task ID, 생성/변경 Payload, 이유, 신뢰도, 사용자 확인 필요 여부를 Pydantic `ActionProposal`로 반환한다.
 
 ### 기본 결정 규칙
 

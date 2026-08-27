@@ -17,6 +17,7 @@ from mailtaskagent.models import (
     TaskCandidate,
     TaskStatus,
 )
+from mailtaskagent.policy import validate_status_transition
 
 
 SCHEMA = """
@@ -241,6 +242,59 @@ class SQLiteStorage:
             results.append(item)
         return results
 
+    def list_thread_mails(self, conversation_id: str, *, limit: int = 10) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT mail_id, conversation_id, direction, sender, recipients_json,
+                       occurred_at, subject, body, processed_at
+                FROM mails
+                WHERE conversation_id = ?
+                ORDER BY occurred_at DESC
+                LIMIT ?
+                """,
+                (conversation_id, limit),
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["recipients"] = json.loads(item.pop("recipients_json"))
+            result.append(item)
+        return result
+
+    def get_task_context(self, task_id: str, *, history_limit: int = 10) -> dict | None:
+        with self.connect() as connection:
+            task = self._fetch_task(connection, task_id)
+            if task is None:
+                return None
+            linked_mails = connection.execute(
+                """
+                SELECT l.mail_id, l.link_type, l.reason, l.confidence, l.created_at,
+                       m.direction, m.sender, m.occurred_at, m.subject
+                FROM mail_task_links AS l
+                LEFT JOIN mails AS m ON m.mail_id = l.mail_id
+                WHERE l.task_id = ?
+                ORDER BY l.link_id DESC
+                """,
+                (task_id,),
+            ).fetchall()
+            histories = connection.execute(
+                """
+                SELECT history_id, task_id, mail_id, action, before_json, after_json,
+                       reason, confidence, user_decision, created_at
+                FROM histories
+                WHERE task_id = ?
+                ORDER BY history_id DESC
+                LIMIT ?
+                """,
+                (task_id, history_limit),
+            ).fetchall()
+        return {
+            "task": task,
+            "linked_mails": [dict(row) for row in linked_mails],
+            "recent_histories": [dict(row) for row in histories],
+        }
+
     def find_active_task_by_conversation(self, conversation_id: str) -> TaskCandidate | None:
         candidates = self.search_candidate_tasks(conversation_id, "", include_related=False)
         return candidates[0] if candidates else None
@@ -349,6 +403,10 @@ class SQLiteStorage:
         analysis: MailAnalysis,
         proposal: ActionProposal,
         candidate_tasks: list[TaskCandidate],
+        *,
+        thread_history: list[dict] | None = None,
+        current_task_context: dict | None = None,
+        validation_result: dict | None = None,
     ) -> tuple[dict | None, dict | None, dict | None]:
         now = _now()
         with self.connect() as connection:
@@ -420,6 +478,8 @@ class SQLiteStorage:
                         raise ValueError(f"Unsupported task changes: {sorted(invalid)}")
                     if not proposal.changes:
                         raise ValueError(f"{proposal.action.value} requires at least one change")
+                    if "status" in proposal.changes:
+                        validate_status_transition(before["status"], proposal.changes["status"])
                     assignments = ", ".join(f"{key} = ?" for key in proposal.changes)
                     values = [int(v) if isinstance(v, bool) else v for v in proposal.changes.values()]
                     connection.execute(
@@ -487,7 +547,10 @@ class SQLiteStorage:
                     "mail_id": mail.mail_id,
                     "analysis": analysis.model_dump(mode="json"),
                     "proposal": proposal.model_dump(mode="json"),
+                    "thread_history": thread_history or [],
                     "candidate_tasks": [item.model_dump(mode="json") for item in candidate_tasks],
+                    "current_task_context": current_task_context,
+                    "validation_result": validation_result or {},
                     "action": proposal.action.value,
                     "task_id": task_id,
                     "task": task,
@@ -570,11 +633,7 @@ class SQLiteStorage:
                     if not before:
                         raise ValueError(f"Task not found: {task_id}")
                     if decision == ReviewDecision.APPROVE_PROPOSAL:
-                        if before["status"] in {
-                            TaskStatus.COMPLETED.value,
-                            TaskStatus.CANCELLED.value,
-                        }:
-                            raise ValueError(f"Task cannot be completed from {before['status']}")
+                        validate_status_transition(before["status"], TaskStatus.COMPLETED)
                         connection.execute(
                             """
                             UPDATE tasks
@@ -610,11 +669,7 @@ class SQLiteStorage:
                     if not before:
                         raise ValueError(f"Task not found: {task_id}")
                     if decision == ReviewDecision.APPROVE_PROPOSAL:
-                        if before["status"] in {
-                            TaskStatus.COMPLETED.value,
-                            TaskStatus.CANCELLED.value,
-                        }:
-                            raise ValueError(f"Task cannot be cancelled from {before['status']}")
+                        validate_status_transition(before["status"], TaskStatus.CANCELLED)
                         connection.execute(
                             """
                             UPDATE tasks
@@ -829,6 +884,7 @@ class SQLiteStorage:
                 before = self._fetch_task(connection, task_id)
                 if before is None:
                     raise ValueError(f"Task not found: {task_id}")
+                validate_status_transition(before["status"], validated_status)
                 waiting_since = before.get("waiting_since")
                 if validated_status == TaskStatus.WAITING_REPLY and not waiting_since:
                     waiting_since = now
