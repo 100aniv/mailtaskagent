@@ -18,6 +18,7 @@ from mailtaskagent.models import (
     TaskStatus,
 )
 from mailtaskagent.policy import validate_status_transition
+from mailtaskagent.priority import PriorityRuleType
 
 
 SCHEMA = """
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     reply_required INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL,
     waiting_since TEXT,
+    importance_override INTEGER,
     source_mail_id TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -89,6 +91,21 @@ CREATE TABLE IF NOT EXISTS processing_events (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_processing_events_mail ON processing_events(mail_id, event_id);
+CREATE TABLE IF NOT EXISTS priority_rules (
+    rule_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    rule_type TEXT NOT NULL,
+    pattern TEXT NOT NULL,
+    importance INTEGER NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    UNIQUE(rule_type, pattern)
+);
+CREATE TABLE IF NOT EXISTS priority_settings (
+    setting_key TEXT PRIMARY KEY,
+    setting_value INTEGER NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -154,6 +171,8 @@ class SQLiteStorage:
             }
             if "waiting_since" not in columns:
                 connection.execute("ALTER TABLE tasks ADD COLUMN waiting_since TEXT")
+            if "importance_override" not in columns:
+                connection.execute("ALTER TABLE tasks ADD COLUMN importance_override INTEGER")
             connection.commit()
 
     def reset(self) -> None:
@@ -971,6 +990,151 @@ class SQLiteStorage:
         for task in result:
             task["reply_required"] = bool(task["reply_required"])
         return result
+
+    def set_task_importance(self, task_id: str, importance: int | None) -> dict:
+        if importance is not None and importance not in {1, 2, 3, 4}:
+            raise ValueError("Task importance must be 1, 2, 3, 4 or None")
+        now = _now()
+        with self.connect() as connection:
+            try:
+                connection.execute("BEGIN")
+                before = self._fetch_task(connection, task_id)
+                if before is None:
+                    raise ValueError(f"Task not found: {task_id}")
+                connection.execute(
+                    "UPDATE tasks SET importance_override = ?, updated_at = ? WHERE task_id = ?",
+                    (importance, now, task_id),
+                )
+                after = self._fetch_task(connection, task_id)
+                connection.execute(
+                    """
+                    INSERT INTO histories(task_id, mail_id, action, before_json, after_json,
+                                          reason, confidence, user_decision, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        task_id,
+                        "USER-DASHBOARD",
+                        AgentAction.UPDATE_TASK.value,
+                        _json(before),
+                        _json(after),
+                        "사용자가 Dashboard에서 Task 중요도를 직접 지정",
+                        1.0,
+                        _json(
+                            {
+                                "decision": "PRIORITY_OVERRIDE",
+                                "importance": importance,
+                            }
+                        ),
+                        now,
+                    ),
+                )
+                connection.commit()
+                return {"task_id": task_id, "before": before, "after": after}
+            except Exception:
+                connection.rollback()
+                raise
+
+    def list_priority_rules(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM priority_rules ORDER BY importance, rule_id"
+            ).fetchall()
+        rules = [dict(row) for row in rows]
+        for rule in rules:
+            rule["enabled"] = bool(rule["enabled"])
+        return rules
+
+    def add_priority_rule(
+        self,
+        *,
+        name: str,
+        rule_type: str,
+        pattern: str,
+        importance: int,
+    ) -> dict:
+        clean_name = name.strip()
+        clean_pattern = pattern.strip().casefold()
+        if not clean_name or not clean_pattern:
+            raise ValueError("Priority Rule name and pattern are required")
+        validated_type = PriorityRuleType(rule_type)
+        if importance not in {1, 2, 3, 4}:
+            raise ValueError("Priority Rule importance must be 1, 2, 3 or 4")
+        if validated_type == PriorityRuleType.SENDER_DOMAIN:
+            clean_pattern = clean_pattern.removeprefix("@")
+        now = _now()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO priority_rules(name, rule_type, pattern, importance, enabled, created_at)
+                VALUES (?, ?, ?, ?, 1, ?)
+                """,
+                (clean_name, validated_type.value, clean_pattern, importance, now),
+            )
+            connection.commit()
+            row = connection.execute(
+                "SELECT * FROM priority_rules WHERE rule_id = ?", (cursor.lastrowid,)
+            ).fetchone()
+        result = dict(row)
+        result["enabled"] = bool(result["enabled"])
+        return result
+
+    def set_priority_rule_enabled(self, rule_id: int, enabled: bool) -> None:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE priority_rules SET enabled = ? WHERE rule_id = ?",
+                (int(enabled), rule_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(f"Priority Rule not found: {rule_id}")
+            connection.commit()
+
+    def delete_priority_rule(self, rule_id: int) -> None:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM priority_rules WHERE rule_id = ?", (rule_id,)
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(f"Priority Rule not found: {rule_id}")
+            connection.commit()
+
+    def get_priority_settings(self) -> dict[str, int]:
+        defaults = {
+            "due_soon_days": 3,
+            "due_later_days": 7,
+            "waiting_attention_days": 3,
+        }
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT setting_key, setting_value FROM priority_settings"
+            ).fetchall()
+        return {**defaults, **{row["setting_key"]: int(row["setting_value"]) for row in rows}}
+
+    def update_priority_settings(self, settings: dict[str, int]) -> dict[str, int]:
+        allowed = {"due_soon_days", "due_later_days", "waiting_attention_days"}
+        if set(settings) - allowed:
+            raise ValueError("Unsupported Priority setting")
+        resolved = self.get_priority_settings()
+        resolved.update({key: int(value) for key, value in settings.items()})
+        if not 1 <= resolved["due_soon_days"] < resolved["due_later_days"] <= 30:
+            raise ValueError("Due thresholds must satisfy 1 <= soon < later <= 30")
+        if not 1 <= resolved["waiting_attention_days"] <= 30:
+            raise ValueError("Waiting threshold must be between 1 and 30 days")
+        now = _now()
+        with self.connect() as connection:
+            for key, value in resolved.items():
+                connection.execute(
+                    """
+                    INSERT INTO priority_settings(setting_key, setting_value, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(setting_key) DO UPDATE SET
+                        setting_value = excluded.setting_value,
+                        updated_at = excluded.updated_at
+                    """,
+                    (key, value, now),
+                )
+            connection.commit()
+        return resolved
 
     def list_histories(self) -> list[dict]:
         with self.connect() as connection:
