@@ -156,6 +156,21 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 - 실제 환경 성능·비용·동시 사용자
 - Core 15개 Business Case 회귀
 
+### 2026-08-28 P0 구현·검증 증적
+
+- 제출용 MVP는 Git Tag `ai-master-mvp-v1`로 복구 가능 상태를 고정했다.
+- 실제 업무 모드 Navigation을 `오늘`, `내 업무`, `검토 필요`, `메일`, `활동 기록`,
+  `연결 및 설정`으로 분리했다. 기존 시연 모드는 별도로 유지한다.
+- 기한·회신 대기 긴급도와 발신자 Email·Domain·Keyword·사용자 직접 지정 중요도를
+  조합하는 설명 가능한 P1~P4 Priority 계산을 구현했다.
+- `오늘` 화면에서 Priority 근거와 기한·요청자를 확인하고 Task를 직접 완료할 수 있으며,
+  변경은 기존 사용자 수정 경로와 History를 재사용한다.
+- 사용자 Rule의 추가·활성화·비활성화·삭제, 기한 임박·회신 대기 기준 설정과 Task별
+  중요도 Override를 SQLite에 저장한다.
+- 기존 Core 회귀와 Post-MVP Priority·UI 테스트를 함께 실행해 pytest `65 passed`를
+  확인했다. 로컬 Streamlit 서버 기동도 확인했다.
+- 상시 Gmail Polling, Outlook/Graph, RAG와 사내 배포는 아직 구현 완료로 표시하지 않는다.
+
 ## 11. 현재 범위 밖
 
 - RAG/Vector DB 기반 사내 문서 검색

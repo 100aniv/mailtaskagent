@@ -71,12 +71,20 @@ def test_mode_entry_separates_operational_and_demo_navigation(
 
     assert not app.exception
     assert [tab.label for tab in app.tabs] == [
-        "업무 현황",
-        "메일 처리함",
-        "확인 필요",
-        "운영 로그",
+        "오늘",
+        "내 업무",
+        "검토 필요",
+        "메일",
+        "활동 기록",
+        "연결 및 설정",
     ]
     assert not any(button.label == "데모 DB 초기화" for button in app.button)
+    assert [(metric.label, metric.value) for metric in app.metric[:4]] == [
+        ("🔴 즉시 처리", "0건"),
+        ("🟠 우선 처리", "0건"),
+        ("🟡 회신 대기", "0건"),
+        ("🟣 검토 필요", "0건"),
+    ]
 
 
 def test_product_dashboard_and_full_mock_mail_flow(tmp_path, monkeypatch) -> None:
@@ -120,6 +128,38 @@ def test_product_dashboard_and_full_mock_mail_flow(tmp_path, monkeypatch) -> Non
         message.value == "미처리 합성 메일 15건 자동 정리를 실행했습니다. 성공 15건"
         for message in app.success
     )
+
+
+def test_operation_mode_renders_explainable_priority_and_direct_completion(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "operation-priority.db"))
+    monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+    monkeypatch.setenv(
+        "GMAIL_CREDENTIALS_PATH", str(tmp_path / "missing-gmail-credentials.json")
+    )
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(tmp_path / "missing-gmail-token.json"))
+
+    app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
+    app = _start_mode(app, "실제 업무 모드로 시작")
+    batch_button = next(
+        button for button in app.button if button.label.startswith("새 메일 자동 정리")
+    )
+    app = batch_button.click().run(timeout=120)
+
+    assert not app.exception
+    assert any(button.label == "완료" for button in app.button)
+    assert any("근거 ·" in caption.value for caption in app.caption)
+    assert [metric.label for metric in app.metric[:4]] == [
+        "🔴 즉시 처리",
+        "🟠 우선 처리",
+        "🟡 회신 대기",
+        "🟣 검토 필요",
+    ]
+    complete_button = next(button for button in app.button if button.label == "완료")
+    app = complete_button.click().run(timeout=60)
+    assert not app.exception
+    assert any("업무를 완료했습니다." in message.value for message in app.success)
 
 
 def test_gmail_readonly_source_empty_state(tmp_path, monkeypatch) -> None:

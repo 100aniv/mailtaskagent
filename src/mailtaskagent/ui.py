@@ -22,6 +22,12 @@ from mailtaskagent.manual_benchmark import (
     save_manual_benchmark_evidence,
 )
 from mailtaskagent.models import AgentAction, ReviewDecision
+from mailtaskagent.priority import (
+    PRIORITY_PRESENTATION,
+    PriorityLevel,
+    PriorityRuleType,
+    calculate_task_priority,
+)
 from mailtaskagent.storage import SQLiteStorage
 from mailtaskagent.workflow import MailTaskWorkflow, load_mails
 
@@ -92,6 +98,13 @@ HISTORY_FIELD_LABELS = {
     "reply_required": "회신 필요",
     "status": "상태",
     "waiting_since": "회신 대기 시작",
+    "importance_override": "사용자 중요도",
+}
+
+PRIORITY_RULE_LABELS = {
+    PriorityRuleType.SENDER_EMAIL.value: "정확한 발신자 이메일",
+    PriorityRuleType.SENDER_DOMAIN.value: "고객사·조직 도메인",
+    PriorityRuleType.KEYWORD.value: "제목·업무 키워드",
 }
 
 
@@ -225,6 +238,8 @@ def _apply_styles() -> None:
             border: 1px solid #dde5f1; margin-bottom: 12px;
         }
         .mail-card small {color: #64748b;}
+        .priority-title {font-size: 1rem; font-weight: 700; color: #17213a;}
+        .priority-meta {font-size: 0.86rem; color: #64748b; margin-top: 0.2rem;}
         </style>
         """,
         unsafe_allow_html=True,
@@ -287,7 +302,9 @@ def _task_attention(task: dict) -> str:
     return "-"
 
 
-def _task_priority(task: dict) -> tuple[int, str, str]:
+def _task_priority(task: dict, priority_level: PriorityLevel | None = None) -> tuple[int, str, str]:
+    if priority_level is not None:
+        return int(priority_level.value[-1]), task.get("due_date") or "9999-12-31", task["task_id"]
     attention = _task_attention(task)
     if "초과" in attention:
         rank = 0
@@ -300,7 +317,20 @@ def _task_priority(task: dict) -> tuple[int, str, str]:
     return rank, task.get("due_date") or "9999-12-31", task["task_id"]
 
 
-def _render_product_dashboard(storage, mails) -> None:
+def _complete_task_from_dashboard(storage, task: dict) -> None:
+    storage.update_task_by_user(
+        task["task_id"],
+        title=task["title"],
+        description=task.get("description"),
+        due_date=task.get("due_date"),
+        status="COMPLETED",
+        reply_required=bool(task.get("reply_required")),
+    )
+    st.session_state["task_edit_flash"] = f"{task['title']} 업무를 완료했습니다."
+    st.rerun()
+
+
+def _render_product_dashboard(storage, mails, *, operation_mode: bool = False) -> None:
     tasks = storage.list_tasks()
     pending_reviews = storage.list_pending_reviews()
     total_mail_count = len(mails)
@@ -309,14 +339,35 @@ def _render_product_dashboard(storage, mails) -> None:
         task for task in tasks if task["status"] not in {"COMPLETED", "CANCELLED"}
     ]
     attention_tasks = [task for task in active_tasks if _task_attention(task) != "-"]
+    priority_rules = storage.list_priority_rules()
+    priority_settings = storage.get_priority_settings()
+    priority_by_task = {
+        task["task_id"]: calculate_task_priority(task, priority_rules, priority_settings)
+        for task in active_tasks
+    }
 
-    st.subheader("오늘의 업무")
-    st.caption("메일에서 정리된 업무와 확인이 필요한 변경을 우선순위대로 모았습니다.")
+    st.subheader("오늘")
+    st.caption("지금 처리할 업무와 확인이 필요한 결정을 우선순위대로 모았습니다.")
     summary_1, summary_2, summary_3, summary_4 = st.columns(4)
-    summary_1.metric("처리된 Mail", f"{processed_count}/{total_mail_count}건")
-    summary_2.metric("활성 업무", f"{len(active_tasks)}건")
-    summary_3.metric("기한·대기 주의", f"{len(attention_tasks)}건")
-    summary_4.metric("Agent 확인 필요", f"{len(pending_reviews)}건")
+    if operation_mode:
+        summary_1.metric(
+            "🔴 즉시 처리",
+            f"{sum(item.level == PriorityLevel.P1 for item in priority_by_task.values())}건",
+        )
+        summary_2.metric(
+            "🟠 우선 처리",
+            f"{sum(item.level == PriorityLevel.P2 for item in priority_by_task.values())}건",
+        )
+        summary_3.metric(
+            "🟡 회신 대기",
+            f"{sum(task['status'] == 'WAITING_REPLY' for task in active_tasks)}건",
+        )
+        summary_4.metric("🟣 검토 필요", f"{len(pending_reviews)}건")
+    else:
+        summary_1.metric("처리된 Mail", f"{processed_count}/{total_mail_count}건")
+        summary_2.metric("활성 업무", f"{len(active_tasks)}건")
+        summary_3.metric("기한·대기 주의", f"{len(attention_tasks)}건")
+        summary_4.metric("Agent 확인 필요", f"{len(pending_reviews)}건")
 
     search_text = st.text_input(
         "업무 검색",
@@ -337,6 +388,40 @@ def _render_product_dashboard(storage, mails) -> None:
             ).casefold()
         ]
 
+    if operation_mode:
+        st.markdown("### 지금 할 일")
+        prioritized = sorted(
+            filtered_tasks,
+            key=lambda task: _task_priority(task, priority_by_task[task["task_id"]].level),
+        )
+        if pending_reviews:
+            st.warning(
+                f"🟣 Agent 판단 {len(pending_reviews)}건이 변경을 멈추고 사용자 확인을 기다립니다."
+            )
+        if not prioritized:
+            st.success("현재 처리할 활성 업무가 없습니다.")
+        for task in prioritized[:10]:
+            decision = priority_by_task[task["task_id"]]
+            with st.container(border=True):
+                mark_col, content_col, action_col = st.columns([0.45, 5.2, 1.1])
+                mark_col.markdown(f"### {decision.emoji}")
+                content_col.markdown(f"**{task['title']}**")
+                content_col.caption(
+                    f"{decision.label} · {STATUS_LABELS.get(task['status'], task['status'])} · "
+                    f"기한 {task.get('due_date') or '없음'} · {task.get('requester') or '요청자 없음'}"
+                )
+                content_col.caption(f"근거 · {decision.reason}")
+                if action_col.button(
+                    "완료",
+                    key=f"complete_today_{task['task_id']}",
+                    width="stretch",
+                ):
+                    try:
+                        _complete_task_from_dashboard(storage, task)
+                    except ValueError as exc:
+                        st.error(f"완료할 수 없습니다: {exc}")
+        return
+
     priority_col, attention_col = st.columns([1.7, 1])
     with priority_col:
         st.markdown("### 우선 처리 업무")
@@ -346,6 +431,7 @@ def _render_product_dashboard(storage, mails) -> None:
                 [
                     {
                         "업무": task["title"],
+                        "우선순위": priority_by_task[task["task_id"]].display,
                         "상태": STATUS_LABELS.get(task["status"], task["status"]),
                         "기한": task.get("due_date") or "없음",
                         "요청자": task.get("requester") or "-",
@@ -914,12 +1000,23 @@ def _render_event_log(storage, mail_ids: list[str]) -> None:
 def _render_tasks_and_histories(storage) -> None:
     task_col, history_col = st.columns([1, 1.35])
     with task_col:
-        st.subheader("현재 Task")
+        st.subheader("내 업무")
         tasks = storage.list_tasks()
         if tasks:
+            priority_rules = storage.list_priority_rules()
+            priority_settings = storage.get_priority_settings()
+            priority_by_task = {
+                task["task_id"]: calculate_task_priority(
+                    task, priority_rules, priority_settings
+                )
+                for task in tasks
+            }
             task_frame = pd.DataFrame(tasks)
             task_frame["상태"] = task_frame["status"].map(STATUS_LABELS).fillna(task_frame["status"])
             task_frame["주의"] = [_task_attention(task) for task in tasks]
+            task_frame["우선순위"] = [
+                priority_by_task[task["task_id"]].display for task in tasks
+            ]
             attention_count = int((task_frame["주의"] != "-").sum())
             if attention_count:
                 st.warning(f"확인이 필요한 일정 또는 대기 업무가 {attention_count}건 있습니다.")
@@ -940,9 +1037,17 @@ def _render_tasks_and_histories(storage) -> None:
                     "requester": "요청자",
                 }
             )
-            columns = ["Task ID", "업무 제목", "상태", "주의", "기한", "대기 시작", "요청자"]
+            columns = [
+                "우선순위",
+                "업무 제목",
+                "상태",
+                "주의",
+                "기한",
+                "요청자",
+                "Task ID",
+            ]
             st.dataframe(task_frame[columns], width="stretch", hide_index=True)
-            with st.expander("Task 직접 수정 · 완료 · 취소"):
+            with st.expander("업무 상세 · 수정 · 완료"):
                 selected_task = st.selectbox(
                     "수정할 Task",
                     tasks,
@@ -972,6 +1077,23 @@ def _render_tasks_and_histories(storage) -> None:
                     edited_reply_required = st.checkbox(
                         "회신 필요", value=bool(selected_task.get("reply_required"))
                     )
+                    importance_options = [None, 1, 2, 3, 4]
+                    edited_importance = st.selectbox(
+                        "중요도",
+                        importance_options,
+                        index=importance_options.index(
+                            selected_task.get("importance_override")
+                        ),
+                        format_func=lambda value: (
+                            "자동 계산"
+                            if value is None
+                            else f"{PRIORITY_PRESENTATION[PriorityLevel(f'P{value}')][0]} P{value}"
+                        ),
+                    )
+                    current_priority = priority_by_task[selected_task["task_id"]]
+                    st.caption(
+                        f"현재 {current_priority.display} · {current_priority.reason}"
+                    )
                     save_task = st.form_submit_button("변경 내용 저장", type="primary")
                 if save_task:
                     try:
@@ -983,6 +1105,10 @@ def _render_tasks_and_histories(storage) -> None:
                             status=edited_status,
                             reply_required=edited_reply_required,
                         )
+                        if edited_importance != selected_task.get("importance_override"):
+                            storage.set_task_importance(
+                                selected_task["task_id"], edited_importance
+                            )
                         st.session_state["task_edit_flash"] = (
                             f"{result['task_id']} 변경을 저장하고 History에 기록했습니다."
                         )
@@ -1412,6 +1538,136 @@ def _render_manual_time_benchmark(live_report: dict | None) -> None:
             st.caption(f"측정 증적 저장: {evidence_path}")
 
 
+def _render_operation_settings(storage, gmail_summary: dict) -> None:
+    st.subheader("연결 및 설정")
+    st.caption("메일 연결 상태와 개인 업무 우선순위 기준을 관리합니다.")
+
+    with st.container(border=True):
+        st.markdown("### 메일 연결")
+        if gmail_summary["credentials_ready"] and gmail_summary["token_ready"]:
+            st.success("Gmail 읽기 전용 연결됨")
+            st.caption(
+                f"제한 Query · {gmail_summary['query']} · 최대 {gmail_summary['max_results']}건"
+            )
+        else:
+            st.warning("Gmail 사용자 승인이 필요합니다.")
+        st.caption("Outlook / Microsoft Graph는 Gmail 실전 Workflow 검증 후 연결합니다.")
+
+    st.markdown("### 기한·회신 대기 기준")
+    settings = storage.get_priority_settings()
+    with st.form("priority_threshold_form"):
+        soon_col, later_col, waiting_col = st.columns(3)
+        due_soon_days = int(
+            soon_col.number_input(
+                "🟠 기한 임박 기준",
+                min_value=1,
+                max_value=29,
+                value=settings["due_soon_days"],
+                help="이 일수 이내의 업무를 우선 처리로 표시합니다.",
+            )
+        )
+        due_later_days = int(
+            later_col.number_input(
+                "🔵 예정 업무 기준",
+                min_value=2,
+                max_value=30,
+                value=settings["due_later_days"],
+                help="기한이 이 일수 이내인 업무를 예정 업무로 표시합니다.",
+            )
+        )
+        waiting_attention_days = int(
+            waiting_col.number_input(
+                "🟡 회신 대기 확인",
+                min_value=1,
+                max_value=30,
+                value=settings["waiting_attention_days"],
+                help="이 기간 이상 회신이 없으면 우선 확인합니다.",
+            )
+        )
+        if st.form_submit_button("기준 저장", type="primary"):
+            try:
+                storage.update_priority_settings(
+                    {
+                        "due_soon_days": due_soon_days,
+                        "due_later_days": due_later_days,
+                        "waiting_attention_days": waiting_attention_days,
+                    }
+                )
+                st.success("우선순위 기준을 저장했습니다.")
+            except ValueError as exc:
+                st.error(f"기준을 저장할 수 없습니다: {exc}")
+
+    st.markdown("### 고객사·연락처·키워드 Rule")
+    st.caption(
+        "발신자와 키워드는 중요도 신호로만 사용합니다. 완료·취소·기한은 Rule만으로 확정하지 않습니다."
+    )
+    with st.form("priority_rule_form", clear_on_submit=True):
+        name = st.text_input("Rule 이름", placeholder="예: ABC 고객사")
+        rule_type = st.selectbox(
+            "조건",
+            list(PRIORITY_RULE_LABELS),
+            format_func=lambda value: PRIORITY_RULE_LABELS[value],
+        )
+        pattern = st.text_input(
+            "일치 값",
+            placeholder="abc.co.kr 또는 owner@abc.co.kr 또는 장애",
+        )
+        importance = st.selectbox(
+            "적용 중요도",
+            [1, 2, 3, 4],
+            index=1,
+            format_func=lambda value: (
+                f"{PRIORITY_PRESENTATION[PriorityLevel(f'P{value}')][0]} P{value}"
+            ),
+        )
+        add_rule = st.form_submit_button("Rule 추가", type="primary")
+    if add_rule:
+        try:
+            storage.add_priority_rule(
+                name=name,
+                rule_type=rule_type,
+                pattern=pattern,
+                importance=importance,
+            )
+            st.success("중요도 Rule을 추가했습니다.")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Rule을 추가할 수 없습니다: {exc}")
+
+    rules = storage.list_priority_rules()
+    if not rules:
+        st.info("등록된 사용자 Rule이 없습니다. 기한과 회신 대기 기준으로 우선순위를 계산합니다.")
+        return
+    rule_frame = pd.DataFrame(
+        [
+            {
+                "사용": "켜짐" if rule["enabled"] else "꺼짐",
+                "Rule": rule["name"],
+                "조건": PRIORITY_RULE_LABELS.get(rule["rule_type"], rule["rule_type"]),
+                "일치 값": rule["pattern"],
+                "중요도": f"P{rule['importance']}",
+            }
+            for rule in rules
+        ]
+    )
+    st.dataframe(rule_frame, width="stretch", hide_index=True)
+    selected_rule = st.selectbox(
+        "관리할 Rule",
+        rules,
+        format_func=lambda item: f"{item['name']} · {item['pattern']}",
+    )
+    toggle_col, delete_col = st.columns(2)
+    toggle_label = "Rule 끄기" if selected_rule["enabled"] else "Rule 켜기"
+    if toggle_col.button(toggle_label, width="stretch"):
+        storage.set_priority_rule_enabled(
+            selected_rule["rule_id"], not selected_rule["enabled"]
+        )
+        st.rerun()
+    if delete_col.button("Rule 삭제", width="stretch"):
+        storage.delete_priority_rule(selected_rule["rule_id"])
+        st.rerun()
+
+
 def main() -> None:
     st.set_page_config(page_title="MailTaskAgent", page_icon="📬", layout="wide")
     _apply_styles()
@@ -1518,35 +1774,49 @@ def main() -> None:
     if task_edit_flash:
         st.success(task_edit_flash)
 
-    tab_labels = ["업무 현황", "메일 처리함", "확인 필요", "운영 로그"]
     if demo_mode:
-        tab_labels.extend(["품질 검증", "데모 도구"])
-    tabs = st.tabs(tab_labels)
-    dashboard_tab, mailbox_tab, review_tab, log_tab = tabs[:4]
+        tabs = st.tabs(
+            ["업무 현황", "메일 처리함", "확인 필요", "운영 로그", "품질 검증", "데모 도구"]
+        )
+        with tabs[0]:
+            _render_product_dashboard(storage, mails)
+        with tabs[1]:
+            _render_mailbox(
+                storage,
+                settings,
+                mails,
+                selected_source,
+                demo_mode=True,
+            )
+        with tabs[2]:
+            st.write("Agent가 확신하지 못한 경우에는 DB 변경을 멈추고 사람의 결정을 기다립니다.")
+            _render_review_queue(storage, settings, mail_by_id)
+        with tabs[3]:
+            _render_event_log(storage, [mail.mail_id for mail in mails])
+        with tabs[4]:
+            _render_quality_evaluation(settings)
+        with tabs[5]:
+            st.caption("멘토 시연과 기능 검증용 도구입니다. 실제 업무 화면과 분리했습니다.")
+            _render_quick_demo(storage, settings, mail_by_id)
+        return
 
-    with dashboard_tab:
-        _render_product_dashboard(storage, mails)
-
-    with mailbox_tab:
+    tabs = st.tabs(["오늘", "내 업무", "검토 필요", "메일", "활동 기록", "연결 및 설정"])
+    with tabs[0]:
+        _render_product_dashboard(storage, mails, operation_mode=True)
+    with tabs[1]:
+        _render_tasks_and_histories(storage)
+    with tabs[2]:
+        st.write("Agent가 확신하지 못한 변경만 모았습니다. 사용자가 확정하기 전에는 DB를 바꾸지 않습니다.")
+        _render_review_queue(storage, settings, mail_by_id)
+    with tabs[3]:
         _render_mailbox(
             storage,
             settings,
             mails,
             selected_source,
-            demo_mode=demo_mode,
+            demo_mode=False,
         )
-
-    with review_tab:
-        st.write("Agent가 확신하지 못한 경우에는 DB 변경을 멈추고 사람의 결정을 기다립니다.")
-        _render_review_queue(storage, settings, mail_by_id)
-
-    with log_tab:
+    with tabs[4]:
         _render_event_log(storage, [mail.mail_id for mail in mails])
-
-    if demo_mode:
-        with tabs[4]:
-            _render_quality_evaluation(settings)
-
-        with tabs[5]:
-            st.caption("멘토 시연과 기능 검증용 도구입니다. 실제 업무 화면과 분리했습니다.")
-            _render_quick_demo(storage, settings, mail_by_id)
+    with tabs[5]:
+        _render_operation_settings(storage, gmail_summary)
