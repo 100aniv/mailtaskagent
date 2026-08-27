@@ -106,9 +106,10 @@ iCloud Mail은 현재 확정 범위에 포함하지 않는다.
 
 ## 선택적 테스트 Gmail Adapter
 
-읽기 전용 Gmail Adapter의 코드와 합성 Gmail API Payload 테스트는 구현돼 있다. 실제 Gmail
-계정에는 아직 연결하지 않았으며, 별도 테스트 계정의 `MailTaskAgent-Demo` 라벨에 넣은
-합성메일만 대상으로 한다. Agent Core와 SQLite 구조는 변경하지 않는다.
+읽기 전용 Gmail Adapter의 코드와 합성 Gmail API Payload 테스트를 구현했다. 2026-08-27
+별도 테스트 계정에 OAuth 읽기 전용으로 연결하고, `MailTaskAgent-Demo` 라벨의 비식별 합성
+Mail 2건을 회사 LLM Live Agent Core로 처리해 `CREATE_TASK` 후 동일 Thread의
+`UPDATE_TASK`와 기한 변경을 검증했다. Agent Core와 SQLite 구조는 변경하지 않았다.
 
 Google 공식 Python Quickstart 방식으로 Gmail API와 Desktop OAuth Client를 준비한 뒤 진행한다.
 
@@ -134,6 +135,7 @@ Google 공식 Python Quickstart 방식으로 Gmail API와 Desktop OAuth Client�
 ```
 
 기본 쿼리 `label:MailTaskAgent-Demo`, 최대 25건이며 빈 쿼리와 100건 초과 입력은 차단한다.
+실제 Gmail Live E2E 증적은 `evidence/gmail_live_e2e_2026-08-27.json`에 저장한다.
 공식 참고 문서는 [Gmail API Python Quickstart](https://developers.google.com/workspace/gmail/api/quickstart/python)와
 [messages.list](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list)다.
 

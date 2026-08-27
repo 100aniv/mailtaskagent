@@ -1,0 +1,44 @@
+{
+  "executed_at": "2026-08-27T13:28:18Z",
+  "mail_source": "Gmail read-only test adapter",
+  "gmail_query": "label:MailTaskAgent-Demo",
+  "oauth_scope": "https://www.googleapis.com/auth/gmail.readonly",
+  "dataset": "2 de-identified synthetic mails in one Gmail thread",
+  "llm_mode": "LIVE",
+  "model": "gpt-4.1-mini",
+  "results": [
+    {
+      "sequence": 1,
+      "direction": "OUTBOUND",
+      "action": "CREATE_TASK",
+      "task_id": "TASK-001",
+      "due_date_after": "2026-08-31"
+    },
+    {
+      "sequence": 2,
+      "direction": "OUTBOUND",
+      "action": "UPDATE_TASK",
+      "task_id": "TASK-001",
+      "due_date_before": "2026-08-31",
+      "due_date_after": "2026-09-02"
+    }
+  ],
+  "processed": 2,
+  "failed": 0,
+  "dashboard_verified": {
+    "mail_count": "2/2",
+    "active_task_count": 1,
+    "history_actions": [
+      "CREATE_TASK",
+      "UPDATE_TASK"
+    ],
+    "processing_event_count": 24,
+    "ui_exception_count": 0
+  },
+  "security": {
+    "credentials_committed": false,
+    "tokens_committed": false,
+    "mail_send_delete_scope_granted": false
+  },
+  "scope_note": "This evidence covers the restricted synthetic Gmail thread only and is not a measurement of general mailbox performance."
+}
