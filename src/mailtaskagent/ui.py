@@ -9,6 +9,11 @@ import streamlit as st
 
 from mailtaskagent.config import PROJECT_ROOT, load_settings
 from mailtaskagent.evaluation import load_saved_evaluation_report, run_scenario_evaluation
+from mailtaskagent.gmail_source import (
+    GmailReadOnlySource,
+    build_gmail_service,
+    load_gmail_source_settings,
+)
 from mailtaskagent.llm_client import MockMailAnalyzer, build_analyzer
 from mailtaskagent.manual_benchmark import (
     calculate_manual_benchmark_result,
@@ -72,6 +77,28 @@ DEMO_SCENARIOS = {
         "mail_ids": ["MAIL-001", "MAIL-009"],
     },
 }
+
+SYNTHETIC_MAIL_SOURCE = "합성 데모"
+GMAIL_TEST_SOURCE = "Gmail 테스트"
+
+
+def _gmail_connection_summary() -> dict:
+    gmail_settings = load_gmail_source_settings()
+    return {
+        "credentials_ready": gmail_settings.credentials_path.exists(),
+        "token_ready": gmail_settings.token_path.exists(),
+        "query": gmail_settings.query,
+        "max_results": gmail_settings.max_results,
+    }
+
+
+def _load_gmail_test_mails():
+    gmail_settings = load_gmail_source_settings()
+    source = GmailReadOnlySource(
+        build_gmail_service(gmail_settings),
+        gmail_settings,
+    )
+    return source.load()
 
 
 def _apply_styles() -> None:
@@ -178,10 +205,11 @@ def _task_priority(task: dict) -> tuple[int, str, str]:
     return rank, task.get("due_date") or "9999-12-31", task["task_id"]
 
 
-def _render_product_dashboard(storage, total_mail_count: int) -> None:
+def _render_product_dashboard(storage, mails) -> None:
     tasks = storage.list_tasks()
     pending_reviews = storage.list_pending_reviews()
-    processed_count = len(storage.list_processing_results())
+    total_mail_count = len(mails)
+    processed_count = sum(storage.is_processed(mail.mail_id) for mail in mails)
     active_tasks = [
         task for task in tasks if task["status"] not in {"COMPLETED", "CANCELLED"}
     ]
@@ -434,13 +462,18 @@ def _mail_overview(mails, storage) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _process_unprocessed_mails(storage, settings, mails) -> None:
+def _process_unprocessed_mails(
+    storage,
+    settings,
+    mails,
+    source_batch_name: str = "합성 메일",
+) -> None:
     pending_mails = [mail for mail in mails if not storage.is_processed(mail.mail_id)]
     if not pending_mails:
         st.session_state["batch_flash"] = {
             "success": 0,
             "failed": [],
-            "message": "모든 합성 메일이 이미 처리됐습니다.",
+            "message": f"모든 {source_batch_name}이 이미 처리됐습니다.",
         }
         st.rerun()
 
@@ -464,17 +497,25 @@ def _process_unprocessed_mails(storage, settings, mails) -> None:
     st.session_state["batch_flash"] = {
         "success": succeeded,
         "failed": failed,
-        "message": f"미처리 합성 메일 {len(pending_mails)}건 자동 정리를 실행했습니다.",
+        "message": (
+            f"미처리 {source_batch_name} {len(pending_mails)}건 자동 정리를 실행했습니다."
+        ),
     }
     st.rerun()
 
 
-def _render_mailbox(storage, settings, mails) -> None:
+def _render_mailbox(storage, settings, mails, source_name: str) -> None:
     st.subheader("메일 처리함")
-    st.caption(
-        "연결된 입력 Source에서 들어온 메일의 분류와 처리 결과를 한곳에서 봅니다. "
-        "현재 Source는 합성 Dataset이며, 실제 Outlook 전체 메일함을 읽는 단계는 아닙니다."
-    )
+    if source_name == GMAIL_TEST_SOURCE:
+        st.caption(
+            "OAuth 읽기 전용으로 제한된 Gmail 테스트 라벨의 메일만 가져옵니다. "
+            "메일 작성·전송·삭제 권한은 없으며 전체 받은편지함을 자동 처리하지 않습니다."
+        )
+    else:
+        st.caption(
+            "연결된 입력 Source에서 들어온 메일의 분류와 처리 결과를 한곳에서 봅니다. "
+            "현재 Source는 합성 Dataset이며, 실제 Outlook 전체 메일함을 읽는 단계는 아닙니다."
+        )
 
     batch_flash = st.session_state.pop("batch_flash", None)
     if batch_flash:
@@ -487,6 +528,14 @@ def _render_mailbox(storage, settings, mails) -> None:
                 st.json(batch_flash["failed"])
         else:
             st.success(f"{batch_flash['message']} 성공 {batch_flash['success']}건")
+
+    if not mails:
+        st.info(
+            "현재 입력 Source에서 가져온 메일이 없습니다. Gmail 테스트라면 "
+            "`MailTaskAgent-Demo` 라벨을 붙인 합성 테스트 메일을 준비한 뒤 "
+            "사이드바의 새 메일 확인을 실행하세요."
+        )
+        return
 
     overview = _mail_overview(mails, storage)
     status_options = list(overview["처리 상태"].drop_duplicates())
@@ -503,14 +552,22 @@ def _render_mailbox(storage, settings, mails) -> None:
     )
 
     unprocessed_count = sum(not storage.is_processed(mail.mail_id) for mail in mails)
-    button_label = f"미처리·실패 합성 메일 전체 자동 정리 · {unprocessed_count}건"
+    source_batch_name = (
+        "Gmail 테스트 메일" if source_name == GMAIL_TEST_SOURCE else "합성 메일"
+    )
+    button_label = f"미처리·실패 {source_batch_name} 전체 자동 정리 · {unprocessed_count}건"
     if st.button(
         button_label,
         type="primary",
         disabled=unprocessed_count == 0,
         width="stretch",
     ):
-        _process_unprocessed_mails(storage, settings, mails)
+        _process_unprocessed_mails(
+            storage,
+            settings,
+            mails,
+            source_batch_name=source_batch_name,
+        )
 
     with st.expander("메일 한 건 직접 처리"):
         selected = st.selectbox(
@@ -554,6 +611,13 @@ def _render_review_queue(storage, settings, mail_by_id) -> None:
         key="pending_review_selector",
     )
     mail_id = selected_review["mail_id"]
+    source_mail = mail_by_id.get(mail_id)
+    if source_mail is None:
+        st.warning(
+            "원본 Mail이 현재 입력 Source에 없습니다. Gmail Mail이라면 사이드바에서 "
+            "Gmail 테스트를 선택해 다시 불러온 뒤 사용자 결정을 진행하세요."
+        )
+        return
     candidates = selected_review.get("candidate_tasks", [])
     proposal_action = selected_review["proposal"]["action"]
     proposed_status = selected_review["proposal"].get("changes", {}).get("status")
@@ -603,7 +667,7 @@ def _render_review_queue(storage, settings, mail_by_id) -> None:
         default_title = (
             selected_review["analysis"].get("task_title")
             or selected_review["analysis"].get("request_summary")
-            or mail_by_id[mail_id].subject
+            or source_mail.subject
         )
         new_task_title = st.text_input("새 Task 제목", value=default_title)
 
@@ -627,7 +691,7 @@ def _render_review_queue(storage, settings, mail_by_id) -> None:
         try:
             workflow = MailTaskWorkflow(settings, storage, build_analyzer(settings))
             review_result = workflow.resolve_review(
-                mail=mail_by_id[mail_id],
+                mail=source_mail,
                 decision=decision,
                 target_task_id=target_task_id,
                 new_task_title=new_task_title,
@@ -650,8 +714,11 @@ def _render_event_log(storage, mail_ids: list[str]) -> None:
         st.info("아직 실행 로그가 없습니다.")
         return
 
+    known_mail_ids = sorted({*mail_ids, *(event["mail_id"] for event in events)})
     filter_col1, filter_col2, filter_col3 = st.columns(3)
-    mail_filter = filter_col1.selectbox("Mail ID", ["전체", *mail_ids], key="log_mail_filter")
+    mail_filter = filter_col1.selectbox(
+        "Mail ID", ["전체", *known_mail_ids], key="log_mail_filter"
+    )
     levels = sorted({event["level"] for event in events})
     level_filter = filter_col2.selectbox("Level", ["전체", *levels], key="log_level_filter")
     steps = sorted({event["step"] for event in events})
@@ -1187,8 +1254,8 @@ def main() -> None:
     settings = load_settings()
     storage = SQLiteStorage(settings.database_path)
     storage.initialize()
-    mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
-    mail_by_id = {mail.mail_id: mail for mail in mails}
+    synthetic_mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
+    gmail_summary = _gmail_connection_summary()
 
     st.title("MailTaskAgent")
     st.write("메일을 업무로 바꾸고, 후속 변경과 확인이 필요한 결정을 놓치지 않게 관리합니다.")
@@ -1202,8 +1269,49 @@ def main() -> None:
             st.warning("MOCK · 합성 Mail 기능 검증")
         else:
             st.success(f"LIVE · {settings.model}")
-        st.caption("Mail Source · 합성 JSON")
-        st.caption("현재 합성 Mail은 메일 처리함에서 일괄 자동 정리합니다.")
+        gmail_connected = (
+            gmail_summary["credentials_ready"] and gmail_summary["token_ready"]
+        )
+        source_options = [SYNTHETIC_MAIL_SOURCE]
+        if gmail_connected:
+            source_options.append(GMAIL_TEST_SOURCE)
+        selected_source = st.radio(
+            "입력 Source",
+            source_options,
+            key="selected_mail_source",
+        )
+        if gmail_connected:
+            st.success("Gmail OAuth · 읽기 전용 연결됨")
+            st.caption(f"제한 Query · {gmail_summary['query']}")
+        elif gmail_summary["credentials_ready"]:
+            st.warning("Gmail OAuth · 사용자 승인 필요")
+        else:
+            st.caption("Gmail OAuth · 선택 연동 전")
+
+        if selected_source == GMAIL_TEST_SOURCE:
+            refresh_gmail = st.button(
+                "Gmail 새 메일 확인",
+                type="secondary",
+                width="stretch",
+            )
+            if refresh_gmail or "gmail_test_mails" not in st.session_state:
+                try:
+                    with st.spinner("제한된 Gmail 테스트 라벨을 확인하고 있습니다..."):
+                        st.session_state["gmail_test_mails"] = _load_gmail_test_mails()
+                    st.session_state.pop("gmail_load_error", None)
+                except Exception as exc:
+                    st.session_state["gmail_test_mails"] = []
+                    st.session_state["gmail_load_error"] = type(exc).__name__
+            gmail_error = st.session_state.get("gmail_load_error")
+            if gmail_error:
+                st.error(f"Gmail 조회 실패 · {gmail_error}")
+            else:
+                st.caption(
+                    f"가져온 테스트 Mail · "
+                    f"{len(st.session_state.get('gmail_test_mails', []))}건"
+                )
+        else:
+            st.caption("합성 Mail 15건 · 전체 Agent Core 검증")
         st.divider()
         with st.expander("기술 설정"):
             st.text(f"Endpoint: {settings.api_url}")
@@ -1215,6 +1323,12 @@ def main() -> None:
             st.session_state.pop("last_result", None)
             st.session_state.pop("demo_flash", None)
             st.rerun()
+
+    gmail_mails = st.session_state.get("gmail_test_mails", [])
+    mails = gmail_mails if selected_source == GMAIL_TEST_SOURCE else synthetic_mails
+    mail_by_id = {
+        mail.mail_id: mail for mail in [*synthetic_mails, *gmail_mails]
+    }
 
     review_flash = st.session_state.pop("review_flash", None)
     if review_flash:
@@ -1228,10 +1342,10 @@ def main() -> None:
     )
 
     with dashboard_tab:
-        _render_product_dashboard(storage, len(mails))
+        _render_product_dashboard(storage, mails)
 
     with mailbox_tab:
-        _render_mailbox(storage, settings, mails)
+        _render_mailbox(storage, settings, mails, selected_source)
 
     with review_tab:
         st.write("Agent가 확신하지 못한 경우에는 DB 변경을 멈추고 사람의 결정을 기다립니다.")
