@@ -78,16 +78,29 @@ def _apply_styles() -> None:
     st.markdown(
         """
         <style>
-        .block-container {padding-top: 2rem; padding-bottom: 3rem; max-width: 1500px;}
+        .stApp {background: #f6f8fc;}
+        .block-container {padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1480px;}
+        [data-testid="stSidebar"] {background: #13203b; border-right: 0;}
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] label {color: #e7eefc;}
+        [data-testid="stSidebar"] button {
+            border-color: #415273; color: #e7eefc; background: #1d2d4d;
+        }
+        [data-testid="stSidebar"] hr {border-color: #334563;}
         [data-testid="stMetric"] {
-            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px;
-            padding: 14px 16px;
+            background: #ffffff; border: 1px solid #dde5f1; border-radius: 16px;
+            padding: 16px 18px; box-shadow: 0 4px 14px rgba(20, 40, 80, 0.04);
         }
         [data-testid="stMetricLabel"] {color: #475569;}
+        button[data-baseweb="tab"] {font-weight: 650; padding-left: 14px; padding-right: 14px;}
+        button[data-baseweb="tab"][aria-selected="true"] {color: #3157d5;}
         div[data-testid="stStatusWidget"] {border-radius: 14px;}
         .mail-card {
-            padding: 16px 18px; border-radius: 14px; background: #f8fafc;
-            border: 1px solid #e2e8f0; margin-bottom: 12px;
+            padding: 16px 18px; border-radius: 14px; background: #ffffff;
+            border: 1px solid #dde5f1; margin-bottom: 12px;
         }
         .mail-card small {color: #64748b;}
         </style>
@@ -150,6 +163,101 @@ def _task_attention(task: dict) -> str:
         if waiting_days >= 3:
             return f"회신 {waiting_days}일 대기"
     return "-"
+
+
+def _task_priority(task: dict) -> tuple[int, str, str]:
+    attention = _task_attention(task)
+    if "초과" in attention:
+        rank = 0
+    elif "오늘" in attention or "남음" in attention:
+        rank = 1
+    elif "대기" in attention:
+        rank = 2
+    else:
+        rank = 3
+    return rank, task.get("due_date") or "9999-12-31", task["task_id"]
+
+
+def _render_product_dashboard(storage, total_mail_count: int) -> None:
+    tasks = storage.list_tasks()
+    pending_reviews = storage.list_pending_reviews()
+    processed_count = len(storage.list_processing_results())
+    active_tasks = [
+        task for task in tasks if task["status"] not in {"COMPLETED", "CANCELLED"}
+    ]
+    attention_tasks = [task for task in active_tasks if _task_attention(task) != "-"]
+
+    st.subheader("오늘의 업무")
+    st.caption("메일에서 정리된 업무와 확인이 필요한 변경을 우선순위대로 모았습니다.")
+    summary_1, summary_2, summary_3, summary_4 = st.columns(4)
+    summary_1.metric("처리된 Mail", f"{processed_count}/{total_mail_count}건")
+    summary_2.metric("활성 업무", f"{len(active_tasks)}건")
+    summary_3.metric("기한·대기 주의", f"{len(attention_tasks)}건")
+    summary_4.metric("Agent 확인 필요", f"{len(pending_reviews)}건")
+
+    search_text = st.text_input(
+        "업무 검색",
+        placeholder="업무 제목, 설명 또는 요청자를 검색하세요",
+        key="dashboard_task_search",
+    ).strip().casefold()
+    filtered_tasks = active_tasks
+    if search_text:
+        filtered_tasks = [
+            task
+            for task in active_tasks
+            if search_text
+            in " ".join(
+                filter(
+                    None,
+                    [task.get("title"), task.get("description"), task.get("requester")],
+                )
+            ).casefold()
+        ]
+
+    priority_col, attention_col = st.columns([1.7, 1])
+    with priority_col:
+        st.markdown("### 우선 처리 업무")
+        prioritized = sorted(filtered_tasks, key=_task_priority)
+        if prioritized:
+            priority_frame = pd.DataFrame(
+                [
+                    {
+                        "업무": task["title"],
+                        "상태": STATUS_LABELS.get(task["status"], task["status"]),
+                        "기한": task.get("due_date") or "없음",
+                        "요청자": task.get("requester") or "-",
+                        "주의": _task_attention(task),
+                    }
+                    for task in prioritized
+                ]
+            )
+            st.dataframe(priority_frame, width="stretch", hide_index=True)
+        elif search_text:
+            st.info("검색 조건에 맞는 활성 업무가 없습니다.")
+        else:
+            st.info("메일을 처리하면 우선순위 업무가 여기에 표시됩니다.")
+
+    with attention_col:
+        st.markdown("### 오늘의 주의 항목")
+        if pending_reviews:
+            first_review = pending_reviews[0]
+            st.warning(
+                f"Agent 확인 필요 {len(pending_reviews)}건 · "
+                f"{first_review['mail_id']} {first_review['proposal']['reason']}"
+            )
+        for task in sorted(attention_tasks, key=_task_priority)[:3]:
+            with st.container(border=True):
+                st.markdown(f"**{task['title']}**")
+                st.caption(
+                    f"{_task_attention(task)} · "
+                    f"{STATUS_LABELS.get(task['status'], task['status'])} · "
+                    f"{task.get('requester') or '요청자 없음'}"
+                )
+        if not pending_reviews and not attention_tasks:
+            st.success("지금 확인이 필요한 변경이나 일정 경고가 없습니다.")
+
+    st.divider()
+    _render_tasks_and_histories(storage)
 
 
 def _render_agent_result(result: dict) -> None:
@@ -1082,41 +1190,26 @@ def main() -> None:
     mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
     mail_by_id = {mail.mail_id: mail for mail in mails}
 
-    st.title("MailTaskAgent · 업무 대시보드")
-    st.write("메일을 읽고 기존 업무와 연결해, 다음 조치와 현재 상태를 한곳에서 관리합니다.")
-
-    st.info(
-        "현재는 **합성 메일 Source로 Agent Core를 검증 중**입니다. "
-        "대시보드 구조와 처리 Workflow는 최종 Core UI 기준이며, "
-        "Outlook 자동 수집 Adapter는 Post-MVP에서 같은 입력 경계에 연결합니다."
-    )
-
-    tasks = storage.list_tasks()
-    pending_reviews = storage.list_pending_reviews()
-    processed_count = len(storage.list_processing_results())
-    active_tasks = [task for task in tasks if task["status"] not in {"COMPLETED", "CANCELLED"}]
-    attention_count = sum(_task_attention(task) != "-" for task in active_tasks)
-    summary_1, summary_2, summary_3, summary_4 = st.columns(4)
-    summary_1.metric("처리된 메일", f"{processed_count}/{len(mails)}건")
-    summary_2.metric("진행 중인 업무", f"{len(active_tasks)}건")
-    summary_3.metric("확인 필요", f"{len(pending_reviews)}건")
-    summary_4.metric("일정·대기 주의", f"{attention_count}건")
+    st.title("MailTaskAgent")
+    st.write("메일을 업무로 바꾸고, 후속 변경과 확인이 필요한 결정을 놓치지 않게 관리합니다.")
 
     with st.sidebar:
-        st.subheader("실행 설정")
-        if settings.use_mock:
-            st.warning("MOCK 모드 · 정해진 분석 결과로 기능을 테스트합니다.")
-        else:
-            st.success(f"LIVE 모드 · {settings.model}")
-        st.text(f"Endpoint: {settings.api_url}")
-        st.text(f"API version: {settings.api_version}")
-        st.caption("API 키 값은 화면과 로그에 표시하지 않습니다.")
+        st.title("MailTaskAgent")
+        st.caption("Personal work copilot")
         st.divider()
-        st.caption(
-            "현재 메일 Source: 합성 JSON\n\n"
-            "자동 정리 범위: Source가 전달한 메일\n\n"
-            "Outlook/Graph: Post-MVP"
-        )
+        st.subheader("연동 상태")
+        if settings.use_mock:
+            st.warning("MOCK · 합성 Mail 기능 검증")
+        else:
+            st.success(f"LIVE · {settings.model}")
+        st.caption("Mail Source · 합성 JSON")
+        st.caption("현재 합성 Mail은 메일 처리함에서 일괄 자동 정리합니다.")
+        st.divider()
+        with st.expander("기술 설정"):
+            st.text(f"Endpoint: {settings.api_url}")
+            st.text(f"API version: {settings.api_version}")
+            st.caption("API 키 값은 화면과 로그에 표시하지 않습니다.")
+            st.caption("Outlook/Graph · Post-MVP")
         if st.button("데모 DB 초기화", type="secondary"):
             storage.reset()
             st.session_state.pop("last_result", None)
@@ -1135,7 +1228,7 @@ def main() -> None:
     )
 
     with dashboard_tab:
-        _render_tasks_and_histories(storage)
+        _render_product_dashboard(storage, len(mails))
 
     with mailbox_tab:
         _render_mailbox(storage, settings, mails)
