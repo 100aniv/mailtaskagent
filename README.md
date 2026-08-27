@@ -28,7 +28,7 @@
 - 기존 Task 연결, 신규 Task 생성, 무시 선택 및 사용자 결정 History
 - 완료 제안 후 사용자 승인 시에만 `COMPLETED` 반영
 - Dashboard에서 Task 제목·설명·기한·상태·회신 필요 여부 직접 수정과 History 저장
-- 기대결과를 분리한 대표 Business Case 15개와 pytest 49건
+- 기대결과를 분리한 대표 Business Case 15개와 제품형 Dashboard 회귀를 포함한 pytest 50건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 
