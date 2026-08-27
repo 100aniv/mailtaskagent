@@ -10,6 +10,33 @@ from mailtaskagent import ui as ui_module
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_history_change_rows_show_only_business_field_changes() -> None:
+    rows = ui_module._history_change_rows(
+        {
+            "title": "주간 현황 보고서 작성",
+            "due_date": "2026-08-31",
+            "status": "TODO",
+            "updated_at": "2026-08-27T13:28:15+00:00",
+        },
+        {
+            "title": "주간 현황 보고서 작성",
+            "due_date": "2026-09-02",
+            "status": "TODO",
+            "updated_at": "2026-08-27T13:28:18+00:00",
+        },
+    )
+
+    assert rows == [
+        {"변경 항목": "기한", "변경 전": "2026-08-31", "변경 후": "2026-09-02"}
+    ]
+
+
+def test_display_value_localizes_status_and_boolean() -> None:
+    assert ui_module._display_value("WAITING_REPLY", "status") == "회신 대기"
+    assert ui_module._display_value(True, "reply_required") == "예"
+    assert ui_module._display_value(None) == "-"
+
+
 def test_product_dashboard_and_full_mock_mail_flow(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "ui-smoke.db"))
     monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")

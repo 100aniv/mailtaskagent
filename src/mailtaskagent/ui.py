@@ -81,6 +81,56 @@ DEMO_SCENARIOS = {
 SYNTHETIC_MAIL_SOURCE = "합성 데모"
 GMAIL_TEST_SOURCE = "Gmail 테스트"
 
+HISTORY_FIELD_LABELS = {
+    "title": "업무 제목",
+    "description": "업무 설명",
+    "requester": "요청자",
+    "due_date": "기한",
+    "reply_required": "회신 필요",
+    "status": "상태",
+    "waiting_since": "회신 대기 시작",
+}
+
+
+def _display_value(value, field: str | None = None) -> str:
+    if value is None or value == "":
+        return "-"
+    if field == "status":
+        return STATUS_LABELS.get(str(value), str(value))
+    if isinstance(value, bool):
+        return "예" if value else "아니오"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
+
+def _history_change_rows(before: dict | None, after: dict | None) -> list[dict]:
+    before = before or {}
+    after = after or {}
+    rows = []
+    for field, label in HISTORY_FIELD_LABELS.items():
+        before_value = before.get(field)
+        after_value = after.get(field)
+        if before_value == after_value:
+            continue
+        rows.append(
+            {
+                "변경 항목": label,
+                "변경 전": _display_value(before_value, field),
+                "변경 후": _display_value(after_value, field),
+            }
+        )
+    return rows
+
+
+def _detail_rows(details) -> list[dict]:
+    if not isinstance(details, dict):
+        return []
+    return [
+        {"항목": key.replace("_", " "), "값": _display_value(value)}
+        for key, value in details.items()
+    ]
+
 
 def _gmail_connection_summary() -> dict:
     gmail_settings = load_gmail_source_settings()
@@ -761,15 +811,45 @@ def _render_event_log(storage, mail_ids: list[str]) -> None:
             f"#{item['event_id']} · {item['mail_id']} · {item['step']} · {item['status']}"
         ),
     )
-    st.json(
-        {
-            "case_id": selected_event["case_id"],
-            "message": selected_event["message"],
-            "details": _parse_json(selected_event["details_json"]),
-            "duration_ms": selected_event["duration_ms"],
-            "created_at": selected_event["created_at"],
-        }
-    )
+    details = _parse_json(selected_event["details_json"])
+    st.markdown("#### 선택 로그 요약")
+    with st.container(border=True):
+        step_col, status_col, duration_col = st.columns(3)
+        step_col.metric("처리 단계", selected_event["step"])
+        status_col.metric("결과", selected_event["status"])
+        duration_col.metric(
+            "소요 시간",
+            (
+                f"{int(selected_event['duration_ms'])} ms"
+                if selected_event["duration_ms"] is not None
+                else "-"
+            ),
+        )
+        if selected_event["status"] == "SUCCESS":
+            st.success(selected_event["message"])
+        elif selected_event["level"] == "ERROR":
+            st.error(selected_event["message"])
+        else:
+            st.warning(selected_event["message"])
+        st.caption(
+            f"Mail {selected_event['mail_id']} · Case {selected_event['case_id']} · "
+            f"{selected_event['created_at']}"
+        )
+        detail_rows = _detail_rows(details)
+        if detail_rows:
+            st.dataframe(pd.DataFrame(detail_rows), width="stretch", hide_index=True)
+        else:
+            st.caption("이 단계에는 별도 상세 데이터가 없습니다.")
+    with st.expander("Audit 원문 · 정제된 기술 데이터"):
+        st.json(
+            {
+                "case_id": selected_event["case_id"],
+                "message": selected_event["message"],
+                "details": details,
+                "duration_ms": selected_event["duration_ms"],
+                "created_at": selected_event["created_at"],
+            }
+        )
     st.caption("API Key, Authorization Header, Token과 Secret 값은 저장 전에 제거됩니다.")
 
 
@@ -883,17 +963,43 @@ def _render_tasks_and_histories(storage) -> None:
                 f"#{item['history_id']} · {item['mail_id']} · {item['action']}"
             ),
         )
-        st.json(
-            {
-                "처리 시각": selected_history["created_at"],
-                "Source Mail ID": selected_history["mail_id"],
-                "Action": selected_history["action"],
-                "변경 전": _parse_json(selected_history["before_json"]),
-                "변경 후": _parse_json(selected_history["after_json"]),
-                "Agent 판단 근거": selected_history["reason"],
-                "사용자 결정": _parse_json(selected_history["user_decision"]),
-            }
-        )
+        before = _parse_json(selected_history["before_json"])
+        after = _parse_json(selected_history["after_json"])
+        user_decision = _parse_json(selected_history["user_decision"])
+        change_rows = _history_change_rows(before, after)
+        st.markdown("#### 선택 History 요약")
+        with st.container(border=True):
+            action_col, task_col, confidence_col = st.columns(3)
+            action_col.metric(
+                "Agent Action",
+                ACTION_LABELS.get(selected_history["action"], selected_history["action"]),
+            )
+            task_col.metric("대상 Task", selected_history["task_id"] or "-")
+            confidence_col.metric("신뢰도", f"{selected_history['confidence']:.0%}")
+            st.caption(
+                f"{selected_history['created_at']} · Source Mail {selected_history['mail_id']}"
+            )
+            st.info(f"판단 근거 · {selected_history['reason']}")
+            if user_decision:
+                st.success(f"사용자 최종 결정 · {_display_value(user_decision)}")
+            else:
+                st.caption("사용자 확인 없이 검증된 Agent Action이 반영되었습니다.")
+            if change_rows:
+                st.dataframe(pd.DataFrame(change_rows), width="stretch", hide_index=True)
+            else:
+                st.caption("Task 필드 변경 없이 Mail 연결 또는 처리 기록만 저장되었습니다.")
+        with st.expander("Audit 원문 · 변경 전후 전체 데이터"):
+            st.json(
+                {
+                    "처리 시각": selected_history["created_at"],
+                    "Source Mail ID": selected_history["mail_id"],
+                    "Action": selected_history["action"],
+                    "변경 전": before,
+                    "변경 후": after,
+                    "Agent 판단 근거": selected_history["reason"],
+                    "사용자 결정": user_decision,
+                }
+            )
 
 
 def _render_quality_evaluation(settings) -> None:
