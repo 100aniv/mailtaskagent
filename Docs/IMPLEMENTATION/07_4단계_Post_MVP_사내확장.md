@@ -167,9 +167,13 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
   변경은 기존 사용자 수정 경로와 History를 재사용한다.
 - 사용자 Rule의 추가·활성화·비활성화·삭제, 기한 임박·회신 대기 기준 설정과 Task별
   중요도 Override를 SQLite에 저장한다.
-- 기존 Core 회귀와 Post-MVP Priority·UI 테스트를 함께 실행해 pytest `65 passed`를
-  확인했다. 로컬 Streamlit 서버 기동도 확인했다.
-- 상시 Gmail Polling, Outlook/Graph, RAG와 사내 배포는 아직 구현 완료로 표시하지 않는다.
+- 실제 업무 모드에서 사용자가 한 번 활성화하면 제한된 Gmail Label을 1~60분 주기로
+  읽고, 미처리 `mail_id`만 기존 Agent Core로 자동 정리하는 파일럿 Polling을 구현했다.
+  Gmail 작성·발송·삭제 권한은 추가하지 않았다.
+- 기존 Core 회귀와 Post-MVP Priority·UI·자동 동기화 테스트를 함께 실행해 pytest
+  `67 passed`를 확인했다. 로컬 Streamlit 서버 기동도 확인했다.
+- 브라우저가 열려 있는 단일 사용자 파일럿을 넘어선 서버 상시 실행, Outlook/Graph,
+  RAG와 사내 배포는 아직 구현 완료로 표시하지 않는다.
 
 ## 11. 현재 범위 밖
 

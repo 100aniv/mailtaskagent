@@ -4,6 +4,8 @@ import json
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import pytest
+
 from mailtaskagent.config import PROJECT_ROOT, Settings
 from mailtaskagent.llm_client import MockMailAnalyzer
 from mailtaskagent.priority import PriorityLevel, calculate_task_priority
@@ -130,3 +132,30 @@ def test_priority_rule_settings_and_task_override_are_persisted(tmp_path: Path) 
 
     storage.delete_priority_rule(rule["rule_id"])
     assert storage.list_priority_rules() == []
+
+
+def test_operation_auto_sync_settings_are_persisted_and_validated(tmp_path: Path) -> None:
+    storage = SQLiteStorage(tmp_path / "operation-settings.db")
+    storage.initialize()
+
+    assert storage.get_operation_settings() == {
+        "gmail_auto_sync_enabled": False,
+        "gmail_sync_interval_minutes": 5,
+    }
+
+    updated = storage.update_operation_settings(
+        gmail_auto_sync_enabled=True,
+        gmail_sync_interval_minutes=10,
+    )
+
+    assert updated == {
+        "gmail_auto_sync_enabled": True,
+        "gmail_sync_interval_minutes": 10,
+    }
+    assert storage.get_operation_settings() == updated
+
+    with pytest.raises(ValueError, match="between 1 and 60"):
+        storage.update_operation_settings(
+            gmail_auto_sync_enabled=True,
+            gmail_sync_interval_minutes=0,
+        )

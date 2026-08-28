@@ -5,6 +5,8 @@ from pathlib import Path
 from streamlit.testing.v1 import AppTest
 
 from mailtaskagent import ui as ui_module
+from mailtaskagent.storage import SQLiteStorage
+from mailtaskagent.workflow import load_mails
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -188,4 +190,42 @@ def test_gmail_readonly_source_empty_state(tmp_path, monkeypatch) -> None:
     assert any(
         "현재 입력 Source에서 가져온 메일이 없습니다." in message.value
         for message in app.info
+    )
+
+
+def test_operation_mode_can_enable_automatic_gmail_processing(
+    tmp_path, monkeypatch
+) -> None:
+    credentials_path = tmp_path / "gmail_credentials.json"
+    token_path = tmp_path / "gmail_token.json"
+    database_path = tmp_path / "gmail-auto-sync.db"
+    credentials_path.write_text("{}", encoding="utf-8")
+    token_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+    monkeypatch.setenv("GMAIL_CREDENTIALS_PATH", str(credentials_path))
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(token_path))
+    gmail_mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")[:1]
+    monkeypatch.setattr(ui_module, "_load_gmail_test_mails", lambda: gmail_mails)
+
+    app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
+    app = _start_mode(app, "실제 업무 모드로 시작")
+
+    auto_sync = next(
+        checkbox
+        for checkbox in app.checkbox
+        if checkbox.label == "새 메일을 자동으로 Task에 반영"
+    )
+    auto_sync.set_value(True)
+    save_button = next(
+        button for button in app.button if button.label == "자동 정리 설정 저장"
+    )
+    app = save_button.click().run(timeout=120)
+
+    assert not app.exception
+    assert SQLiteStorage(database_path).is_processed(gmail_mails[0].mail_id)
+    assert any("Gmail 자동 정리" in caption.value for caption in app.caption)
+    assert any(
+        "Gmail 자동 확인에서 새 메일 1건을 정리했습니다." in message.value
+        for message in app.success
     )

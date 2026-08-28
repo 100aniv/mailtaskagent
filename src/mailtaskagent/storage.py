@@ -106,6 +106,11 @@ CREATE TABLE IF NOT EXISTS priority_settings (
     setting_value INTEGER NOT NULL,
     updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS operation_settings (
+    setting_key TEXT PRIMARY KEY,
+    setting_value INTEGER NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -1135,6 +1140,56 @@ class SQLiteStorage:
                 )
             connection.commit()
         return resolved
+
+    def get_operation_settings(self) -> dict[str, bool | int]:
+        defaults: dict[str, bool | int] = {
+            "gmail_auto_sync_enabled": False,
+            "gmail_sync_interval_minutes": 5,
+        }
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT setting_key, setting_value FROM operation_settings"
+            ).fetchall()
+        stored = {row["setting_key"]: int(row["setting_value"]) for row in rows}
+        return {
+            **defaults,
+            **stored,
+            "gmail_auto_sync_enabled": bool(
+                stored.get(
+                    "gmail_auto_sync_enabled",
+                    defaults["gmail_auto_sync_enabled"],
+                )
+            ),
+        }
+
+    def update_operation_settings(
+        self,
+        *,
+        gmail_auto_sync_enabled: bool,
+        gmail_sync_interval_minutes: int,
+    ) -> dict[str, bool | int]:
+        interval = int(gmail_sync_interval_minutes)
+        if not 1 <= interval <= 60:
+            raise ValueError("Gmail sync interval must be between 1 and 60 minutes")
+        values = {
+            "gmail_auto_sync_enabled": int(gmail_auto_sync_enabled),
+            "gmail_sync_interval_minutes": interval,
+        }
+        now = _now()
+        with self.connect() as connection:
+            for key, value in values.items():
+                connection.execute(
+                    """
+                    INSERT INTO operation_settings(setting_key, setting_value, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(setting_key) DO UPDATE SET
+                        setting_value = excluded.setting_value,
+                        updated_at = excluded.updated_at
+                    """,
+                    (key, value, now),
+                )
+            connection.commit()
+        return self.get_operation_settings()
 
     def list_histories(self) -> list[dict]:
         with self.connect() as connection:

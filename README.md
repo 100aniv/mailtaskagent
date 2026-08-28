@@ -15,8 +15,10 @@
 - Pydantic 구조화 결과 검증
 - 잘못된 LLM 구조화 출력 1회 재시도
 - SQLite Task/History/중복 처리
-- `오늘의 업무` 요약·우선순위·주의 항목을 중심으로 한 제품형 업무 현황과
-  메일 처리함, 확인 필요, 운영 로그 Dashboard
+- 실제 업무 모드의 `오늘`, `내 업무`, `검토 필요`, `메일`, `활동 기록`,
+  `연결 및 설정` Dashboard와 분리된 MVP 시연 화면
+- 기한·회신 대기 긴급도와 고객사 Domain·발신자·Keyword·사용자 중요도를 조합한
+  설명 가능한 `🔴 즉시 처리`~`⚪ 일반 업무` Priority
 - 첫 화면에서 `실제 업무 모드`와 `MVP 시연 모드` 선택, 동일 Agent Core를 사용하되
   실제 업무 DB와 시연 DB를 분리하여 합성 시연 데이터가 운영 화면에 섞이지 않도록 구성
 - Mock 회귀와 회사 LLM Live를 구분한 15개 시나리오 품질 검증 Dashboard
@@ -31,7 +33,9 @@
 - 완료 제안 후 사용자 승인 시에만 `COMPLETED` 반영
 - Dashboard에서 Task 제목·설명·기한·상태·회신 필요 여부 직접 수정과 History 저장
 - 기대결과를 분리한 대표 Business Case 15개와 제품형 Dashboard·Gmail Adapter Contract,
-  운영/시연 모드 및 DB 격리 회귀를 포함한 pytest 60건
+  운영/시연 모드 및 DB 격리 회귀를 포함한 AI Master MVP pytest 60건
+- Post-MVP Priority Rule·사용자 Override·실전 UI·Gmail 자동 동기화를 포함한 전체
+  pytest 67건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀
@@ -78,10 +82,10 @@ Editable Package로 함께 등록하므로 별도의 `PYTHONPATH` 설정 없이 
 ```
 
 브라우저에서 `http://localhost:8501`을 열고 첫 화면에서 목적에 맞는 모드를 선택한다.
-`실제 업무 모드`는 업무 현황·메일 처리함·확인 필요·운영 로그만 제공하고, `MVP 시연 모드`는
-품질 검증·데모 도구를 추가로 제공한다. 기본 `업무 현황`은 `오늘의 업무` 요약,
-우선 처리 업무, 기한·회신 대기 주의 항목과 확인 대기 건을 먼저 보여준다. `메일 처리함`에서는
-Source로 들어온 합성메일 전체의 분류와 처리 결과를 확인하거나 미처리 메일을 한 번에 자동
+`실제 업무 모드`는 `오늘`, `내 업무`, `검토 필요`, `메일`, `활동 기록`, `연결 및 설정`의
+사용자 언어 메뉴를 제공하고, `MVP 시연 모드`는 품질 검증·데모 도구를 별도로 제공한다.
+기본 `오늘` 화면은 Priority별 건수, 판단 근거와 직접 완료 Action을 먼저 보여준다.
+`메일`에서는 Source로 들어온 메일의 분류와 처리 결과를 확인하거나 미처리 메일을 한 번에
 정리할 수 있다. 멘토용 재현 버튼은 `데모 도구`로 분리했다. `품질 검증`에서는 Mock 15개
 회귀를 즉시 실행하고, LIVE 모드에서는 같은 기대값으로 회사 LLM 결과를 별도 검증할 수 있다.
 
@@ -143,6 +147,10 @@ Google 공식 Python Quickstart 방식으로 Gmail API와 Desktop OAuth Client�
 ```
 
 기본 쿼리 `label:MailTaskAgent-Demo`, 최대 25건이며 빈 쿼리와 100건 초과 입력은 차단한다.
+실제 업무 모드의 `연결 및 설정`에서 Gmail 자동 정리를 한 번 활성화하면 1~60분 주기로
+제한 Label을 확인하고, SQLite에 처리 결과가 없는 새 `mail_id`만 기존 Agent Core로 넘긴다.
+이 파일럿 Polling은 Streamlit 화면이 열려 있는 동안 동작하며 Gmail 작성·발송·삭제 권한은
+사용하지 않는다. 서버 상시 실행과 Outlook/Microsoft Graph는 후속 사내 적용 단계다.
 실제 Gmail Live E2E 증적은 `evidence/gmail_live_e2e_2026-08-27.json`에 저장한다.
 공식 참고 문서는 [Gmail API Python Quickstart](https://developers.google.com/workspace/gmail/api/quickstart/python)와
 [messages.list](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list)다.

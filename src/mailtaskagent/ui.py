@@ -643,14 +643,59 @@ def _mail_overview(mails, storage) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _run_unprocessed_mail_batch(
+    storage,
+    settings,
+    mails,
+    *,
+    on_progress=None,
+) -> dict:
+    pending_mails = [mail for mail in mails if not storage.is_processed(mail.mail_id)]
+    workflow = (
+        MailTaskWorkflow(settings, storage, build_analyzer(settings))
+        if pending_mails
+        else None
+    )
+    succeeded = 0
+    failed = []
+    last_result = None
+    for index, mail in enumerate(pending_mails, start=1):
+        if on_progress:
+            on_progress(index, len(pending_mails), mail)
+        try:
+            last_result = workflow.process(mail)
+            succeeded += 1
+        except Exception as exc:
+            failed.append({"mail_id": mail.mail_id, "error": type(exc).__name__})
+    return {
+        "pending_count": len(pending_mails),
+        "success": succeeded,
+        "failed": failed,
+        "last_result": last_result,
+    }
+
+
 def _process_unprocessed_mails(
     storage,
     settings,
     mails,
     source_batch_name: str = "합성 메일",
 ) -> None:
-    pending_mails = [mail for mail in mails if not storage.is_processed(mail.mail_id)]
-    if not pending_mails:
+    progress = st.progress(0, text="메일 자동 정리를 시작합니다.")
+
+    def update_progress(index, total, mail) -> None:
+        progress.progress(
+            index / total,
+            text=f"{mail.mail_id} · {mail.subject}",
+        )
+
+    batch = _run_unprocessed_mail_batch(
+        storage,
+        settings,
+        mails,
+        on_progress=update_progress,
+    )
+    if not batch["pending_count"]:
         st.session_state["batch_flash"] = {
             "success": 0,
             "failed": [],
@@ -658,28 +703,14 @@ def _process_unprocessed_mails(
         }
         st.rerun()
 
-    workflow = MailTaskWorkflow(settings, storage, build_analyzer(settings))
-    progress = st.progress(0, text="메일 자동 정리를 시작합니다.")
-    succeeded = 0
-    failed = []
-    last_result = None
-    for index, mail in enumerate(pending_mails, start=1):
-        progress.progress(
-            index / len(pending_mails),
-            text=f"{mail.mail_id} · {mail.subject}",
-        )
-        try:
-            last_result = workflow.process(mail)
-            succeeded += 1
-        except Exception as exc:
-            failed.append({"mail_id": mail.mail_id, "error": str(exc)})
+    last_result = batch["last_result"]
     if last_result:
         st.session_state["last_result"] = last_result.model_dump(mode="json")
     st.session_state["batch_flash"] = {
-        "success": succeeded,
-        "failed": failed,
+        "success": batch["success"],
+        "failed": batch["failed"],
         "message": (
-            f"미처리 {source_batch_name} {len(pending_mails)}건 자동 정리를 실행했습니다."
+            f"미처리 {source_batch_name} {batch['pending_count']}건 자동 정리를 실행했습니다."
         ),
     }
     st.rerun()
@@ -1538,9 +1569,63 @@ def _render_manual_time_benchmark(live_report: dict | None) -> None:
             st.caption(f"측정 증적 저장: {evidence_path}")
 
 
+@st.fragment(run_every="60s")
+def _render_automatic_gmail_sync(storage, settings) -> None:
+    operation_settings = storage.get_operation_settings()
+    if not operation_settings["gmail_auto_sync_enabled"]:
+        st.caption("Gmail 자동 정리 · 꺼짐")
+        return
+
+    interval_minutes = int(operation_settings["gmail_sync_interval_minutes"])
+    now = datetime.now()
+    last_check = st.session_state.get("gmail_auto_sync_last_check")
+    if last_check and (now - last_check).total_seconds() < interval_minutes * 60:
+        st.caption(
+            f"Gmail 자동 정리 · {interval_minutes}분마다 · "
+            f"마지막 확인 {last_check.strftime('%H:%M:%S')}"
+        )
+        return
+
+    try:
+        if last_check is None and "gmail_test_mails" in st.session_state:
+            gmail_mails = st.session_state["gmail_test_mails"]
+        else:
+            gmail_mails = _load_gmail_test_mails()
+        st.session_state["gmail_test_mails"] = gmail_mails
+        batch = _run_unprocessed_mail_batch(storage, settings, gmail_mails)
+        st.session_state["gmail_auto_sync_last_check"] = now
+        st.session_state.pop("gmail_auto_sync_error", None)
+        if batch["last_result"]:
+            st.session_state["last_result"] = batch["last_result"].model_dump(
+                mode="json"
+            )
+        if batch["pending_count"]:
+            st.session_state["batch_flash"] = {
+                "success": batch["success"],
+                "failed": batch["failed"],
+                "message": (
+                    f"Gmail 자동 확인에서 새 메일 {batch['pending_count']}건을 정리했습니다."
+                ),
+            }
+            st.rerun()
+        st.caption(
+            f"Gmail 자동 정리 · {interval_minutes}분마다 · "
+            f"새 메일 없음 ({now.strftime('%H:%M:%S')})"
+        )
+    except Exception as exc:
+        error_type = type(exc).__name__
+        st.session_state["gmail_auto_sync_last_check"] = now
+        st.session_state["gmail_auto_sync_error"] = error_type
+        st.warning(f"Gmail 자동 확인 실패 · {error_type}")
+
+
 def _render_operation_settings(storage, gmail_summary: dict) -> None:
     st.subheader("연결 및 설정")
     st.caption("메일 연결 상태와 개인 업무 우선순위 기준을 관리합니다.")
+
+    settings_flash = st.session_state.pop("operation_settings_flash", None)
+    if settings_flash:
+        st.success(settings_flash)
 
     with st.container(border=True):
         st.markdown("### 메일 연결")
@@ -1552,6 +1637,41 @@ def _render_operation_settings(storage, gmail_summary: dict) -> None:
         else:
             st.warning("Gmail 사용자 승인이 필요합니다.")
         st.caption("Outlook / Microsoft Graph는 Gmail 실전 Workflow 검증 후 연결합니다.")
+
+    st.markdown("### Gmail 자동 정리")
+    operation_settings = storage.get_operation_settings()
+    with st.form("gmail_auto_sync_form"):
+        auto_sync_enabled = st.checkbox(
+            "새 메일을 자동으로 Task에 반영",
+            value=bool(operation_settings["gmail_auto_sync_enabled"]),
+            help=(
+                "제한된 Gmail Label의 읽기 전용 메일만 확인합니다. "
+                "이미 처리된 mail_id는 다시 분석하지 않습니다."
+            ),
+        )
+        sync_interval = int(
+            st.number_input(
+                "자동 확인 주기(분)",
+                min_value=1,
+                max_value=60,
+                value=int(operation_settings["gmail_sync_interval_minutes"]),
+                disabled=not auto_sync_enabled,
+            )
+        )
+        save_auto_sync = st.form_submit_button("자동 정리 설정 저장", type="primary")
+    if save_auto_sync:
+        try:
+            storage.update_operation_settings(
+                gmail_auto_sync_enabled=auto_sync_enabled,
+                gmail_sync_interval_minutes=sync_interval,
+            )
+            st.session_state.pop("gmail_auto_sync_last_check", None)
+            st.session_state["operation_settings_flash"] = (
+                "Gmail 자동 정리 설정을 저장했습니다."
+            )
+            st.rerun()
+        except ValueError as exc:
+            st.error(f"자동 정리 설정을 저장할 수 없습니다: {exc}")
 
     st.markdown("### 기한·회신 대기 기준")
     settings = storage.get_priority_settings()
@@ -1744,6 +1864,8 @@ def main() -> None:
                     f"가져온 테스트 Mail · "
                     f"{len(st.session_state.get('gmail_test_mails', []))}건"
                 )
+            if not demo_mode:
+                _render_automatic_gmail_sync(storage, settings)
         else:
             st.caption("합성 Mail 15건 · 전체 Agent Core 검증")
         st.divider()
@@ -1759,7 +1881,7 @@ def main() -> None:
                 st.session_state.pop("demo_flash", None)
                 st.rerun()
         else:
-            st.caption("현재 Gmail 테스트 연결 · 상시 자동 수집은 운영 배포 단계에서 적용")
+            st.caption("읽기 전용 Gmail 파일럿 · 설정에서 자동 정리 주기 관리")
 
     gmail_mails = st.session_state.get("gmail_test_mails", [])
     mails = gmail_mails if selected_source == GMAIL_TEST_SOURCE else synthetic_mails
