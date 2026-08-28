@@ -3,7 +3,7 @@ param(
     [string]$Mode = "Preview",
 
     [ValidateRange(1, 60)]
-    [int]$IntervalMinutes = 10,
+    [int]$IntervalMinutes = 1,
 
     [string]$TaskName = "MailTaskAgent-GmailSync"
 )

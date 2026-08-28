@@ -52,8 +52,8 @@ def test_demo_mode_uses_an_isolated_database_path(tmp_path) -> None:
 
 
 def _start_mode(app: AppTest, button_label: str) -> AppTest:
-    button = next(item for item in app.button if item.label == button_label)
-    return button.click().run(timeout=60)
+    buttons = [item for item in app.button if item.label == button_label]
+    return buttons[0].click().run(timeout=60) if buttons else app
 
 
 def _select_radio(
@@ -68,6 +68,10 @@ def test_mode_entry_separates_operational_and_demo_navigation(
 ) -> None:
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "mode-entry.db"))
     monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+    monkeypatch.setenv(
+        "GMAIL_CREDENTIALS_PATH", str(tmp_path / "missing-gmail-credentials.json")
+    )
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(tmp_path / "missing-gmail-token.json"))
 
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
 
@@ -84,7 +88,7 @@ def test_mode_entry_separates_operational_and_demo_navigation(
         "🏠 홈",
         "✅ 업무",
         "🟣 검토함",
-        "⚡ 자동화",
+        "⭐ 분류 기준",
         "⚙️ 설정",
     ]
     assert not app.tabs
@@ -100,6 +104,10 @@ def test_mode_entry_separates_operational_and_demo_navigation(
 def test_product_dashboard_and_full_mock_mail_flow(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "ui-smoke.db"))
     monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+    monkeypatch.setenv(
+        "GMAIL_CREDENTIALS_PATH", str(tmp_path / "missing-gmail-credentials.json")
+    )
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(tmp_path / "missing-gmail-token.json"))
 
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "MVP 시연 모드로 시작")
@@ -202,7 +210,7 @@ def test_gmail_readonly_source_empty_state(tmp_path, monkeypatch) -> None:
     )
 
 
-def test_operation_mode_can_enable_automatic_gmail_processing(
+def test_connected_operation_mode_runs_gmail_agent_by_default(
     tmp_path, monkeypatch
 ) -> None:
     credentials_path = tmp_path / "gmail_credentials.json"
@@ -219,35 +227,24 @@ def test_operation_mode_can_enable_automatic_gmail_processing(
 
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "실제 업무 모드로 시작")
-    app = _select_radio(app, "주 메뉴", "⚡ 자동화")
+    app = _select_radio(app, "주 메뉴", "⭐ 분류 기준")
 
     assert [tab.label for tab in app.tabs] == [
-        "📥 새 메일 자동 분류",
         "⭐ 중요도 기준",
         "🚫 광고·반복 메일 제외",
+        "⚙️ 실행 주기",
     ]
     assert any(
         "VIP 발신자, 고객사 도메인, 중요 키워드" in item.value
         for item in app.markdown
     )
 
-    auto_sync = next(
-        checkbox
-        for checkbox in app.checkbox
-        if checkbox.label == "새 메일을 자동으로 업무에 반영"
-    )
-    auto_sync.set_value(True)
-    save_button = next(
-        button for button in app.button if button.label == "자동 분류 저장"
-    )
-    app = save_button.click().run(timeout=120)
-
     assert not app.exception
     assert SQLiteStorage(database_path).is_processed(gmail_mails[0].mail_id)
+    assert SQLiteStorage(database_path).get_operation_settings() == {
+        "gmail_auto_sync_enabled": True,
+        "gmail_sync_interval_minutes": 1,
+    }
     assert any("Gmail 새 메일 자동 분류" in caption.value for caption in app.caption)
-    assert any(
-        "새 메일 자동 분류 설정을 저장했습니다." in message.value
-        for message in app.success
-    )
     app = _select_radio(app, "주 메뉴", "🏠 홈")
     assert any(item.value == gmail_mails[0].subject for item in app.markdown)

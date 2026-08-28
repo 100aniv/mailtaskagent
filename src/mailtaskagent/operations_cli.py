@@ -39,9 +39,20 @@ def _default_backup_path() -> Path:
     return PROJECT_ROOT / "data" / "backups" / f"mailtaskagent-{stamp}.db"
 
 
-def _run_sync_gmail() -> int:
+def _run_sync_gmail(*, force: bool = False) -> int:
     settings = load_settings()
     storage = SQLiteStorage(settings.database_path)
+    storage.initialize()
+    operation_settings = storage.get_operation_settings()
+    if not force and not operation_settings["gmail_auto_sync_enabled"]:
+        _print_json(
+            {
+                "status": "PAUSED",
+                "source": "GMAIL",
+                "message": "MailTaskAgent is paused by the user.",
+            }
+        )
+        return 0
     service = MailSyncService(
         settings=settings,
         storage=storage,
@@ -141,9 +152,14 @@ def main(argv: list[str] | None = None) -> int:
         description="MailTaskAgent scheduler-safe operations commands."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser(
+    sync_parser = subparsers.add_parser(
         "sync-gmail",
         help="Fetch the restricted Gmail label once and process only new mail IDs.",
+    )
+    sync_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Run one troubleshooting sync even when the user paused the agent.",
     )
     subparsers.add_parser(
         "health",
@@ -173,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "sync-gmail":
-            return _run_sync_gmail()
+            return _run_sync_gmail(force=args.force)
         if args.command == "status":
             return _run_status(args.limit)
         if args.command == "health":

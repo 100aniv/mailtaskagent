@@ -139,8 +139,8 @@ def test_operation_auto_sync_settings_are_persisted_and_validated(tmp_path: Path
     storage.initialize()
 
     assert storage.get_operation_settings() == {
-        "gmail_auto_sync_enabled": False,
-        "gmail_sync_interval_minutes": 5,
+        "gmail_auto_sync_enabled": True,
+        "gmail_sync_interval_minutes": 1,
     }
 
     updated = storage.update_operation_settings(

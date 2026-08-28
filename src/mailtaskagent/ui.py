@@ -161,10 +161,14 @@ def _detail_rows(details) -> list[dict]:
     ]
 
 
-def _render_mode_entry() -> str | None:
+def _render_mode_entry(*, gmail_connected: bool = False) -> str | None:
     selected_mode = st.session_state.get("app_mode")
     if selected_mode in {OPERATION_MODE, DEMO_MODE}:
         return selected_mode
+
+    if gmail_connected:
+        st.session_state["app_mode"] = OPERATION_MODE
+        return OPERATION_MODE
 
     st.title("MailTaskAgent")
     st.write("사용 목적에 맞는 화면을 선택하세요. 언제든 사이드바에서 다시 바꿀 수 있습니다.")
@@ -490,11 +494,11 @@ def _render_product_dashboard(
             sync_runs = storage.list_sync_runs(source="GMAIL", limit=1)
             with st.container(border=True):
                 auto_label = (
-                    f"켜짐 · {operation_settings['gmail_sync_interval_minutes']}분마다"
+                    f"실행 중 · {operation_settings['gmail_sync_interval_minutes']}분마다"
                     if operation_settings["gmail_auto_sync_enabled"]
-                    else "꺼짐"
+                    else "일시정지"
                 )
-                st.markdown("**📥 새 메일 자동 분류**")
+                st.markdown("**🤖 MailTaskAgent 상태**")
                 st.caption(auto_label)
                 if sync_runs:
                     latest = sync_runs[0]
@@ -505,10 +509,10 @@ def _render_product_dashboard(
                 else:
                     st.caption("아직 자동 실행 기록이 없습니다.")
                 st.button(
-                    "자동화 설정 열기",
+                    "Agent 설정 열기",
                     width="stretch",
                     on_click=_go_to_operation_page,
-                    args=("⚡ 자동화",),
+                    args=("⭐ 분류 기준",),
                 )
 
             enabled_priority = sum(rule["enabled"] for rule in priority_rules)
@@ -523,7 +527,7 @@ def _render_product_dashboard(
                     "분류 기준 관리",
                     width="stretch",
                     on_click=_go_to_operation_page,
-                    args=("⚡ 자동화",),
+                    args=("⭐ 분류 기준",),
                     key="home_open_rules",
                 )
 
@@ -554,8 +558,8 @@ def _render_product_dashboard(
         st.markdown("### 최근 받은 메일")
         if mail_source == GMAIL_TEST_SOURCE:
             st.caption(
-                "마지막 Gmail 확인 결과입니다. 자동 분류를 켜면 지정 주기마다, "
-                "끄면 사이드바의 ‘지금 새 메일 확인’ 버튼을 눌렀을 때 갱신됩니다."
+                "마지막 Gmail 확인 결과입니다. Agent 실행 중에는 지정 주기마다 갱신되며, "
+                "일시정지하면 마지막 확인 결과를 유지합니다."
             )
             latest_mails = sorted(
                 mails,
@@ -2184,8 +2188,8 @@ def _render_operation_settings(storage, gmail_summary: dict, mails) -> None:
 
 
 def _render_automation_center(storage, mails) -> None:
-    st.subheader("자동화")
-    st.caption("새 메일을 언제 확인하고, 무엇을 먼저 보거나 제외할지 내 업무 방식에 맞게 정합니다.")
+    st.subheader("분류 기준")
+    st.caption("MailTaskAgent가 무엇을 먼저 보여주고 어떤 메일을 제외할지 내 업무 방식에 맞게 정합니다.")
     settings_flash = st.session_state.pop("operation_settings_flash", None)
     if settings_flash:
         st.success(settings_flash)
@@ -2197,47 +2201,44 @@ def _render_automation_center(storage, mails) -> None:
     active_filters = sum(rule["enabled"] for rule in filter_rules)
     summary_1, summary_2, summary_3 = st.columns(3)
     summary_1.metric(
-        "새 메일 자동 분류",
-        "켜짐" if operation_settings["gmail_auto_sync_enabled"] else "꺼짐",
+        "Agent 상태",
+        "실행 중" if operation_settings["gmail_auto_sync_enabled"] else "일시정지",
     )
     summary_2.metric("중요 발신자·키워드", f"{active_priority}개")
     summary_3.metric("광고·반복 메일 제외", f"{active_filters}개")
 
-    auto_tab, priority_tab, filter_tab = st.tabs(
-        ["📥 새 메일 자동 분류", "⭐ 중요도 기준", "🚫 광고·반복 메일 제외"]
+    priority_tab, filter_tab, auto_tab = st.tabs(
+        ["⭐ 중요도 기준", "🚫 광고·반복 메일 제외", "⚙️ 실행 주기"]
     )
     with auto_tab:
-        st.markdown("### Gmail 새 메일 자동 분류")
+        st.markdown("### Agent 실행 주기")
         st.write(
-            "켜 두면 Gmail 테스트 라벨의 새 메일을 주기적으로 확인해 업무 생성·변경·검토 대기로 정리합니다."
+            "Gmail 연결 후 Agent는 기본 실행됩니다. 이 값은 새 메일을 확인하는 간격이며, "
+            "Agent 일시정지와 재실행은 사이드바에서 할 수 있습니다."
         )
         with st.form("gmail_auto_sync_form_v2"):
-            auto_sync_enabled = st.checkbox(
-                "새 메일을 자동으로 업무에 반영",
-                value=bool(operation_settings["gmail_auto_sync_enabled"]),
-                help="이미 처리한 메일은 다시 분석하지 않으며, 애매한 결정은 검토함에서 멈춥니다.",
-            )
             sync_interval = int(
                 st.number_input(
                     "새 메일 확인 주기(분)",
                     min_value=1,
                     max_value=60,
                     value=int(operation_settings["gmail_sync_interval_minutes"]),
-                    disabled=not auto_sync_enabled,
                 )
             )
-            save_auto_sync = st.form_submit_button("자동 분류 저장", type="primary")
+            save_auto_sync = st.form_submit_button("실행 주기 저장", type="primary")
         if save_auto_sync:
             try:
                 storage.update_operation_settings(
-                    gmail_auto_sync_enabled=auto_sync_enabled,
+                    gmail_auto_sync_enabled=bool(
+                        operation_settings["gmail_auto_sync_enabled"]
+                    ),
                     gmail_sync_interval_minutes=sync_interval,
                 )
                 st.session_state.pop("gmail_auto_sync_last_check", None)
-                st.session_state["operation_settings_flash"] = "새 메일 자동 분류 설정을 저장했습니다."
+                st.session_state["operation_settings_flash"] = "Agent 실행 주기를 저장했습니다."
                 st.rerun()
             except ValueError as exc:
-                st.error(f"자동 분류 설정을 저장할 수 없습니다: {exc}")
+                st.error(f"실행 주기를 저장할 수 없습니다: {exc}")
 
     with priority_tab:
         st.markdown("### 중요도 계산 기준")
@@ -2524,15 +2525,18 @@ def _render_connection_and_data_settings(storage, gmail_summary: dict) -> None:
 def main() -> None:
     st.set_page_config(page_title="MailTaskAgent", page_icon="📬", layout="wide")
     _apply_styles()
-    app_mode = _render_mode_entry()
+    settings = load_settings()
+    gmail_summary = _gmail_connection_summary()
+    gmail_connected = (
+        gmail_summary["credentials_ready"] and gmail_summary["token_ready"]
+    )
+    app_mode = _render_mode_entry(gmail_connected=gmail_connected)
     if app_mode is None:
         return
     demo_mode = app_mode == DEMO_MODE
-    settings = load_settings()
     storage = SQLiteStorage(_database_path_for_mode(settings.database_path, app_mode))
     storage.initialize()
     synthetic_mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
-    gmail_summary = _gmail_connection_summary()
 
     if demo_mode:
         st.title("MailTaskAgent")
@@ -2543,8 +2547,13 @@ def main() -> None:
     with st.sidebar:
         st.title("MailTaskAgent")
         st.caption(app_mode)
-        if st.button("화면 모드 다시 선택", width="stretch"):
-            st.session_state.pop("app_mode", None)
+        switch_label = (
+            "실제 업무 모드로 돌아가기" if demo_mode else "MVP 시연 모드 열기"
+        )
+        if st.button(switch_label, width="stretch"):
+            st.session_state["app_mode"] = (
+                OPERATION_MODE if demo_mode else DEMO_MODE
+            )
             st.session_state.pop("selected_mail_source", None)
             st.session_state.pop("gmail_test_mails", None)
             st.rerun()
@@ -2554,7 +2563,7 @@ def main() -> None:
             st.subheader("메뉴")
             operation_page = st.radio(
                 "주 메뉴",
-                ["🏠 홈", "✅ 업무", "🟣 검토함", "⚡ 자동화", "⚙️ 설정"],
+                ["🏠 홈", "✅ 업무", "🟣 검토함", "⭐ 분류 기준", "⚙️ 설정"],
                 label_visibility="collapsed",
                 key="operation_page",
             )
@@ -2564,9 +2573,6 @@ def main() -> None:
             st.warning("MOCK · 합성 Mail 기능 검증")
         else:
             st.success(f"LIVE · {settings.model}")
-        gmail_connected = (
-            gmail_summary["credentials_ready"] and gmail_summary["token_ready"]
-        )
         if demo_mode:
             source_options = [SYNTHETIC_MAIL_SOURCE]
             if gmail_connected:
@@ -2590,12 +2596,25 @@ def main() -> None:
             st.caption("Gmail OAuth · 선택 연동 전")
 
         if selected_source == GMAIL_TEST_SOURCE:
-            refresh_gmail = st.button(
-                "지금 새 메일 확인",
-                type="secondary",
-                width="stretch",
-            )
-            if refresh_gmail or "gmail_test_mails" not in st.session_state:
+            if not demo_mode:
+                operation_settings = storage.get_operation_settings()
+                agent_enabled = st.toggle(
+                    "Agent 실행",
+                    value=bool(operation_settings["gmail_auto_sync_enabled"]),
+                    help="Gmail 연결 후 기본 실행됩니다. 점검이나 작업 중단이 필요할 때만 일시정지하세요.",
+                )
+                if agent_enabled != bool(
+                    operation_settings["gmail_auto_sync_enabled"]
+                ):
+                    storage.update_operation_settings(
+                        gmail_auto_sync_enabled=agent_enabled,
+                        gmail_sync_interval_minutes=int(
+                            operation_settings["gmail_sync_interval_minutes"]
+                        ),
+                    )
+                    st.session_state.pop("gmail_auto_sync_last_check", None)
+                    st.rerun()
+            if "gmail_test_mails" not in st.session_state:
                 try:
                     with st.spinner("제한된 Gmail 테스트 라벨을 확인하고 있습니다..."):
                         st.session_state["gmail_test_mails"] = _load_gmail_test_mails()
@@ -2687,7 +2706,7 @@ def main() -> None:
         _render_review_queue(storage, settings, mail_by_id)
         return
 
-    if operation_page == "⚡ 자동화":
+    if operation_page == "⭐ 분류 기준":
         _render_automation_center(storage, mails)
         return
 

@@ -169,6 +169,30 @@ def test_operations_cli_status_and_backup_are_machine_readable(
     assert backup_path.exists()
 
 
+def test_operations_cli_sync_respects_user_pause(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    database_path = tmp_path / "paused-agent.db"
+    storage = SQLiteStorage(database_path)
+    storage.initialize()
+    storage.update_operation_settings(
+        gmail_auto_sync_enabled=False,
+        gmail_sync_interval_minutes=1,
+    )
+    monkeypatch.setenv("DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+
+    assert operations_main(["sync-gmail"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload == {
+        "status": "PAUSED",
+        "source": "GMAIL",
+        "message": "MailTaskAgent is paused by the user.",
+    }
+    assert storage.list_sync_runs(source="GMAIL") == []
+
+
 def test_operations_cli_health_reports_readiness_without_secrets(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

@@ -38,8 +38,8 @@ Post-MVP는 AI Master Core E2E의 필수 완료 조건이 아니다. 아래 기�
 ### 목표
 
 - 기술 처리량보다 사용자가 지금 해야 할 업무를 먼저 보여주는 `오늘` 중심 화면
-- `홈`, `업무`, `검토함`, `자동화`, `설정`의 5개 사용자 언어 Navigation
-- Gmail 새 메일 자동 분류, VIP·고객사·중요 키워드와 광고·반복 메일 제외 기준은 `자동화`에
+- `홈`, `업무`, `검토함`, `분류 기준`, `설정`의 5개 사용자 언어 Navigation
+- VIP·고객사·중요 키워드와 광고·반복 메일 제외 기준은 `분류 기준`에
   독립 배치하고, Mail 처리·Agent 실행 기록과 연결·복구는 `설정`의 목적별 하위 화면에서 확인
 - `홈` 하단에서 마지막 Gmail Polling으로 가져온 최근 Mail 5건과 Agent 처리 상태를 확인
 - Task 행에서 완료, 상태·기한·중요도 변경과 원본 Mail·판단 근거 확인
@@ -134,6 +134,10 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 사용자 확인 전 중요 변경 0건, Secret·불필요한 원문 로그 노출 0건이다. 같은 Label을 즉시
 재조회하여 신규 처리 0건과 중복 20건도 별도로 확인한다. 이 시험 전에는 Outlook Live를
 다음 완료 단계로 선언하지 않는다.
+
+발송 순서, Thread Reply 관계, INBOUND/OUTBOUND, 비식별 제목·본문, 기대 Action과 사전
+분류 기준은 `data/gmail_live_pilot_cases.json`에 20건으로 고정했다. 7 Action 전체 포함,
+연속 Sequence와 Secret·실제 주소 비포함은 자동 테스트로 검증한다.
 
 ## 6. n8n 자동화
 
@@ -246,8 +250,8 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 ### 2026-08-28 P0 구현·검증 증적
 
 - 제출용 MVP는 Git Tag `ai-master-mvp-v1`로 복구 가능 상태를 고정했다.
-- 실제 업무 모드 Navigation을 `홈`, `업무`, `검토함`, `자동화`, `설정` 5개로 재구성했다.
-  사용자 중요도·제외 조건을 숨기지 않도록 `자동화`를 독립 메뉴로 올리고, Mail 처리와 활동
+- 실제 업무 모드 Navigation을 `홈`, `업무`, `검토함`, `분류 기준`, `설정` 5개로 재구성했다.
+  사용자 중요도·제외 조건을 숨기지 않도록 `분류 기준`을 독립 메뉴로 올리고, Mail 처리와 활동
   기록은 설정의 목적별 하위 화면으로 유지했으며 기존 시연 모드는 별도로 유지한다.
 - 기한·회신 대기 긴급도와 발신자 Email·Domain·Keyword·사용자 직접 지정 중요도를
   조합하는 설명 가능한 P1~P4 Priority 계산을 구현했다.
@@ -255,8 +259,8 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
   변경은 기존 사용자 수정 경로와 History를 재사용한다.
 - 사용자 Rule의 추가·활성화·비활성화·삭제, 기한 임박·회신 대기 기준 설정과 Task별
   중요도 Override를 SQLite에 저장한다.
-- 실제 업무 모드에서 사용자가 한 번 활성화하면 제한된 Gmail Label을 1~60분 주기로
-  읽고, 미처리 `mail_id`만 기존 Agent Core로 자동 정리하는 파일럿 Polling을 구현했다.
+- Gmail OAuth 연결 후 Agent가 기본 1분 주기로 제한된 Gmail Label을 읽고, 미처리 `mail_id`만
+  기존 Agent Core로 처리하도록 변경했다. 사용자는 필요할 때만 사이드바에서 일시정지·재실행한다.
   Gmail 작성·발송·삭제 권한은 추가하지 않았다.
 - 기존 Core 회귀와 Post-MVP Priority·UI·자동 동기화 테스트를 함께 실행해 pytest
   `67 passed`를 확인했다. 로컬 Streamlit 서버 기동도 확인했다.
@@ -277,7 +281,7 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 
 | 항목 | 현재 판정 | 근거 또는 남은 외부 조건 |
 |---|---|---|
-| 실제 업무 UI·Task 직접 관리 | 구현·자동 테스트 완료 | 홈/업무/검토함/자동화/설정, 직접 생성·수정·완료 |
+| 실제 업무 UI·Task 직접 관리 | 구현·자동 테스트 완료 | 홈/업무/검토함/분류 기준/설정, 직접 생성·수정·완료 |
 | Priority·고객사·Keyword Rule | 구현·자동 테스트 완료 | P1~P4, 근거, Override, 설정 저장 |
 | 광고·뉴스레터 제외 Rule | 구현·자동 테스트 완료 | 정확한 Email·Domain·제목, IGNORE 근거, 본문 제외 금지 |
 | Gmail 화면 자동 확인 | 구현·자동 테스트 완료 | 제한 Label, 신규 mail_id, 1~60분, Read-only |
@@ -285,7 +289,7 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 | 기한·대기 점검 계약 | 구현·자동 테스트 완료 | `operations_cli status`, P1~P4·검토 대기 JSON |
 | Health Check | 구현·자동 테스트 완료 | DB·LLM·OAuth 준비 상태, Secret 미출력 |
 | Backup·Migration·Task/History Export | 구현·자동 테스트 완료 | SQLite Online Backup 복구, MVP→Post-MVP Schema Migration, CSV/JSON |
-| Windows Scheduler·n8n | 호출 계약·Preview/Install/Remove Script·가이드 완료 | 실제 등록·서버 설치는 사용자 PC/회사 정책 확인 필요 |
+| Windows Scheduler·n8n | 로컬 Scheduler 1분 등록·실행 검증, n8n 계약·가이드 완료 | 사내 서버 설치는 회사 정책 확인 필요 |
 | 로컬 Dashboard 실행 | 실행 Script 완료 | 상시 서비스 등록·TLS·DNS는 배포환경 필요 |
 | 사내 RDBMS·다중 사용자 | 설계 Gate만 완료 | 승인 DB 종류·접속정보·사용자 격리 정책 필요 |
 | SSO·권한관리 | 설계 Gate만 완료 | 회사 IdP·App Registration·역할 정책 필요 |
@@ -296,4 +300,6 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 | Outlook Live | 사용자 요청에 따라 제외 | Graph 합성 Adapter Contract만 별도 보존 |
 
 2026-08-28 최신 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
-Slack 최소 알림·Dry-run과 5개 메뉴 운영 UI를 포함해 pytest `105 passed`다.
+Slack 최소 알림·Dry-run, 5개 메뉴 운영 UI와 Agent 기본 실행·일시정지 계약을 포함해
+pytest `107 passed`다. 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로
+등록했고 수동 실행 결과 `LastTaskResult=0`, 다음 실행 예약과 Gmail 중복 2건·실패 0건을 확인했다.

@@ -20,7 +20,7 @@ Windows Task Scheduler 또는 n8n Schedule
 사용자 Browser
 -> scripts/run_dashboard.ps1
 -> Streamlit 실제 업무 모드
--> 홈/업무/검토함/자동화/설정
+-> 홈/업무/검토함/분류 기준/설정
 ```
 
 ## 3. 운영 명령 계약
@@ -127,13 +127,13 @@ Task 변경을 재실행하지 않았고, 정상 실행의 Slack 상태는 `NOT_
 먼저 실제 시스템을 변경하지 않는 Preview를 확인한다.
 
 ```powershell
-.\scripts\manage_scheduler.ps1 -Mode Preview -IntervalMinutes 10
+.\scripts\manage_scheduler.ps1 -Mode Preview -IntervalMinutes 1
 ```
 
 회사 정책과 API 호출 주기를 확인한 뒤에만 사용자가 아래 Install을 실행한다.
 
 ```powershell
-.\scripts\manage_scheduler.ps1 -Mode Install -IntervalMinutes 10
+.\scripts\manage_scheduler.ps1 -Mode Install -IntervalMinutes 1
 ```
 
 중지·제거:
@@ -145,12 +145,14 @@ Task 변경을 재실행하지 않았고, 정상 실행의 Slack 상태는 `NOT_
 1. 프로그램은 `powershell.exe`를 선택한다.
 2. 인수는 `-NoProfile -ExecutionPolicy Bypass -File "<프로젝트 절대경로>\scripts\run_gmail_sync.ps1"`를 사용한다.
 3. 시작 위치는 프로젝트 루트로 지정한다.
-4. 초기 주기는 5~10분으로 제한한다.
-5. Exit Code가 1 또는 2일 때만 운영자가 확인하도록 설정한다.
+4. 로컬 실전 파일럿은 1분 Polling으로 시작하며 새 `mail_id`만 LLM을 호출한다.
+5. 사이드바에서 Agent를 일시정지하면 Scheduler도 `PAUSED`로 종료하고 Gmail·LLM을 호출하지 않는다.
+6. Exit Code가 1 또는 2일 때만 운영자가 확인하도록 설정한다.
 
-실제 Scheduler 등록은 사용자 PC의 실행 계정과 회사 보안정책을 확인한 뒤 수행한다.
-`manage_scheduler.ps1`의 기본 Mode는 `Preview`이므로 Script를 단순 실행하는 것만으로는
-Windows 예약 작업이나 반복 LLM 호출이 생성되지 않는다.
+2026-08-28 현재 로컬 파일럿에는 `MailTaskAgent-GmailSync`가 1분 주기로 등록되어 있다.
+수동 실행 결과 `LastTaskResult=0`과 다음 실행 예약을 확인했으며, 최신 실행은 제한 Gmail
+2건을 모두 중복으로 처리해 신규·실패 0건이었다. 다른 PC나 사내 서버 등록은 실행 계정과
+회사 보안정책을 확인한 뒤 수행한다.
 
 ## 5. n8n 연결 계약
 

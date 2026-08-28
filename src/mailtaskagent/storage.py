@@ -1327,8 +1327,8 @@ class SQLiteStorage:
 
     def get_operation_settings(self) -> dict[str, bool | int]:
         defaults: dict[str, bool | int] = {
-            "gmail_auto_sync_enabled": False,
-            "gmail_sync_interval_minutes": 5,
+            "gmail_auto_sync_enabled": True,
+            "gmail_sync_interval_minutes": 1,
         }
         with self.connect() as connection:
             rows = connection.execute(
