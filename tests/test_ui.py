@@ -155,7 +155,7 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
     app = _select_radio(app, "주 메뉴", "⚙️ 설정")
     app = _select_radio(app, "설정 항목", "메일 처리 기록")
     batch_button = next(
-        button for button in app.button if button.label.startswith("새 메일 자동 정리")
+        button for button in app.button if button.label.startswith("미처리 메일 전체 분류")
     )
     app = batch_button.click().run(timeout=120)
     app = _select_radio(app, "주 메뉴", "🏠 홈")
@@ -222,7 +222,7 @@ def test_operation_mode_can_enable_automatic_gmail_processing(
     app = _select_radio(app, "주 메뉴", "⚡ 자동화")
 
     assert [tab.label for tab in app.tabs] == [
-        "📥 자동 메일 정리",
+        "📥 새 메일 자동 분류",
         "⭐ 중요도 기준",
         "🚫 광고·반복 메일 제외",
     ]
@@ -238,14 +238,16 @@ def test_operation_mode_can_enable_automatic_gmail_processing(
     )
     auto_sync.set_value(True)
     save_button = next(
-        button for button in app.button if button.label == "자동 정리 저장"
+        button for button in app.button if button.label == "자동 분류 저장"
     )
     app = save_button.click().run(timeout=120)
 
     assert not app.exception
     assert SQLiteStorage(database_path).is_processed(gmail_mails[0].mail_id)
-    assert any("Gmail 자동 정리" in caption.value for caption in app.caption)
+    assert any("Gmail 새 메일 자동 분류" in caption.value for caption in app.caption)
     assert any(
-        "메일 자동 정리 설정을 저장했습니다." in message.value
+        "새 메일 자동 분류 설정을 저장했습니다." in message.value
         for message in app.success
     )
+    app = _select_radio(app, "주 메뉴", "🏠 홈")
+    assert any(item.value == gmail_mails[0].subject for item in app.markdown)

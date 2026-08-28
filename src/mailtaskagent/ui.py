@@ -371,7 +371,13 @@ def _go_to_operation_page(page: str) -> None:
     st.session_state["operation_page"] = page
 
 
-def _render_product_dashboard(storage, mails, *, operation_mode: bool = False) -> None:
+def _render_product_dashboard(
+    storage,
+    mails,
+    *,
+    operation_mode: bool = False,
+    mail_source: str | None = None,
+) -> None:
     tasks = storage.list_tasks()
     pending_reviews = storage.list_pending_reviews()
     total_mail_count = len(mails)
@@ -488,7 +494,7 @@ def _render_product_dashboard(storage, mails, *, operation_mode: bool = False) -
                     if operation_settings["gmail_auto_sync_enabled"]
                     else "꺼짐"
                 )
-                st.markdown("**📥 메일 자동 정리**")
+                st.markdown("**📥 새 메일 자동 분류**")
                 st.caption(auto_label)
                 if sync_runs:
                     latest = sync_runs[0]
@@ -544,6 +550,33 @@ def _render_product_dashboard(storage, mails, *, operation_mode: bool = False) -
             )
         else:
             st.info("새 메일이 정리되면 최근 처리 결과가 여기에 표시됩니다.")
+
+        st.markdown("### 최근 받은 메일")
+        if mail_source == GMAIL_TEST_SOURCE:
+            st.caption(
+                "마지막 Gmail 확인 결과입니다. 자동 분류를 켜면 지정 주기마다, "
+                "끄면 사이드바의 ‘지금 새 메일 확인’ 버튼을 눌렀을 때 갱신됩니다."
+            )
+            latest_mails = sorted(
+                mails,
+                key=lambda mail: mail.occurred_at,
+                reverse=True,
+            )[:5]
+            if not latest_mails:
+                st.info("연결된 Gmail 테스트 라벨에 표시할 메일이 없습니다.")
+            for mail in latest_mails:
+                stored = storage.get_processing_result(mail.mail_id)
+                action = stored.get("proposal", {}).get("action") if stored else None
+                status_text = ACTION_LABELS.get(action, action) if action else "새 메일"
+                status_col, subject_col, sender_col, time_col = st.columns(
+                    [0.9, 3.2, 1.8, 1.5]
+                )
+                status_col.markdown(f"**{status_text}**")
+                subject_col.write(mail.subject)
+                sender_col.caption(mail.sender)
+                time_col.caption(mail.occurred_at.strftime("%m-%d %H:%M"))
+        else:
+            st.info("Gmail을 연결하면 최근 받은 메일 5건과 Agent 처리 상태가 여기에 표시됩니다.")
         return
 
     priority_col, attention_col = st.columns([1.7, 1])
@@ -900,7 +933,7 @@ def _render_mailbox(
     button_label = (
         f"미처리·실패 {source_batch_name} 전체 자동 정리 · {unprocessed_count}건"
         if demo_mode
-        else f"새 메일 자동 정리 · {unprocessed_count}건"
+        else f"미처리 메일 전체 분류 · {unprocessed_count}건"
     )
     if st.button(
         button_label,
@@ -1749,7 +1782,7 @@ def _render_manual_time_benchmark(live_report: dict | None) -> None:
 def _render_automatic_gmail_sync(storage, settings) -> None:
     operation_settings = storage.get_operation_settings()
     if not operation_settings["gmail_auto_sync_enabled"]:
-        st.caption("Gmail 자동 정리 · 꺼짐")
+        st.caption("Gmail 새 메일 자동 분류 · 꺼짐")
         return
 
     interval_minutes = int(operation_settings["gmail_sync_interval_minutes"])
@@ -1757,7 +1790,7 @@ def _render_automatic_gmail_sync(storage, settings) -> None:
     last_check = st.session_state.get("gmail_auto_sync_last_check")
     if last_check and (now - last_check).total_seconds() < interval_minutes * 60:
         st.caption(
-            f"Gmail 자동 정리 · {interval_minutes}분마다 · "
+            f"Gmail 새 메일 자동 분류 · {interval_minutes}분마다 · "
             f"마지막 확인 {last_check.strftime('%H:%M:%S')}"
         )
         return
@@ -1778,7 +1811,7 @@ def _render_automatic_gmail_sync(storage, settings) -> None:
         st.session_state["gmail_auto_sync_last_check"] = now
         if report.status == "FAILED":
             st.session_state["gmail_auto_sync_error"] = report.error_type
-            st.warning(f"Gmail 자동 확인 실패 · {report.error_type}")
+            st.warning(f"Gmail 새 메일 확인 실패 · {report.error_type}")
             return
         st.session_state.pop("gmail_auto_sync_error", None)
         if report.pending_count:
@@ -1789,19 +1822,19 @@ def _render_automatic_gmail_sync(storage, settings) -> None:
                     for mail_id in report.failed_mail_ids
                 ],
                 "message": (
-                    f"Gmail 자동 확인에서 새 메일 {report.pending_count}건을 정리했습니다."
+                    f"Gmail에서 새 메일 {report.pending_count}건을 확인해 자동 분류했습니다."
                 ),
             }
             st.rerun()
         st.caption(
-            f"Gmail 자동 정리 · {interval_minutes}분마다 · "
+            f"Gmail 새 메일 자동 분류 · {interval_minutes}분마다 · "
             f"새 메일 없음 ({now.strftime('%H:%M:%S')})"
         )
     except Exception as exc:
         error_type = type(exc).__name__
         st.session_state["gmail_auto_sync_last_check"] = now
         st.session_state["gmail_auto_sync_error"] = error_type
-        st.warning(f"Gmail 자동 확인 실패 · {error_type}")
+        st.warning(f"Gmail 새 메일 확인 실패 · {error_type}")
 
 
 def _render_operation_settings(storage, gmail_summary: dict, mails) -> None:
@@ -2164,17 +2197,17 @@ def _render_automation_center(storage, mails) -> None:
     active_filters = sum(rule["enabled"] for rule in filter_rules)
     summary_1, summary_2, summary_3 = st.columns(3)
     summary_1.metric(
-        "메일 자동 정리",
+        "새 메일 자동 분류",
         "켜짐" if operation_settings["gmail_auto_sync_enabled"] else "꺼짐",
     )
     summary_2.metric("중요 발신자·키워드", f"{active_priority}개")
     summary_3.metric("광고·반복 메일 제외", f"{active_filters}개")
 
     auto_tab, priority_tab, filter_tab = st.tabs(
-        ["📥 자동 메일 정리", "⭐ 중요도 기준", "🚫 광고·반복 메일 제외"]
+        ["📥 새 메일 자동 분류", "⭐ 중요도 기준", "🚫 광고·반복 메일 제외"]
     )
     with auto_tab:
-        st.markdown("### 새 메일 자동 정리")
+        st.markdown("### Gmail 새 메일 자동 분류")
         st.write(
             "켜 두면 Gmail 테스트 라벨의 새 메일을 주기적으로 확인해 업무 생성·변경·검토 대기로 정리합니다."
         )
@@ -2193,7 +2226,7 @@ def _render_automation_center(storage, mails) -> None:
                     disabled=not auto_sync_enabled,
                 )
             )
-            save_auto_sync = st.form_submit_button("자동 정리 저장", type="primary")
+            save_auto_sync = st.form_submit_button("자동 분류 저장", type="primary")
         if save_auto_sync:
             try:
                 storage.update_operation_settings(
@@ -2201,10 +2234,10 @@ def _render_automation_center(storage, mails) -> None:
                     gmail_sync_interval_minutes=sync_interval,
                 )
                 st.session_state.pop("gmail_auto_sync_last_check", None)
-                st.session_state["operation_settings_flash"] = "메일 자동 정리 설정을 저장했습니다."
+                st.session_state["operation_settings_flash"] = "새 메일 자동 분류 설정을 저장했습니다."
                 st.rerun()
             except ValueError as exc:
-                st.error(f"자동 정리 설정을 저장할 수 없습니다: {exc}")
+                st.error(f"자동 분류 설정을 저장할 수 없습니다: {exc}")
 
     with priority_tab:
         st.markdown("### 중요도 계산 기준")
@@ -2637,7 +2670,12 @@ def main() -> None:
         return
 
     if operation_page == "🏠 홈":
-        _render_product_dashboard(storage, mails, operation_mode=True)
+        _render_product_dashboard(
+            storage,
+            mails,
+            operation_mode=True,
+            mail_source=selected_source,
+        )
         return
     if operation_page == "✅ 업무":
         st.caption("메일에서 만들어진 업무와 직접 등록한 업무를 한곳에서 관리하고 완료 처리합니다.")
