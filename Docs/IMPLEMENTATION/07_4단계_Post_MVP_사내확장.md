@@ -137,7 +137,10 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 
 발송 순서, Thread Reply 관계, INBOUND/OUTBOUND, 비식별 제목·본문, 기대 Action과 사전
 분류 기준은 `data/gmail_live_pilot_cases.json`에 20건으로 고정했다. 7 Action 전체 포함,
-연속 Sequence와 Secret·실제 주소 비포함은 자동 테스트로 검증한다.
+연속 Sequence와 Secret·실제 주소 비포함은 자동 테스트로 검증한다. 각 본문에는
+`GL-001`~`GL-020` 식별자만 넣고, `operations_cli gmail-pilot-report`가 실제 저장 결과의
+방향·Thread·Action·사용자 확인 여부를 자동 대조한다. 미수신·미처리 Case는 `PENDING`,
+기대값 불일치는 `FAILED`로 남기며 20건 전부 일치할 때만 `PASSED`다.
 
 ## 6. n8n 자동화
 
@@ -199,6 +202,21 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 - 사내 DNS·TLS·Proxy·인증서
 - SSO와 역할 기반 접근 제어
 - Health Check, 중앙 Logging, Monitoring, Alert
+
+### 서버 도입 순서 Gate
+
+서버는 AI Master MVP 완료 조건이 아니라 Post-MVP 운영 안정화 단계다. 다음 순서를 바꾸지 않는다.
+
+1. 로컬 테스트 Inbox와 별도 송신 Gmail로 실메일 20건을 송수신하고 자동 평가 `PASSED`
+2. 로컬에서 같은 Label 재조회 시 신규 0건·중복 20건 확인
+3. 단일 사용자 VM/Application Server에 동일 Commit과 별도 운영 DB 배포
+4. 서버 Scheduler 상시 실행, Process 재시작 복구, Health Check, Backup·복원 검증
+5. 서버에서 Gmail 제한 Label 수용시험과 장시간 실행 결과 재확인
+6. 위 Gate 완료 후 Outlook/Microsoft Graph Live 연결 검토
+
+VM 종류, OS, 사내 DNS·TLS·Proxy·SSO와 Secret 저장 방식이 정해지기 전에는 특정 Cloud나
+Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler는 서버 배포 증거가 아니라
+개인 파일럿의 백그라운드 실행 증거로만 사용한다.
 
 ### 현재 로컬 파일럿 구현
 
@@ -301,7 +319,7 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 
 2026-08-28 최신 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
 Slack 최소 알림·Dry-run, 5개 메뉴 운영 UI와 Agent 기본 실행·일시정지 계약을 포함해
-pytest `107 passed`다. 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로
+pytest `110 passed`다. 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로
 등록했고 수동 실행 결과 `LastTaskResult=0`, 다음 실행 예약과 Gmail 중복 2건·실패 0건을 확인했다.
 초기 PowerShell 실행 시 나타난 콘솔 창은 예약 작업을 `.venv\Scripts\pythonw.exe` 직접 실행으로
 교체해 제거했으며, 교체 후에도 `LastTaskResult=0`과 다음 1분 실행 예약을 확인했다.

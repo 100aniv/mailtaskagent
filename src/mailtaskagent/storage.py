@@ -334,6 +334,26 @@ class SQLiteStorage:
             result.append(item)
         return result
 
+    def list_mails(self, *, limit: int | None = None) -> list[dict]:
+        query = """
+            SELECT mail_id, conversation_id, direction, sender, recipients_json,
+                   occurred_at, subject, body, processed_at
+            FROM mails
+            ORDER BY occurred_at DESC
+        """
+        params: tuple[int, ...] = ()
+        if limit is not None:
+            query += " LIMIT ?"
+            params = (limit,)
+        with self.connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["recipients"] = json.loads(item.pop("recipients_json"))
+            result.append(item)
+        return result
+
     def get_task_context(self, task_id: str, *, history_limit: int = 10) -> dict | None:
         with self.connect() as connection:
             task = self._fetch_task(connection, task_id)

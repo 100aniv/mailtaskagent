@@ -38,7 +38,7 @@
 - Post-MVP Priority Rule·사용자 Override·실전 UI·Gmail 자동 동기화, 운영 CLI·재시도·
   SQLite Backup·Mail 제외 Rule과 합성 Microsoft Graph Adapter Contract를 포함한
   Outlook 전 Gmail 전체 Case 수용시험·Slack 최소 알림·5개 메뉴 운영 UI를 포함한
-  Agent 기본 실행·일시정지 통합과 Gmail 실메일 20건 계획 검증을 포함한 전체 pytest 107건
+  Agent 기본 실행·일시정지 통합과 Gmail 실메일 20건 자동 평가를 포함한 전체 pytest 110건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀
@@ -118,6 +118,9 @@ Streamlit 화면이 닫혀 있어도 Windows Task Scheduler 또는 n8n이 아래
 
 # Slack Payload만 확인(외부 전송 없음)
 .venv\Scripts\python.exe -m mailtaskagent.operations_cli notify-slack
+
+# GL-001~020 실제 저장 결과의 방향·Thread·Action·사용자 확인 자동 대조
+.venv\Scripts\python.exe -m mailtaskagent.operations_cli gmail-pilot-report
 ```
 
 동일 명령의 PowerShell Wrapper는 `scripts/`에 있다. 동기화 stdout은 Mail 본문·Secret을

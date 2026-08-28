@@ -12,6 +12,7 @@ from mailtaskagent.gmail_source import (
     build_gmail_service,
     load_gmail_source_settings,
 )
+from mailtaskagent.gmail_pilot import evaluate_gmail_pilot, load_gmail_pilot_cases
 from mailtaskagent.mail_filters import build_operational_analyzer
 from mailtaskagent.operations import MailSyncService, build_attention_snapshot
 from mailtaskagent.slack_notifications import (
@@ -146,6 +147,19 @@ def _run_notify_slack(*, send: bool, limit: int) -> int:
     return 0 if result == "SENT" else 1
 
 
+def _run_gmail_pilot_report() -> int:
+    settings = load_settings()
+    storage = SQLiteStorage(settings.database_path)
+    storage.initialize()
+    report = evaluate_gmail_pilot(
+        load_gmail_pilot_cases(),
+        storage.list_mails(),
+        storage.list_processing_results(),
+    )
+    _print_json(report)
+    return 0 if report["status"] == "PASSED" else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -186,6 +200,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Post to the configured Slack incoming webhook. Default is dry-run.",
     )
     slack_parser.add_argument("--limit", type=int, default=25)
+    subparsers.add_parser(
+        "gmail-pilot-report",
+        help="Compare the 20 Gmail pilot markers with stored direction, thread and action results.",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -197,6 +215,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_health()
         if args.command == "notify-slack":
             return _run_notify_slack(send=args.send, limit=args.limit)
+        if args.command == "gmail-pilot-report":
+            return _run_gmail_pilot_report()
         return _run_backup(args.output)
     except Exception as exc:
         _print_json({"status": "FAILED", "error_type": type(exc).__name__})
