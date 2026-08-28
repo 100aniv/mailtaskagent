@@ -14,6 +14,12 @@ from mailtaskagent.gmail_source import (
 )
 from mailtaskagent.mail_filters import build_operational_analyzer
 from mailtaskagent.operations import MailSyncService, build_attention_snapshot
+from mailtaskagent.slack_notifications import (
+    build_attention_alert_payload,
+    build_sync_alert_payload,
+    load_slack_notification_settings,
+    send_slack_payload,
+)
 from mailtaskagent.storage import SQLiteStorage
 
 
@@ -44,7 +50,18 @@ def _run_sync_gmail() -> int:
         source_name="GMAIL",
     )
     report = service.run_once()
-    _print_json(report.model_dump())
+    payload = report.model_dump()
+    slack_status = "NOT_REQUIRED"
+    if report.status in {"PARTIAL", "FAILED"}:
+        try:
+            slack_status = send_slack_payload(
+                load_slack_notification_settings(),
+                build_sync_alert_payload(report),
+            )
+        except Exception:
+            slack_status = "FAILED"
+    payload["slack_notification_status"] = slack_status
+    _print_json(payload)
     if report.status == "FAILED":
         return 2
     if report.status == "PARTIAL":
@@ -80,12 +97,16 @@ def _run_health() -> int:
     storage = SQLiteStorage(settings.database_path)
     storage.initialize()
     gmail_settings = load_gmail_source_settings()
+    slack_settings = load_slack_notification_settings()
     latest_runs = storage.list_sync_runs(source="GMAIL", limit=1)
     checks = {
         "database_ready": settings.database_path.exists(),
         "llm_ready": settings.use_mock or bool(settings.api_key),
         "gmail_credentials_ready": gmail_settings.credentials_path.exists(),
         "gmail_token_ready": gmail_settings.token_path.exists(),
+        "slack_notification_ready": (
+            not slack_settings.enabled or slack_settings.configured
+        ),
     }
     status = "READY" if all(checks.values()) else "DEGRADED"
     _print_json(
@@ -97,6 +118,20 @@ def _run_health() -> int:
         }
     )
     return 0 if status == "READY" else 1
+
+
+def _run_notify_slack(*, send: bool, limit: int) -> int:
+    settings = load_settings()
+    storage = SQLiteStorage(settings.database_path)
+    snapshot = build_attention_snapshot(storage, limit=limit)
+    payload = build_attention_alert_payload(snapshot)
+    if not send:
+        _print_json({"status": "DRY_RUN", "payload": payload})
+        return 0
+    notification_settings = load_slack_notification_settings()
+    result = send_slack_payload(notification_settings, payload)
+    _print_json({"status": result})
+    return 0 if result == "SENT" else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -124,6 +159,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Create a recoverable SQLite backup and print its local path.",
     )
     backup_parser.add_argument("--output", type=Path)
+    slack_parser = subparsers.add_parser(
+        "notify-slack",
+        help="Preview a privacy-minimized Slack alert or send it explicitly.",
+    )
+    slack_parser.add_argument(
+        "--send",
+        action="store_true",
+        help="Post to the configured Slack incoming webhook. Default is dry-run.",
+    )
+    slack_parser.add_argument("--limit", type=int, default=25)
     args = parser.parse_args(argv)
 
     try:
@@ -133,6 +178,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_status(args.limit)
         if args.command == "health":
             return _run_health()
+        if args.command == "notify-slack":
+            return _run_notify_slack(send=args.send, limit=args.limit)
         return _run_backup(args.output)
     except Exception as exc:
         _print_json({"status": "FAILED", "error_type": type(exc).__name__})

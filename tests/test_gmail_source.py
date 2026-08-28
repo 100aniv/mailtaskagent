@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -11,7 +13,11 @@ from mailtaskagent.gmail_source import (
     gmail_message_to_mail_input,
     load_gmail_source_settings,
 )
+from mailtaskagent.config import PROJECT_ROOT, Settings
+from mailtaskagent.llm_client import MockMailAnalyzer
 from mailtaskagent.models import MailDirection
+from mailtaskagent.storage import SQLiteStorage
+from mailtaskagent.workflow import MailTaskWorkflow, load_mails
 
 
 def _encoded(value: str) -> str:
@@ -147,3 +153,84 @@ def test_gmail_settings_caps_message_count(monkeypatch, tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="between 1 and 100"):
         load_gmail_source_settings()
+
+
+class _GmailScenarioAnalyzer:
+    """Reuse deterministic scenarios after the Gmail adapter changes mail IDs."""
+
+    def __init__(self) -> None:
+        self.delegate = MockMailAnalyzer()
+
+    def analyze(self, mail):
+        original_id = mail.mail_id.removeprefix("GMAIL-")
+        return self.delegate.analyze(mail.model_copy(update={"mail_id": original_id}))
+
+
+def _gmail_payload_from_mail(mail) -> dict:
+    occurred_at = mail.received_at or mail.sent_at
+    assert occurred_at is not None
+    timestamp = datetime.fromisoformat(str(occurred_at).replace("Z", "+00:00"))
+    headers = [
+        {"name": "From", "value": mail.sender},
+        {"name": "To", "value": ", ".join(mail.recipients)},
+        {"name": "Subject", "value": mail.subject},
+    ]
+    return {
+        "id": mail.mail_id,
+        "threadId": mail.conversation_id,
+        "internalDate": str(int(timestamp.timestamp() * 1000)),
+        "labelIds": ["SENT"] if mail.direction == MailDirection.OUTBOUND else ["INBOX"],
+        "payload": {
+            "mimeType": "text/plain",
+            "headers": headers,
+            "body": {"data": _encoded(mail.body)},
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    json.loads(
+        (PROJECT_ROOT / "data" / "scenario_expectations.json").read_text(
+            encoding="utf-8"
+        )
+    ),
+    ids=lambda item: item["case_id"],
+)
+def test_all_core_scenarios_pass_through_gmail_adapter_contract(
+    scenario: dict, tmp_path: Path
+) -> None:
+    source_mails = {
+        mail.mail_id: mail
+        for mail in load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
+    }
+    settings = Settings(
+        api_url="https://example.test",
+        api_key="",
+        model="mock",
+        api_version="test",
+        timeout_seconds=1,
+        use_mock=True,
+        database_path=tmp_path / f"{scenario['case_id']}.db",
+        confidence_threshold=0.75,
+    )
+    storage = SQLiteStorage(settings.database_path)
+    workflow = MailTaskWorkflow(settings, storage, _GmailScenarioAnalyzer())
+
+    actual_actions = []
+    duplicate_flags = []
+    for mail_id in scenario["mail_ids"]:
+        adapted = gmail_message_to_mail_input(
+            _gmail_payload_from_mail(source_mails[mail_id])
+        )
+        result = workflow.process(adapted)
+        actual_actions.append(result.proposal.action.value)
+        duplicate_flags.append(result.duplicate)
+
+    assert actual_actions == scenario["expected_actions"]
+    if scenario.get("second_result_duplicate"):
+        assert duplicate_flags[-1] is True
+    if "expected_task_count" in scenario:
+        assert len(storage.list_tasks()) == scenario["expected_task_count"]
+    if "expected_history_count" in scenario:
+        assert len(storage.list_histories()) == scenario["expected_history_count"]

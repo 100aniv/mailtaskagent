@@ -20,7 +20,7 @@ Windows Task Scheduler 또는 n8n Schedule
 사용자 Browser
 -> scripts/run_dashboard.ps1
 -> Streamlit 실제 업무 모드
--> 오늘/내 업무/검토 필요/메일/활동 기록/연결 및 설정
+-> 홈/업무/검토함/설정
 ```
 
 ## 3. 운영 명령 계약
@@ -97,6 +97,31 @@ LLM과 Task 변경이 재실행되지 않았다.
 기존 MVP SQLite 파일은 Application 시작 시 Post-MVP Column과 운영 Table을 자동 추가하며,
 기존 Task 데이터는 삭제하지 않는다. 이 Migration과 Backup 복구 가능성은 자동 테스트로 검증한다.
 
+### Slack 알림 미리보기와 전송
+
+기본 명령은 외부로 전송하지 않고, 실제 Payload에 Mail 원문·Task 제목·Secret이 없는지 확인한다.
+
+```powershell
+.venv\Scripts\python.exe -m mailtaskagent.operations_cli notify-slack
+```
+
+승인된 Slack Incoming Webhook을 `.env`에 입력하고 알림을 활성화한 뒤에만 실제 전송한다.
+
+```text
+SLACK_NOTIFICATIONS_ENABLED=true
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+```
+
+```powershell
+.venv\Scripts\python.exe -m mailtaskagent.operations_cli notify-slack --send
+```
+
+Webhook URL은 Secret이므로 채팅·GitHub·로그·화면에 붙이지 않는다. Gmail 동기화의 자동
+Slack 알림은 `PARTIAL`·`FAILED`에만 시도하며 정상 실행은 알리지 않는다.
+
+2026-08-28 `SYNC-2C70870653B4` 재검증은 제한 Gmail 2건을 모두 중복으로 판정해 LLM과
+Task 변경을 재실행하지 않았고, 정상 실행의 Slack 상태는 `NOT_REQUIRED`였다.
+
 ## 4. Windows Task Scheduler 연결
 
 먼저 실제 시스템을 변경하지 않는 Preview를 확인한다.
@@ -149,5 +174,6 @@ Windows 예약 작업이나 반복 LLM 호출이 생성되지 않는다.
 - 회사 LLM 전송 가능 Mail 범위를 별도로 승인받는다.
 - 실제 업무 DB와 MVP 시연 DB를 분리한다.
 - 외부 알림을 연결하기 전 수신자·채널·전송 필드를 승인받는다.
+- 사내 알림 채널은 Slack으로 한정하며 Mail 원문·Task 제목·사용자 정보는 보내지 않는다.
 - SSO·다중 사용자·사내 RDBMS·TLS·중앙 로그는 회사 표준이 결정된 후 Adapter로 연결한다.
 - 자동 회신·발송·삭제·이동은 현재 제공하지 않는다.

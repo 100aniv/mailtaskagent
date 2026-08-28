@@ -34,6 +34,7 @@ from mailtaskagent.priority import (
     PriorityRuleType,
     calculate_task_priority,
 )
+from mailtaskagent.slack_notifications import load_slack_notification_settings
 from mailtaskagent.storage import SQLiteStorage
 from mailtaskagent.workflow import MailTaskWorkflow, load_mails
 
@@ -171,8 +172,8 @@ def _render_mode_entry() -> str | None:
     with operation_col:
         with st.container(border=True):
             st.markdown("### 실제 업무 모드")
-            st.write("오늘의 업무, 메일 처리, 확인 대기와 운영 로그만 간결하게 표시합니다.")
-            st.caption("현재는 Gmail 테스트 입력을 사용하는 운영 UI 미리보기입니다.")
+            st.write("홈에서 오늘 할 일과 검토 대기를 보고, 업무·검토함·설정만 사용합니다.")
+            st.caption("Gmail 읽기 전용 파일럿을 위한 실제 사용 화면입니다.")
             if st.button(
                 "실제 업무 모드로 시작",
                 type="primary",
@@ -235,26 +236,40 @@ def _apply_styles() -> None:
     st.markdown(
         """
         <style>
-        .stApp {background: #f6f8fc;}
-        .block-container {padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1480px;}
-        [data-testid="stSidebar"] {background: #13203b; border-right: 0;}
+        html, body, [class*="css"] {font-family: "Noto Sans KR", "Malgun Gothic", sans-serif;}
+        .stApp {background: #f8fafc; color: #172033;}
+        .block-container {padding-top: 1.35rem; padding-bottom: 3rem; max-width: 1320px;}
+        [data-testid="stSidebar"] {background: #17223b; border-right: 0;}
         [data-testid="stSidebar"] h1,
         [data-testid="stSidebar"] h2,
         [data-testid="stSidebar"] h3,
         [data-testid="stSidebar"] p,
         [data-testid="stSidebar"] label {color: #e7eefc;}
         [data-testid="stSidebar"] button {
-            border-color: #415273; color: #e7eefc; background: #1d2d4d;
+            border-color: #435270; color: #e7eefc; background: #24314e;
         }
         [data-testid="stSidebar"] hr {border-color: #334563;}
+        [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] {gap: 5px;}
+        [data-testid="stSidebar"] [data-testid="stRadioOption"] {
+            min-height: 42px; padding: 8px 11px; border-radius: 10px;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadioOption"][data-selected="true"] {
+            background: #2c3b5d;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadioOption"] > div > div > div:first-child {
+            display: none;
+        }
         [data-testid="stMetric"] {
-            background: #ffffff; border: 1px solid #dde5f1; border-radius: 16px;
-            padding: 16px 18px; box-shadow: 0 4px 14px rgba(20, 40, 80, 0.04);
+            background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
+            padding: 15px 17px; box-shadow: none;
         }
         [data-testid="stMetricLabel"] {color: #475569;}
-        button[data-baseweb="tab"] {font-weight: 650; padding-left: 14px; padding-right: 14px;}
+        button[data-baseweb="tab"] {font-weight: 600; padding-left: 14px; padding-right: 14px;}
         button[data-baseweb="tab"][aria-selected="true"] {color: #3157d5;}
-        div[data-testid="stStatusWidget"] {border-radius: 14px;}
+        button[kind="primary"] {background: #4263eb !important; border-color: #4263eb !important;}
+        button[kind="primary"]:hover {background: #3451c7 !important; border-color: #3451c7 !important;}
+        div[data-testid="stStatusWidget"] {border-radius: 12px;}
+        [data-testid="stVerticalBlockBorderWrapper"] {border-color: #e2e8f0; border-radius: 12px;}
         .mail-card {
             padding: 16px 18px; border-radius: 14px; background: #ffffff;
             border: 1px solid #dde5f1; margin-bottom: 12px;
@@ -368,8 +383,12 @@ def _render_product_dashboard(storage, mails, *, operation_mode: bool = False) -
         for task in active_tasks
     }
 
-    st.subheader("오늘")
-    st.caption("지금 처리할 업무와 확인이 필요한 결정을 우선순위대로 모았습니다.")
+    st.subheader("홈" if operation_mode else "오늘")
+    st.caption(
+        "중요한 일과 확인이 필요한 결정부터 보여드립니다."
+        if operation_mode
+        else "지금 처리할 업무와 확인이 필요한 결정을 우선순위대로 모았습니다."
+    )
     summary_1, summary_2, summary_3, summary_4 = st.columns(4)
     if operation_mode:
         summary_1.metric(
@@ -2027,6 +2046,19 @@ def _render_operation_settings(storage, gmail_summary: dict, mails) -> None:
         except Exception as exc:
             st.error(f"백업을 생성할 수 없습니다: {type(exc).__name__}")
 
+    st.markdown("### Slack 알림")
+    slack_settings = load_slack_notification_settings()
+    if slack_settings.enabled and slack_settings.configured:
+        st.success("Slack 운영 알림 · 연결 준비됨")
+    elif slack_settings.enabled:
+        st.warning("Slack 운영 알림 · Webhook 설정 필요")
+    else:
+        st.info("Slack 운영 알림 · 꺼짐")
+    st.caption(
+        "Gmail 처리 실패와 검토 필요 건수만 알립니다. Mail 원문, Task 제목, 사용자 정보와 "
+        "Webhook URL은 화면·로그·알림에 표시하지 않습니다."
+    )
+
 
 def main() -> None:
     st.set_page_config(page_title="MailTaskAgent", page_icon="📬", layout="wide")
@@ -2041,10 +2073,11 @@ def main() -> None:
     synthetic_mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
     gmail_summary = _gmail_connection_summary()
 
-    st.title("MailTaskAgent" if demo_mode else "내 업무")
-    st.write(
-        "메일을 업무로 바꾸고, 후속 변경과 확인이 필요한 결정을 놓치지 않게 관리합니다."
-    )
+    if demo_mode:
+        st.title("MailTaskAgent")
+        st.write(
+            "메일을 업무로 바꾸고, 후속 변경과 확인이 필요한 결정을 놓치지 않게 관리합니다."
+        )
 
     with st.sidebar:
         st.title("MailTaskAgent")
@@ -2055,6 +2088,16 @@ def main() -> None:
             st.session_state.pop("gmail_test_mails", None)
             st.rerun()
         st.divider()
+        operation_page = None
+        if not demo_mode:
+            st.subheader("메뉴")
+            operation_page = st.radio(
+                "주 메뉴",
+                ["🏠 홈", "☑️ 업무", "🟣 검토함", "⚙️ 설정"],
+                label_visibility="collapsed",
+                key="operation_page",
+            )
+            st.divider()
         st.subheader("연동 상태")
         if settings.use_mock:
             st.warning("MOCK · 합성 Mail 기능 검증")
@@ -2063,17 +2106,20 @@ def main() -> None:
         gmail_connected = (
             gmail_summary["credentials_ready"] and gmail_summary["token_ready"]
         )
-        if gmail_connected and not demo_mode:
-            source_options = [GMAIL_TEST_SOURCE, SYNTHETIC_MAIL_SOURCE]
-        else:
+        if demo_mode:
             source_options = [SYNTHETIC_MAIL_SOURCE]
             if gmail_connected:
                 source_options.append(GMAIL_TEST_SOURCE)
-        selected_source = st.radio(
-            "입력 Source" if demo_mode else "메일 연결",
-            source_options,
-            key="selected_mail_source",
-        )
+            selected_source = st.radio(
+                "입력 Source",
+                source_options,
+                key="selected_mail_source",
+            )
+        else:
+            selected_source = (
+                GMAIL_TEST_SOURCE if gmail_connected else SYNTHETIC_MAIL_SOURCE
+            )
+            st.session_state["selected_mail_source"] = selected_source
         if gmail_connected:
             st.success("Gmail OAuth · 읽기 전용 연결됨")
             st.caption(f"제한 Query · {gmail_summary['query']}")
@@ -2106,7 +2152,7 @@ def main() -> None:
                 )
             if not demo_mode:
                 _render_automatic_gmail_sync(storage, settings)
-        else:
+        elif demo_mode:
             st.caption("합성 Mail 15건 · 전체 Agent Core 검증")
         st.divider()
         if demo_mode:
@@ -2121,7 +2167,7 @@ def main() -> None:
                 st.session_state.pop("demo_flash", None)
                 st.rerun()
         else:
-            st.caption("읽기 전용 Gmail 파일럿 · 설정에서 자동 정리 주기 관리")
+            st.caption("읽기 전용 Gmail 파일럿")
 
     gmail_mails = st.session_state.get("gmail_test_mails", [])
     mails = gmail_mails if selected_source == GMAIL_TEST_SOURCE else synthetic_mails
@@ -2162,23 +2208,31 @@ def main() -> None:
             _render_quick_demo(storage, settings, mail_by_id)
         return
 
-    tabs = st.tabs(["오늘", "내 업무", "검토 필요", "메일", "활동 기록", "연결 및 설정"])
-    with tabs[0]:
+    if operation_page == "🏠 홈":
         _render_product_dashboard(storage, mails, operation_mode=True)
-    with tabs[1]:
+        return
+    if operation_page == "☑️ 업무":
+        st.subheader("업무")
+        st.caption("메일에서 만들어진 업무와 직접 등록한 업무를 한곳에서 관리합니다.")
         _render_tasks_and_histories(storage)
-    with tabs[2]:
+        return
+    if operation_page == "🟣 검토함":
+        st.subheader("검토함")
         st.write("Agent가 확신하지 못한 변경만 모았습니다. 사용자가 확정하기 전에는 DB를 바꾸지 않습니다.")
         _render_review_queue(storage, settings, mail_by_id)
-    with tabs[3]:
-        _render_mailbox(
-            storage,
-            settings,
-            mails,
-            selected_source,
-            demo_mode=False,
-        )
-    with tabs[4]:
+        return
+
+    st.subheader("설정")
+    st.caption("메일 처리, 자동화 기준, 활동 기록과 복구를 필요한 때만 열어봅니다.")
+    settings_page = st.radio(
+        "설정 항목",
+        ["메일 처리", "연결·규칙·복구", "활동 기록"],
+        horizontal=True,
+        key="operation_settings_page",
+    )
+    if settings_page == "메일 처리":
+        _render_mailbox(storage, settings, mails, selected_source, demo_mode=False)
+    elif settings_page == "활동 기록":
         _render_event_log(storage, [mail.mail_id for mail in mails])
-    with tabs[5]:
+    else:
         _render_operation_settings(storage, gmail_summary, mails)

@@ -56,6 +56,13 @@ def _start_mode(app: AppTest, button_label: str) -> AppTest:
     return button.click().run(timeout=60)
 
 
+def _select_radio(
+    app: AppTest, label: str, value: str, *, timeout: int = 60
+) -> AppTest:
+    radio = next(item for item in app.radio if item.label == label)
+    return radio.set_value(value).run(timeout=timeout)
+
+
 def test_mode_entry_separates_operational_and_demo_navigation(
     tmp_path, monkeypatch
 ) -> None:
@@ -72,14 +79,9 @@ def test_mode_entry_separates_operational_and_demo_navigation(
     app = _start_mode(app, "실제 업무 모드로 시작")
 
     assert not app.exception
-    assert [tab.label for tab in app.tabs] == [
-        "오늘",
-        "내 업무",
-        "검토 필요",
-        "메일",
-        "활동 기록",
-        "연결 및 설정",
-    ]
+    navigation = next(radio for radio in app.radio if radio.label == "주 메뉴")
+    assert navigation.options == ["🏠 홈", "☑️ 업무", "🟣 검토함", "⚙️ 설정"]
+    assert not app.tabs
     assert not any(button.label == "데모 DB 초기화" for button in app.button)
     assert [(metric.label, metric.value) for metric in app.metric[:4]] == [
         ("🔴 즉시 처리", "0건"),
@@ -144,10 +146,12 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
 
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "실제 업무 모드로 시작")
+    app = _select_radio(app, "주 메뉴", "⚙️ 설정")
     batch_button = next(
         button for button in app.button if button.label.startswith("새 메일 자동 정리")
     )
     app = batch_button.click().run(timeout=120)
+    app = _select_radio(app, "주 메뉴", "🏠 홈")
 
     assert not app.exception
     assert any(button.label == "완료" for button in app.button)
@@ -177,10 +181,7 @@ def test_gmail_readonly_source_empty_state(tmp_path, monkeypatch) -> None:
 
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "실제 업무 모드로 시작")
-    source_radio = next(radio for radio in app.radio if radio.label == "메일 연결")
-    assert source_radio.options == ["Gmail 테스트", "합성 데모"]
-
-    source_radio.set_value("Gmail 테스트").run(timeout=60)
+    app = _select_radio(app, "주 메뉴", "⚙️ 설정")
 
     assert not app.exception
     assert any(
@@ -210,6 +211,8 @@ def test_operation_mode_can_enable_automatic_gmail_processing(
 
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "실제 업무 모드로 시작")
+    app = _select_radio(app, "주 메뉴", "⚙️ 설정")
+    app = _select_radio(app, "설정 항목", "연결·규칙·복구")
 
     auto_sync = next(
         checkbox

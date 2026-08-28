@@ -189,6 +189,27 @@ def test_operations_cli_health_reports_readiness_without_secrets(
     assert "api_key" not in str(payload).casefold()
 
 
+def test_operations_cli_slack_defaults_to_privacy_safe_dry_run(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    database_path = tmp_path / "slack-dry-run.db"
+    storage = SQLiteStorage(database_path)
+    storage.initialize()
+    storage.create_task_by_user(title="Slack으로 보내면 안 되는 업무 제목")
+    monkeypatch.setenv("DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+    monkeypatch.setenv("SLACK_NOTIFICATIONS_ENABLED", "false")
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "")
+
+    assert operations_main(["notify-slack"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    rendered = json.dumps(payload, ensure_ascii=False)
+
+    assert payload["status"] == "DRY_RUN"
+    assert "Slack으로 보내면 안 되는 업무 제목" not in rendered
+    assert "SLACK_WEBHOOK_URL" not in rendered
+
+
 def test_sqlite_backup_can_be_opened_with_task_and_history(tmp_path: Path) -> None:
     storage = SQLiteStorage(tmp_path / "source.db")
     storage.initialize()

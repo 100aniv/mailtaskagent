@@ -15,8 +15,7 @@
 - Pydantic 구조화 결과 검증
 - 잘못된 LLM 구조화 출력 1회 재시도
 - SQLite Task/History/중복 처리
-- 실제 업무 모드의 `오늘`, `내 업무`, `검토 필요`, `메일`, `활동 기록`,
-  `연결 및 설정` Dashboard와 분리된 MVP 시연 화면
+- 실제 업무 모드의 `홈`, `업무`, `검토함`, `설정` Dashboard와 분리된 MVP 시연 화면
 - 기한·회신 대기 긴급도와 고객사 Domain·발신자·Keyword·사용자 중요도를 조합한
   설명 가능한 `🔴 즉시 처리`~`⚪ 일반 업무` Priority
 - 사용자가 등록한 정확한 발신자 Email·Domain·제목 Keyword의 광고·뉴스레터 제외 Rule,
@@ -38,10 +37,13 @@
   운영/시연 모드 및 DB 격리 회귀를 포함한 AI Master MVP pytest 60건
 - Post-MVP Priority Rule·사용자 Override·실전 UI·Gmail 자동 동기화, 운영 CLI·재시도·
   SQLite Backup·Mail 제외 Rule과 합성 Microsoft Graph Adapter Contract를 포함한
-  전체 pytest 83건
+  Outlook 전 Gmail 전체 Case 수용시험·Slack 최소 알림·4개 메뉴 운영 UI를 포함한
+  전체 pytest 105건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀
+- Outlook 전 전체 Business/Security Case의 Gmail API Message→Agent Core 수용시험
+- Secret·Mail 원문·Task 제목을 제외한 Slack Incoming Webhook 최소 알림과 Dry-run
 
 ## API 키 입력 위치
 
@@ -85,9 +87,9 @@ Editable Package로 함께 등록하므로 별도의 `PYTHONPATH` 설정 없이 
 ```
 
 브라우저에서 `http://localhost:8501`을 열고 첫 화면에서 목적에 맞는 모드를 선택한다.
-`실제 업무 모드`는 `오늘`, `내 업무`, `검토 필요`, `메일`, `활동 기록`, `연결 및 설정`의
-사용자 언어 메뉴를 제공하고, `MVP 시연 모드`는 품질 검증·데모 도구를 별도로 제공한다.
-기본 `오늘` 화면은 Priority별 건수, 판단 근거와 직접 완료 Action을 먼저 보여준다.
+`실제 업무 모드`는 `홈`, `업무`, `검토함`, `설정`의 4개 사용자 언어 메뉴를 제공하고,
+`MVP 시연 모드`는 품질 검증·데모 도구를 별도로 제공한다. 기본 `홈` 화면은 Priority별
+건수, 판단 근거, Gmail 상태와 직접 완료 Action을 먼저 보여준다.
 `메일`에서는 Source로 들어온 메일의 분류와 처리 결과를 확인하거나 미처리 메일을 한 번에
 정리할 수 있다. 멘토용 재현 버튼은 `데모 도구`로 분리했다. `품질 검증`에서는 Mock 15개
 회귀를 즉시 실행하고, LIVE 모드에서는 같은 기대값으로 회사 LLM 결과를 별도 검증할 수 있다.
@@ -109,6 +111,9 @@ Streamlit 화면이 닫혀 있어도 Windows Task Scheduler 또는 n8n이 아래
 
 # data/backups/에 SQLite 복구용 백업 생성
 .venv\Scripts\python.exe -m mailtaskagent.operations_cli backup
+
+# Slack Payload만 확인(외부 전송 없음)
+.venv\Scripts\python.exe -m mailtaskagent.operations_cli notify-slack
 ```
 
 동일 명령의 PowerShell Wrapper는 `scripts/`에 있다. 동기화 stdout은 Mail 본문·Secret을

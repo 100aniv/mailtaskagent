@@ -21,7 +21,7 @@ Post-MVP는 AI Master Core E2E의 필수 완료 조건이 아니다. 아래 기�
 -> Validation
 -> M-04 사내 승인 DB
 -> M-05 사내 Dashboard/Review
--> Teams/Slack/사내 Messenger Reminder(선택)
+-> Slack Reminder(선택)
 ```
 
 ## 3. 확장 원칙
@@ -38,7 +38,9 @@ Post-MVP는 AI Master Core E2E의 필수 완료 조건이 아니다. 아래 기�
 ### 목표
 
 - 기술 처리량보다 사용자가 지금 해야 할 업무를 먼저 보여주는 `오늘` 중심 화면
-- `오늘`, `내 업무`, `검토 필요`, `메일`, `활동 기록`, `연결 및 설정`의 사용자 언어 Navigation
+- `홈`, `업무`, `검토함`, `설정`의 4개 사용자 언어 Navigation
+- Mail 처리 현황과 최근 자동 실행은 `홈`, Agent 실행 기록과 연결·Rule·복구는 `설정`의
+  목적별 하위 영역에서 확인하여 상위 메뉴와 긴 Scroll을 줄임
 - Task 행에서 완료, 상태·기한·중요도 변경과 원본 Mail·판단 근거 확인
 - 기한·회신 대기 기반 긴급도와 고객사·VIP·키워드·사용자 지정 기반 중요도 분리
 - `🔴 즉시 처리`, `🟠 우선 처리`, `🔵 예정 업무`, `⚪ 일반 업무`의 색상+문자 Label
@@ -109,6 +111,8 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 - Priority Rule의 근거와 사용자 Override가 History에 남음
 - Gmail 신규·후속 Mail이 동일 Agent Core에서 중복 없이 처리됨
 - 실제 Mail 원문·Secret이 저장소와 불필요한 로그에 노출되지 않음
+- Gmail API 형식으로 변환한 전체 Business/Security Case가 Adapter→M-01~M-05 경로에서
+  기존 기대 Action과 중복 방지 결과를 유지함
 
 ## 6. n8n 자동화
 
@@ -142,6 +146,16 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
   `SYNC-DC20B21A2F2C`는 가져옴 2·신규 2·성공 2·실패 0,
   즉시 재실행한 `SYNC-8606236AEC71`은 가져옴 2·신규 0·중복 2·실패 0을 확인했다.
   두 번째 실행은 기존 `mail_id`의 LLM·Task 변경을 재실행하지 않았다.
+
+## 6.1 Slack 운영 알림
+
+- 사내 알림 채널은 Slack으로 고정하고 Teams Adapter는 범위에 포함하지 않는다.
+- Slack Incoming Webhook은 `.env`의 `SLACK_WEBHOOK_URL`에만 저장하며 기본값은 비활성이다.
+- Gmail 동기화가 `PARTIAL` 또는 `FAILED`일 때만 자동 알림 후보가 되며 정상 실행은 알리지 않는다.
+- 알림에는 실행 ID, 성공·실패·중복·재시도 건수와 오류 종류만 포함한다.
+- Mail ID·원문·Task 제목·사용자 정보·API Key·OAuth Token·Webhook URL은 전송·출력하지 않는다.
+- `operations_cli notify-slack`은 기본 Dry-run이며 `--send`와 명시적 활성화가 함께 있을 때만
+  실제 Webhook을 호출한다.
 
 ## 7. 사내 Database와 서비스 배포
 
@@ -211,8 +225,8 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 ### 2026-08-28 P0 구현·검증 증적
 
 - 제출용 MVP는 Git Tag `ai-master-mvp-v1`로 복구 가능 상태를 고정했다.
-- 실제 업무 모드 Navigation을 `오늘`, `내 업무`, `검토 필요`, `메일`, `활동 기록`,
-  `연결 및 설정`으로 분리했다. 기존 시연 모드는 별도로 유지한다.
+- 실제 업무 모드 Navigation을 `홈`, `업무`, `검토함`, `설정` 4개로 단순화하는 2차 UX
+  개편을 진행한다. 기존 시연 모드는 별도로 유지한다.
 - 기한·회신 대기 긴급도와 발신자 Email·Domain·Keyword·사용자 직접 지정 중요도를
   조합하는 설명 가능한 P1~P4 Priority 계산을 구현했다.
 - `오늘` 화면에서 Priority 근거와 기한·요청자를 확인하고 Task를 직접 완료할 수 있으며,
@@ -241,7 +255,7 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 
 | 항목 | 현재 판정 | 근거 또는 남은 외부 조건 |
 |---|---|---|
-| 실제 업무 UI·Task 직접 관리 | 구현·자동 테스트 완료 | 오늘/내 업무/검토/메일/기록/설정, 직접 생성·수정·완료 |
+| 실제 업무 UI·Task 직접 관리 | 2차 UX 개편 진행 | 홈/업무/검토함/설정, 직접 생성·수정·완료 |
 | Priority·고객사·Keyword Rule | 구현·자동 테스트 완료 | P1~P4, 근거, Override, 설정 저장 |
 | 광고·뉴스레터 제외 Rule | 구현·자동 테스트 완료 | 정확한 Email·Domain·제목, IGNORE 근거, 본문 제외 금지 |
 | Gmail 화면 자동 확인 | 구현·자동 테스트 완료 | 제한 Label, 신규 mail_id, 1~60분, Read-only |
@@ -253,8 +267,11 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 | 로컬 Dashboard 실행 | 실행 Script 완료 | 상시 서비스 등록·TLS·DNS는 배포환경 필요 |
 | 사내 RDBMS·다중 사용자 | 설계 Gate만 완료 | 승인 DB 종류·접속정보·사용자 격리 정책 필요 |
 | SSO·권한관리 | 설계 Gate만 완료 | 회사 IdP·App Registration·역할 정책 필요 |
-| Teams/Slack/사내 알림 | Payload 원천(status)까지 준비 | 실제 수신자·채널·전송 필드 승인 필요 |
+| Slack 사내 알림 | Payload·Dry-run·실패 시 전송 계약 구현 | 실제 Webhook·채널 승인 후 Live 수신 확인 필요 |
 | 중앙 Logging·Monitoring | 로컬 Event·sync_runs·Health까지 구현 | 회사 Monitoring 수집 규격·Endpoint 필요 |
 | RAG/Vector DB | 적용하지 않음 | 실제 정책 문서 Corpus와 필요성 없음 |
 | 자동 회신·발송·삭제 | 적용하지 않음 | 현재 안전 범위 밖 |
 | Outlook Live | 사용자 요청에 따라 제외 | Graph 합성 Adapter Contract만 별도 보존 |
+
+2026-08-28 최신 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
+Slack 최소 알림·Dry-run과 4개 메뉴 운영 UI를 포함해 pytest `105 passed`다.
