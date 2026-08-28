@@ -60,6 +60,14 @@ Post-MVP는 AI Master Core E2E의 필수 완료 조건이 아니다. 아래 기�
 - Task별 중요도 직접 지정과 자동 계산 복귀
 - Rule 활성화·비활성화, 우선순위와 적용 전 미리보기
 
+광고·뉴스레터·자동발송 제외 Rule은 정확한 발신자 Email·Domain·제목 Keyword로 제한한다.
+사용자가 직접 등록·활성화한 Rule만 새 Mail에 적용하고 기존 `IGNORE` Action과 적용 근거를
+History·Processing Result에 남긴다. 본문 Keyword만으로는 자동 제외하지 않는다.
+
+2026-08-28 기준 위 제외 Rule의 추가·활성화·비활성화·삭제와 현재 입력 Source 일치 건수
+미리보기를 구현했다. Rule 일치 시 회사 LLM 호출을 생략하고 M-01 Processing Event에
+적용 근거를 남기며, 비활성 Rule은 기존 Analyzer로 전달되는 회귀를 검증했다.
+
 ### RAG 적용 Gate
 
 고객사 SLA, 사내 절차, 프로젝트 매뉴얼처럼 검색할 실제 문서 Corpus가 준비되고 정형 Rule만으로 설명할 수 없는 정책 해석 요구가 확인될 때만 RAG를 검토한다. 발신자, Domain, Keyword, 날짜와 사용자 Preference는 RAG가 아니라 검증 가능한 Application Rule로 처리한다.

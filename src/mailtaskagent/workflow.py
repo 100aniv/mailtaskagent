@@ -196,15 +196,27 @@ class MailTaskWorkflow:
                     duration_ms=_duration_ms(analysis_started),
                 )
                 raise
+            analysis_source = getattr(
+                self.analyzer,
+                "last_analysis_source",
+                self.settings.llm_mode,
+            )
             self._event(
                 case_id,
                 mail.mail_id,
                 "M-01 LLM_ANALYSIS",
                 "SUCCESS",
-                "회사 LLM API 호출 및 구조화 분석 완료"
-                if not self.settings.use_mock
-                else "Mock 구조화 분석 완료",
+                (
+                    "사용자 Mail 제외 Rule 적용 완료, LLM 호출 생략"
+                    if analysis_source == "USER_FILTER_RULE"
+                    else (
+                        "회사 LLM API 호출 및 구조화 분석 완료"
+                        if not self.settings.use_mock
+                        else "Mock 구조화 분석 완료"
+                    )
+                ),
                 details={
+                    "analysis_source": analysis_source,
                     "is_task_request": analysis.is_task_request,
                     "intent": analysis.intent.value,
                     "task_title": analysis.task_title,

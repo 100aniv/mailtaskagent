@@ -8,7 +8,7 @@ from mailtaskagent.gmail_source import (
     build_gmail_service,
     load_gmail_source_settings,
 )
-from mailtaskagent.llm_client import build_analyzer
+from mailtaskagent.mail_filters import build_operational_analyzer
 from mailtaskagent.storage import SQLiteStorage
 from mailtaskagent.workflow import MailTaskWorkflow
 
@@ -42,7 +42,11 @@ def main() -> int:
 
     settings = load_settings()
     storage = SQLiteStorage(settings.database_path)
-    workflow = MailTaskWorkflow(settings, storage, build_analyzer(settings))
+    workflow = MailTaskWorkflow(
+        settings,
+        storage,
+        build_operational_analyzer(settings, storage),
+    )
     failed = 0
     for mail in mails:
         try:

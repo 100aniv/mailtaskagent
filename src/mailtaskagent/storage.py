@@ -19,6 +19,7 @@ from mailtaskagent.models import (
     TaskStatus,
 )
 from mailtaskagent.policy import validate_status_transition
+from mailtaskagent.mail_filters import MailFilterRuleType
 from mailtaskagent.priority import PriorityRuleType
 
 
@@ -98,6 +99,15 @@ CREATE TABLE IF NOT EXISTS priority_rules (
     rule_type TEXT NOT NULL,
     pattern TEXT NOT NULL,
     importance INTEGER NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    UNIQUE(rule_type, pattern)
+);
+CREATE TABLE IF NOT EXISTS mail_filter_rules (
+    rule_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    rule_type TEXT NOT NULL,
+    pattern TEXT NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     UNIQUE(rule_type, pattern)
@@ -1158,6 +1168,67 @@ class SQLiteStorage:
         for rule in rules:
             rule["enabled"] = bool(rule["enabled"])
         return rules
+
+    def list_mail_filter_rules(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM mail_filter_rules ORDER BY rule_id"
+            ).fetchall()
+        rules = [dict(row) for row in rows]
+        for rule in rules:
+            rule["enabled"] = bool(rule["enabled"])
+        return rules
+
+    def add_mail_filter_rule(
+        self,
+        *,
+        name: str,
+        rule_type: str,
+        pattern: str,
+    ) -> dict:
+        clean_name = name.strip()
+        clean_pattern = pattern.strip().casefold()
+        if not clean_name or not clean_pattern:
+            raise ValueError("Mail Filter Rule name and pattern are required")
+        validated_type = MailFilterRuleType(rule_type)
+        if validated_type == MailFilterRuleType.SENDER_DOMAIN:
+            clean_pattern = clean_pattern.removeprefix("@")
+        now = _now()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO mail_filter_rules(name, rule_type, pattern, enabled, created_at)
+                VALUES (?, ?, ?, 1, ?)
+                """,
+                (clean_name, validated_type.value, clean_pattern, now),
+            )
+            connection.commit()
+            row = connection.execute(
+                "SELECT * FROM mail_filter_rules WHERE rule_id = ?",
+                (cursor.lastrowid,),
+            ).fetchone()
+        result = dict(row)
+        result["enabled"] = bool(result["enabled"])
+        return result
+
+    def set_mail_filter_rule_enabled(self, rule_id: int, enabled: bool) -> None:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE mail_filter_rules SET enabled = ? WHERE rule_id = ?",
+                (int(enabled), rule_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(f"Mail Filter Rule not found: {rule_id}")
+            connection.commit()
+
+    def delete_mail_filter_rule(self, rule_id: int) -> None:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM mail_filter_rules WHERE rule_id = ?", (rule_id,)
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(f"Mail Filter Rule not found: {rule_id}")
+            connection.commit()
 
     def add_priority_rule(
         self,

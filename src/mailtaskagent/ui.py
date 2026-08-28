@@ -16,6 +16,11 @@ from mailtaskagent.gmail_source import (
     load_gmail_source_settings,
 )
 from mailtaskagent.llm_client import MockMailAnalyzer, build_analyzer
+from mailtaskagent.mail_filters import (
+    MailFilterRuleType,
+    build_operational_analyzer,
+    match_mail_filter_rule,
+)
 from mailtaskagent.manual_benchmark import (
     calculate_manual_benchmark_result,
     load_manual_benchmark_cases,
@@ -106,6 +111,12 @@ PRIORITY_RULE_LABELS = {
     PriorityRuleType.SENDER_EMAIL.value: "정확한 발신자 이메일",
     PriorityRuleType.SENDER_DOMAIN.value: "고객사·조직 도메인",
     PriorityRuleType.KEYWORD.value: "제목·업무 키워드",
+}
+
+MAIL_FILTER_RULE_LABELS = {
+    MailFilterRuleType.SENDER_EMAIL.value: "정확한 발신자 이메일",
+    MailFilterRuleType.SENDER_DOMAIN.value: "발신자 도메인",
+    MailFilterRuleType.SUBJECT_KEYWORD.value: "제목 키워드",
 }
 
 
@@ -663,7 +674,7 @@ def _run_unprocessed_mail_batch(
 ) -> dict:
     pending_mails = [mail for mail in mails if not storage.is_processed(mail.mail_id)]
     workflow = (
-        MailTaskWorkflow(settings, storage, build_analyzer(settings))
+        MailTaskWorkflow(settings, storage, build_operational_analyzer(settings, storage))
         if pending_mails
         else None
     )
@@ -819,7 +830,11 @@ def _render_mailbox(
             )
             if st.button(selected_button_label, width="stretch"):
                 try:
-                    workflow = MailTaskWorkflow(settings, storage, build_analyzer(settings))
+                    workflow = MailTaskWorkflow(
+                        settings,
+                        storage,
+                        build_operational_analyzer(settings, storage),
+                    )
                     with st.spinner("Mail Context와 현재 Task State를 분석하고 있습니다..."):
                         result = workflow.process(selected)
                     st.session_state["last_result"] = result.model_dump(mode="json")
@@ -1646,7 +1661,7 @@ def _render_automatic_gmail_sync(storage, settings) -> None:
         report = MailSyncService(
             settings=settings,
             storage=storage,
-            analyzer=build_analyzer(settings),
+            analyzer=build_operational_analyzer(settings, storage),
             source=source,
             source_name="GMAIL",
         ).run_once()
@@ -1680,7 +1695,7 @@ def _render_automatic_gmail_sync(storage, settings) -> None:
         st.warning(f"Gmail 자동 확인 실패 · {error_type}")
 
 
-def _render_operation_settings(storage, gmail_summary: dict) -> None:
+def _render_operation_settings(storage, gmail_summary: dict, mails) -> None:
     st.subheader("연결 및 설정")
     st.caption("메일 연결 상태와 개인 업무 우선순위 기준을 관리합니다.")
 
@@ -1893,6 +1908,90 @@ def _render_operation_settings(storage, gmail_summary: dict) -> None:
             storage.delete_priority_rule(selected_rule["rule_id"])
             st.rerun()
 
+    st.markdown("### 광고·자동발송 제외 Rule")
+    st.caption(
+        "새 메일의 정확한 발신자·도메인·제목만 확인합니다. "
+        "본문 키워드로는 자동 제외하지 않으며 적용 결과는 IGNORE 근거로 남습니다."
+    )
+    with st.form("mail_filter_rule_form", clear_on_submit=True):
+        filter_name = st.text_input("제외 Rule 이름", placeholder="예: 사내 뉴스레터")
+        filter_type = st.selectbox(
+            "제외 조건",
+            list(MAIL_FILTER_RULE_LABELS),
+            format_func=lambda value: MAIL_FILTER_RULE_LABELS[value],
+        )
+        filter_pattern = st.text_input(
+            "제외 일치 값",
+            placeholder="newsletter@example.com 또는 example.com 또는 뉴스레터",
+        )
+        if filter_pattern.strip():
+            preview_rule = {
+                "name": filter_name or "미리보기",
+                "rule_type": filter_type,
+                "pattern": filter_pattern,
+                "enabled": True,
+            }
+            preview_count = sum(
+                match_mail_filter_rule(mail, [preview_rule]) is not None
+                for mail in mails
+            )
+            st.caption(f"현재 입력 Source 미리보기 · {preview_count}건 일치")
+        add_filter_rule = st.form_submit_button("제외 Rule 추가", type="primary")
+    if add_filter_rule:
+        try:
+            storage.add_mail_filter_rule(
+                name=filter_name,
+                rule_type=filter_type,
+                pattern=filter_pattern,
+            )
+            st.session_state["operation_settings_flash"] = (
+                "Mail 제외 Rule을 추가했습니다. 다음 신규 메일부터 적용합니다."
+            )
+            st.rerun()
+        except Exception as exc:
+            message = str(exc) if isinstance(exc, ValueError) else type(exc).__name__
+            st.error(f"제외 Rule을 추가할 수 없습니다: {message}")
+
+    filter_rules = storage.list_mail_filter_rules()
+    if not filter_rules:
+        st.info("등록된 제외 Rule이 없습니다. 비업무 Mail은 Agent 분석 후 IGNORE로 분류합니다.")
+    else:
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "사용": "켜짐" if rule["enabled"] else "꺼짐",
+                        "Rule": rule["name"],
+                        "조건": MAIL_FILTER_RULE_LABELS.get(
+                            rule["rule_type"], rule["rule_type"]
+                        ),
+                        "일치 값": rule["pattern"],
+                    }
+                    for rule in filter_rules
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+        selected_filter_rule = st.selectbox(
+            "관리할 제외 Rule",
+            filter_rules,
+            format_func=lambda item: f"{item['name']} · {item['pattern']}",
+        )
+        filter_toggle_col, filter_delete_col = st.columns(2)
+        filter_toggle_label = (
+            "제외 Rule 끄기" if selected_filter_rule["enabled"] else "제외 Rule 켜기"
+        )
+        if filter_toggle_col.button(filter_toggle_label, width="stretch"):
+            storage.set_mail_filter_rule_enabled(
+                selected_filter_rule["rule_id"],
+                not selected_filter_rule["enabled"],
+            )
+            st.rerun()
+        if filter_delete_col.button("제외 Rule 삭제", width="stretch"):
+            storage.delete_mail_filter_rule(selected_filter_rule["rule_id"])
+            st.rerun()
+
     st.markdown("### 데이터 내보내기와 복구")
     st.caption(
         "Task와 History만 내려받습니다. Gmail 원문과 API Key는 내보내기 파일에 포함하지 않습니다."
@@ -2082,4 +2181,4 @@ def main() -> None:
     with tabs[4]:
         _render_event_log(storage, [mail.mail_id for mail in mails])
     with tabs[5]:
-        _render_operation_settings(storage, gmail_summary)
+        _render_operation_settings(storage, gmail_summary, mails)

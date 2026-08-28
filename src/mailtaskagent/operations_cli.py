@@ -11,7 +11,7 @@ from mailtaskagent.gmail_source import (
     build_gmail_service,
     load_gmail_source_settings,
 )
-from mailtaskagent.llm_client import build_analyzer
+from mailtaskagent.mail_filters import build_operational_analyzer
 from mailtaskagent.operations import MailSyncService, build_attention_snapshot
 from mailtaskagent.storage import SQLiteStorage
 
@@ -38,7 +38,7 @@ def _run_sync_gmail() -> int:
     service = MailSyncService(
         settings=settings,
         storage=storage,
-        analyzer=build_analyzer(settings),
+        analyzer=build_operational_analyzer(settings, storage),
         source=_ConfiguredGmailSource(),
         source_name="GMAIL",
     )

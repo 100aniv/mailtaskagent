@@ -19,6 +19,8 @@
   `연결 및 설정` Dashboard와 분리된 MVP 시연 화면
 - 기한·회신 대기 긴급도와 고객사 Domain·발신자·Keyword·사용자 중요도를 조합한
   설명 가능한 `🔴 즉시 처리`~`⚪ 일반 업무` Priority
+- 사용자가 등록한 정확한 발신자 Email·Domain·제목 Keyword의 광고·뉴스레터 제외 Rule,
+  LLM 호출 생략과 기존 `IGNORE` 근거 저장
 - 첫 화면에서 `실제 업무 모드`와 `MVP 시연 모드` 선택, 동일 Agent Core를 사용하되
   실제 업무 DB와 시연 DB를 분리하여 합성 시연 데이터가 운영 화면에 섞이지 않도록 구성
 - Mock 회귀와 회사 LLM Live를 구분한 15개 시나리오 품질 검증 Dashboard
@@ -35,7 +37,8 @@
 - 기대결과를 분리한 대표 Business Case 15개와 제품형 Dashboard·Gmail Adapter Contract,
   운영/시연 모드 및 DB 격리 회귀를 포함한 AI Master MVP pytest 60건
 - Post-MVP Priority Rule·사용자 Override·실전 UI·Gmail 자동 동기화, 운영 CLI·재시도·
-  SQLite Backup과 합성 Microsoft Graph Adapter Contract를 포함한 전체 pytest 77건
+  SQLite Backup·Mail 제외 Rule과 합성 Microsoft Graph Adapter Contract를 포함한
+  전체 pytest 80건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀
