@@ -99,6 +99,24 @@ LLM과 Task 변경이 재실행되지 않았다.
 
 ## 4. Windows Task Scheduler 연결
 
+먼저 실제 시스템을 변경하지 않는 Preview를 확인한다.
+
+```powershell
+.\scripts\manage_scheduler.ps1 -Mode Preview -IntervalMinutes 10
+```
+
+회사 정책과 API 호출 주기를 확인한 뒤에만 사용자가 아래 Install을 실행한다.
+
+```powershell
+.\scripts\manage_scheduler.ps1 -Mode Install -IntervalMinutes 10
+```
+
+중지·제거:
+
+```powershell
+.\scripts\manage_scheduler.ps1 -Mode Remove
+```
+
 1. 프로그램은 `powershell.exe`를 선택한다.
 2. 인수는 `-NoProfile -ExecutionPolicy Bypass -File "<프로젝트 절대경로>\scripts\run_gmail_sync.ps1"`를 사용한다.
 3. 시작 위치는 프로젝트 루트로 지정한다.
@@ -106,6 +124,8 @@ LLM과 Task 변경이 재실행되지 않았다.
 5. Exit Code가 1 또는 2일 때만 운영자가 확인하도록 설정한다.
 
 실제 Scheduler 등록은 사용자 PC의 실행 계정과 회사 보안정책을 확인한 뒤 수행한다.
+`manage_scheduler.ps1`의 기본 Mode는 `Preview`이므로 Script를 단순 실행하는 것만으로는
+Windows 예약 작업이나 반복 LLM 호출이 생성되지 않는다.
 
 ## 5. n8n 연결 계약
 

@@ -116,6 +116,9 @@ Streamlit 화면이 닫혀 있어도 Windows Task Scheduler 또는 n8n이 아래
 절차와 n8n/Windows Scheduler 계약은 `Docs/IMPLEMENTATION/09_Post_MVP_운영가이드.md`를
 참고한다.
 
+Windows 예약 작업은 먼저 `.\scripts\manage_scheduler.ps1 -Mode Preview`로 확인하며,
+`-Mode Install`을 명시하기 전에는 시스템 설정과 반복 API 호출을 변경하지 않는다.
+
 회사 LLM Live 전체 평가는 API 호출이 발생하므로 필요할 때만 아래처럼 실행한다.
 
 ```powershell

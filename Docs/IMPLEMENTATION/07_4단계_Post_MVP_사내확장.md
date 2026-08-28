@@ -249,7 +249,7 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 | 기한·대기 점검 계약 | 구현·자동 테스트 완료 | `operations_cli status`, P1~P4·검토 대기 JSON |
 | Health Check | 구현·자동 테스트 완료 | DB·LLM·OAuth 준비 상태, Secret 미출력 |
 | Backup·Migration·Task/History Export | 구현·자동 테스트 완료 | SQLite Online Backup 복구, MVP→Post-MVP Schema Migration, CSV/JSON |
-| Windows Scheduler·n8n | 호출 계약·Script·가이드 완료 | 실제 등록·서버 설치는 사용자 PC/회사 정책 확인 필요 |
+| Windows Scheduler·n8n | 호출 계약·Preview/Install/Remove Script·가이드 완료 | 실제 등록·서버 설치는 사용자 PC/회사 정책 확인 필요 |
 | 로컬 Dashboard 실행 | 실행 Script 완료 | 상시 서비스 등록·TLS·DNS는 배포환경 필요 |
 | 사내 RDBMS·다중 사용자 | 설계 Gate만 완료 | 승인 DB 종류·접속정보·사용자 격리 정책 필요 |
 | SSO·권한관리 | 설계 Gate만 완료 | 회사 IdP·App Registration·역할 정책 필요 |
