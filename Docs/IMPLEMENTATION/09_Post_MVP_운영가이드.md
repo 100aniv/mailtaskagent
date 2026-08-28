@@ -75,6 +75,10 @@ Exit Code는 `0=SUCCESS`, `1=PARTIAL`, `2=FAILED`다. Timeout, Connection, Rate 
 JSON으로 반환한다. `READY`는 Exit Code 0, 준비가 부족한 `DEGRADED`는 Exit Code 1,
 실행 자체가 실패한 경우는 Exit Code 2다. Key·Token 값과 경로 내용은 출력하지 않는다.
 
+2026-08-28 로컬 파일럿에서 Health Check `READY`와 제한 Gmail Label Live 동기화
+성공 2건을 확인했다. 같은 Source를 즉시 재실행했을 때 신규 0건·중복 2건으로 집계되어
+LLM과 Task 변경이 재실행되지 않았다.
+
 ### Dashboard 실행
 
 ```powershell
@@ -90,6 +94,8 @@ JSON으로 반환한다. `READY`는 Exit Code 0, 준비가 부족한 `DEGRADED`�
 ```
 
 기본 백업은 `data/backups/`에 생성되며 Git에서 제외된다. Dashboard의 `연결 및 설정`에서도 동일한 복구용 백업을 생성할 수 있다.
+기존 MVP SQLite 파일은 Application 시작 시 Post-MVP Column과 운영 Table을 자동 추가하며,
+기존 Task 데이터는 삭제하지 않는다. 이 Migration과 Backup 복구 가능성은 자동 테스트로 검증한다.
 
 ## 4. Windows Task Scheduler 연결
 

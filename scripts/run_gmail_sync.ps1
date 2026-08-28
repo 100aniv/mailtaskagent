@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+$env:PYTHONIOENCODING = "utf-8"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $pythonPath = Join-Path $projectRoot ".venv\Scripts\python.exe"

@@ -38,7 +38,7 @@
   운영/시연 모드 및 DB 격리 회귀를 포함한 AI Master MVP pytest 60건
 - Post-MVP Priority Rule·사용자 Override·실전 UI·Gmail 자동 동기화, 운영 CLI·재시도·
   SQLite Backup·Mail 제외 Rule과 합성 Microsoft Graph Adapter Contract를 포함한
-  전체 pytest 82건
+  전체 pytest 83건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀

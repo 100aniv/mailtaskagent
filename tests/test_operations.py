@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 from mailtaskagent.config import PROJECT_ROOT, Settings
@@ -199,3 +200,42 @@ def test_sqlite_backup_can_be_opened_with_task_and_history(tmp_path: Path) -> No
 
     assert restored.get_task(task["task_id"])["title"] == "백업 검증 업무"
     assert restored.list_histories()[0]["task_id"] == task["task_id"]
+
+
+def test_initialize_migrates_mvp_database_to_post_mvp_schema(tmp_path: Path) -> None:
+    database_path = tmp_path / "legacy-mvp.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE tasks (
+                task_id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                requester TEXT,
+                description TEXT,
+                due_date TEXT,
+                reply_required INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL,
+                source_mail_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.commit()
+
+    storage = SQLiteStorage(database_path)
+    storage.initialize()
+
+    with storage.connect() as connection:
+        task_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(tasks)")
+        }
+        tables = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+    assert {"waiting_since", "importance_override"} <= task_columns
+    assert {"sync_runs", "operation_settings", "mail_filter_rules"} <= tables

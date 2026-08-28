@@ -138,6 +138,10 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
   Dashboard에서 최근 실행 상태를 확인할 수 있다.
 - 실제 n8n 서버 설치, 외부 Webhook과 알림 채널 전송은 수행하지 않았다. 실행 계약과
   운영 절차는 `09_Post_MVP_운영가이드.md`에 분리했다.
+- 2026-08-28 실제 제한 Gmail Label에서 운영 CLI를 Live로 실행해
+  `SYNC-DC20B21A2F2C`는 가져옴 2·신규 2·성공 2·실패 0,
+  즉시 재실행한 `SYNC-8606236AEC71`은 가져옴 2·신규 0·중복 2·실패 0을 확인했다.
+  두 번째 실행은 기존 `mail_id`의 LLM·Task 변경을 재실행하지 않았다.
 
 ## 7. 사내 Database와 서비스 배포
 
@@ -244,7 +248,7 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 | 무인 1회 Gmail 동기화 | 구현·자동 테스트 완료 | JSON·Exit Code·제한 재시도·sync_runs |
 | 기한·대기 점검 계약 | 구현·자동 테스트 완료 | `operations_cli status`, P1~P4·검토 대기 JSON |
 | Health Check | 구현·자동 테스트 완료 | DB·LLM·OAuth 준비 상태, Secret 미출력 |
-| Backup·Task/History Export | 구현·자동 테스트 완료 | SQLite Online Backup 복구 검증, CSV/JSON |
+| Backup·Migration·Task/History Export | 구현·자동 테스트 완료 | SQLite Online Backup 복구, MVP→Post-MVP Schema Migration, CSV/JSON |
 | Windows Scheduler·n8n | 호출 계약·Script·가이드 완료 | 실제 등록·서버 설치는 사용자 PC/회사 정책 확인 필요 |
 | 로컬 Dashboard 실행 | 실행 Script 완료 | 상시 서비스 등록·TLS·DNS는 배포환경 필요 |
 | 사내 RDBMS·다중 사용자 | 설계 Gate만 완료 | 승인 DB 종류·접속정보·사용자 격리 정책 필요 |
