@@ -602,12 +602,22 @@ def test_processing_log_redacts_secrets(settings: Settings) -> None:
         mail_id="MAIL-SECRET",
         step="SECURITY_TEST",
         status="FAILED",
-        message="api-key: atl-secret-value",
-        details={"api_key": "atl-secret-value", "authorization": "Bearer token-value"},
+        message=(
+            "api-key: atl-secret-value Authorization: Bearer header-token "
+            "access_token=eyJheader.payload.signature"
+        ),
+        details={
+            "api_key": "atl-secret-value",
+            "authorization": "Bearer token-value",
+            "client_secret": "client-secret-value",
+        },
     )
 
     event = storage.list_events("MAIL-SECRET")[0]
     serialized = f"{event['message']} {event['details_json']}"
     assert "atl-secret-value" not in serialized
     assert "token-value" not in serialized
+    assert "header-token" not in serialized
+    assert "eyJheader.payload.signature" not in serialized
+    assert "client-secret-value" not in serialized
     assert "[REDACTED]" in serialized

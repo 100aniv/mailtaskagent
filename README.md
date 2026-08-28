@@ -34,8 +34,8 @@
 - Dashboard에서 Task 제목·설명·기한·상태·회신 필요 여부 직접 수정과 History 저장
 - 기대결과를 분리한 대표 Business Case 15개와 제품형 Dashboard·Gmail Adapter Contract,
   운영/시연 모드 및 DB 격리 회귀를 포함한 AI Master MVP pytest 60건
-- Post-MVP Priority Rule·사용자 Override·실전 UI·Gmail 자동 동기화와 합성 Microsoft
-  Graph Adapter Contract를 포함한 전체 pytest 71건
+- Post-MVP Priority Rule·사용자 Override·실전 UI·Gmail 자동 동기화, 운영 CLI·재시도·
+  SQLite Backup과 합성 Microsoft Graph Adapter Contract를 포함한 전체 pytest 77건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀
@@ -88,6 +88,27 @@ Editable Package로 함께 등록하므로 별도의 `PYTHONPATH` 설정 없이 
 `메일`에서는 Source로 들어온 메일의 분류와 처리 결과를 확인하거나 미처리 메일을 한 번에
 정리할 수 있다. 멘토용 재현 버튼은 `데모 도구`로 분리했다. `품질 검증`에서는 Mock 15개
 회귀를 즉시 실행하고, LIVE 모드에서는 같은 기대값으로 회사 LLM 결과를 별도 검증할 수 있다.
+
+## Post-MVP 운영 명령
+
+Streamlit 화면이 닫혀 있어도 Windows Task Scheduler 또는 n8n이 아래 1회 실행 명령을
+주기적으로 호출할 수 있다.
+
+```powershell
+# 제한 Gmail Label의 신규 mail_id만 처리
+.venv\Scripts\python.exe -m mailtaskagent.operations_cli sync-gmail
+
+# 활성 업무, Priority, 검토 대기와 마지막 동기화 상태
+.venv\Scripts\python.exe -m mailtaskagent.operations_cli status
+
+# data/backups/에 SQLite 복구용 백업 생성
+.venv\Scripts\python.exe -m mailtaskagent.operations_cli backup
+```
+
+동일 명령의 PowerShell Wrapper는 `scripts/`에 있다. 동기화 stdout은 Mail 본문·Secret을
+포함하지 않는 단일 JSON이며 Exit Code는 `0=정상`, `1=일부 실패`, `2=실패`다. 상세 운영
+절차와 n8n/Windows Scheduler 계약은 `Docs/IMPLEMENTATION/09_Post_MVP_운영가이드.md`를
+참고한다.
 
 회사 LLM Live 전체 평가는 API 호출이 발생하므로 필요할 때만 아래처럼 실행한다.
 

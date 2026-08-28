@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterator
+from uuid import uuid4
 
 from mailtaskagent.models import (
     ActionProposal,
@@ -111,6 +112,22 @@ CREATE TABLE IF NOT EXISTS operation_settings (
     setting_value INTEGER NOT NULL,
     updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS sync_runs (
+    run_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    status TEXT NOT NULL,
+    fetched_count INTEGER NOT NULL DEFAULT 0,
+    pending_count INTEGER NOT NULL DEFAULT 0,
+    succeeded_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    duplicate_count INTEGER NOT NULL DEFAULT 0,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    error_type TEXT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sync_runs_source_started
+ON sync_runs(source, started_at DESC);
 """
 
 
@@ -127,7 +144,17 @@ def _sanitize(value):
         result = {}
         for key, item in value.items():
             normalized = str(key).lower().replace("-", "_")
-            if any(secret in normalized for secret in ("api_key", "authorization", "token", "secret")):
+            if any(
+                secret in normalized
+                for secret in (
+                    "api_key",
+                    "authorization",
+                    "credential",
+                    "password",
+                    "token",
+                    "secret",
+                )
+            ):
                 result[key] = "[REDACTED]"
             else:
                 result[key] = _sanitize(item)
@@ -137,7 +164,17 @@ def _sanitize(value):
     if isinstance(value, str):
         redacted = re.sub(r"atl-[A-Za-z0-9._-]+", "[REDACTED]", value, flags=re.IGNORECASE)
         redacted = re.sub(
-            r"(?i)(api[-_ ]?key|authorization)(\s*[:=]\s*)([^\s,;]+)",
+            r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+",
+            "Bearer [REDACTED]",
+            redacted,
+        )
+        redacted = re.sub(
+            r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
+            "[REDACTED]",
+            redacted,
+        )
+        redacted = re.sub(
+            r"(?i)(api[-_ ]?key|authorization|client[-_ ]?secret|access[-_ ]?token|refresh[-_ ]?token)(\s*[:=]\s*)([^\s,;]+)",
             r"\1\2[REDACTED]",
             redacted,
         )
@@ -183,6 +220,7 @@ class SQLiteStorage:
     def reset(self) -> None:
         self.initialize()
         with self.connect() as connection:
+            connection.execute("DELETE FROM sync_runs")
             connection.execute("DELETE FROM processing_events")
             connection.execute("DELETE FROM processing_results")
             connection.execute("DELETE FROM histories")
@@ -887,6 +925,77 @@ class SQLiteStorage:
                 pending.append(result)
         return pending
 
+    def create_task_by_user(
+        self,
+        *,
+        title: str,
+        description: str | None = None,
+        due_date: str | None = None,
+        status: str = TaskStatus.TODO.value,
+        reply_required: bool = False,
+        importance: int | None = None,
+    ) -> dict:
+        clean_title = title.strip()
+        if not clean_title:
+            raise ValueError("Task title is required")
+        validated_status = TaskStatus(status)
+        if validated_status in {TaskStatus.COMPLETED, TaskStatus.CANCELLED}:
+            raise ValueError("A new Task cannot start as completed or cancelled")
+        if importance is not None and importance not in {1, 2, 3, 4}:
+            raise ValueError("Task importance must be 1, 2, 3, 4 or None")
+        now = _now()
+        task_id = f"TASK-USER-{uuid4().hex[:10].upper()}"
+        conversation_id = f"USER-CONVERSATION-{uuid4().hex[:10].upper()}"
+        waiting_since = (
+            now if validated_status == TaskStatus.WAITING_REPLY else None
+        )
+        with self.connect() as connection:
+            try:
+                connection.execute("BEGIN")
+                connection.execute(
+                    """
+                    INSERT INTO tasks(task_id, conversation_id, title, requester,
+                                      description, due_date, reply_required, status,
+                                      waiting_since, importance_override, source_mail_id,
+                                      created_at, updated_at)
+                    VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 'USER-DASHBOARD', ?, ?)
+                    """,
+                    (
+                        task_id,
+                        conversation_id,
+                        clean_title,
+                        description.strip() if description else None,
+                        due_date,
+                        int(reply_required),
+                        validated_status.value,
+                        waiting_since,
+                        importance,
+                        now,
+                        now,
+                    ),
+                )
+                task = self._fetch_task(connection, task_id)
+                connection.execute(
+                    """
+                    INSERT INTO histories(task_id, mail_id, action, before_json, after_json,
+                                          reason, confidence, user_decision, created_at)
+                    VALUES (?, 'USER-DASHBOARD', ?, NULL, ?, ?, 1.0, ?, ?)
+                    """,
+                    (
+                        task_id,
+                        AgentAction.CREATE_TASK.value,
+                        _json(task),
+                        "사용자가 Dashboard에서 업무를 직접 생성",
+                        _json({"decision": "MANUAL_CREATE"}),
+                        now,
+                    ),
+                )
+                connection.commit()
+                return task
+            except Exception:
+                connection.rollback()
+                raise
+
     def update_task_by_user(
         self,
         task_id: str,
@@ -1190,6 +1299,85 @@ class SQLiteStorage:
                 )
             connection.commit()
         return self.get_operation_settings()
+
+    def start_sync_run(self, *, run_id: str, source: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO sync_runs(run_id, source, status, started_at)
+                VALUES (?, ?, 'RUNNING', ?)
+                """,
+                (run_id, source, _now()),
+            )
+            connection.commit()
+
+    def finish_sync_run(
+        self,
+        *,
+        run_id: str,
+        status: str,
+        fetched_count: int,
+        pending_count: int,
+        succeeded_count: int,
+        failed_count: int,
+        duplicate_count: int,
+        retry_count: int,
+        error_type: str | None = None,
+    ) -> None:
+        allowed_statuses = {"SUCCESS", "PARTIAL", "FAILED"}
+        if status not in allowed_statuses:
+            raise ValueError(f"Unsupported sync status: {status}")
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE sync_runs
+                SET status = ?, fetched_count = ?, pending_count = ?,
+                    succeeded_count = ?, failed_count = ?, duplicate_count = ?,
+                    retry_count = ?, error_type = ?, finished_at = ?
+                WHERE run_id = ? AND status = 'RUNNING'
+                """,
+                (
+                    status,
+                    int(fetched_count),
+                    int(pending_count),
+                    int(succeeded_count),
+                    int(failed_count),
+                    int(duplicate_count),
+                    int(retry_count),
+                    _sanitize(error_type),
+                    _now(),
+                    run_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(f"Running sync not found: {run_id}")
+            connection.commit()
+
+    def list_sync_runs(self, *, source: str | None = None, limit: int = 20) -> list[dict]:
+        if not 1 <= limit <= 200:
+            raise ValueError("Sync run limit must be between 1 and 200")
+        query = "SELECT * FROM sync_runs"
+        params: list[object] = []
+        if source:
+            query += " WHERE source = ?"
+            params.append(source)
+        query += " ORDER BY started_at DESC LIMIT ?"
+        params.append(limit)
+        with self.connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def backup_to(self, destination: Path) -> Path:
+        self.initialize()
+        resolved_source = self.path.resolve()
+        resolved_destination = destination.resolve()
+        if resolved_destination == resolved_source:
+            raise ValueError("Backup destination must differ from the active database")
+        resolved_destination.parent.mkdir(parents=True, exist_ok=True)
+        with self.connect() as source_connection:
+            with sqlite3.connect(resolved_destination) as destination_connection:
+                source_connection.backup(destination_connection)
+        return resolved_destination
 
     def list_histories(self) -> list[dict]:
         with self.connect() as connection:

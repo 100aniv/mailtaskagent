@@ -22,6 +22,7 @@ from mailtaskagent.manual_benchmark import (
     save_manual_benchmark_evidence,
 )
 from mailtaskagent.models import AgentAction, ReviewDecision
+from mailtaskagent.operations import MailSyncService
 from mailtaskagent.priority import (
     PRIORITY_PRESENTATION,
     PriorityLevel,
@@ -207,6 +208,16 @@ def _load_gmail_test_mails():
         gmail_settings,
     )
     return source.load()
+
+
+class _GmailSyncSource:
+    def __init__(self, cached_mails=None) -> None:
+        self.loaded_mails = cached_mails
+
+    def load(self):
+        if self.loaded_mails is None:
+            self.loaded_mails = _load_gmail_test_mails()
+        return list(self.loaded_mails)
 
 
 def _apply_styles() -> None:
@@ -564,7 +575,7 @@ def _render_quick_demo(storage, settings, mail_by_id) -> None:
                 try:
                     _run_demo(storage, settings, mail_by_id, key)
                 except Exception as exc:
-                    st.error(f"시나리오 실행 실패: {exc}")
+                    st.error(f"시나리오 실행 실패: {type(exc).__name__}")
                     st.info("실행 로그 탭에서 어느 단계에서 중단됐는지 확인할 수 있습니다.")
 
     flash = st.session_state.get("demo_flash")
@@ -814,7 +825,7 @@ def _render_mailbox(
                     st.session_state["last_result"] = result.model_dump(mode="json")
                     st.rerun()
                 except Exception as exc:
-                    st.error(f"처리 실패: {exc}")
+                    st.error(f"처리 실패: {type(exc).__name__}")
                     st.info("운영 로그에 실패 단계가 남고 Task 변경은 수행되지 않습니다.")
 
     result = st.session_state.get("last_result")
@@ -928,7 +939,7 @@ def _render_review_queue(storage, settings, mail_by_id) -> None:
             st.session_state.pop("last_result", None)
             st.rerun()
         except Exception as exc:
-            st.error(f"사용자 결정 반영 실패: {exc}")
+            st.error(f"사용자 결정 반영 실패: {type(exc).__name__}")
 
 
 def _render_event_log(storage, mail_ids: list[str]) -> None:
@@ -1029,9 +1040,50 @@ def _render_event_log(storage, mail_ids: list[str]) -> None:
 
 
 def _render_tasks_and_histories(storage) -> None:
+    st.subheader("내 업무")
+    with st.expander("새 업무 직접 추가"):
+        with st.form("manual_task_create_form"):
+            new_title = st.text_input("업무 제목", placeholder="처리할 업무를 입력하세요")
+            new_description = st.text_area("업무 설명", placeholder="필요한 내용만 간단히 입력하세요")
+            new_status = st.selectbox(
+                "시작 상태",
+                ["TODO", "IN_PROGRESS", "WAITING_REPLY"],
+                format_func=lambda value: STATUS_LABELS[value],
+            )
+            has_due_date = st.checkbox("기한 설정")
+            new_due_date = st.date_input(
+                "기한",
+                value=date.today(),
+                disabled=not has_due_date,
+            )
+            new_importance = st.selectbox(
+                "중요도",
+                [None, 1, 2, 3, 4],
+                format_func=lambda value: (
+                    "자동 계산"
+                    if value is None
+                    else f"{PRIORITY_PRESENTATION[PriorityLevel(f'P{value}')][0]} P{value}"
+                ),
+            )
+            create_task = st.form_submit_button("업무 추가", type="primary")
+        if create_task:
+            try:
+                created_task = storage.create_task_by_user(
+                    title=new_title,
+                    description=new_description,
+                    due_date=new_due_date.isoformat() if has_due_date else None,
+                    status=new_status,
+                    importance=new_importance,
+                )
+                st.session_state["task_edit_flash"] = (
+                    f"{created_task['title']} 업무를 추가하고 History에 기록했습니다."
+                )
+                st.rerun()
+            except ValueError as exc:
+                st.error(f"업무를 추가할 수 없습니다: {exc}")
+
     task_col, history_col = st.columns([1, 1.35])
     with task_col:
-        st.subheader("내 업무")
         tasks = storage.list_tasks()
         if tasks:
             priority_rules = storage.list_priority_rules()
@@ -1587,24 +1639,33 @@ def _render_automatic_gmail_sync(storage, settings) -> None:
         return
 
     try:
-        if last_check is None and "gmail_test_mails" in st.session_state:
-            gmail_mails = st.session_state["gmail_test_mails"]
-        else:
-            gmail_mails = _load_gmail_test_mails()
-        st.session_state["gmail_test_mails"] = gmail_mails
-        batch = _run_unprocessed_mail_batch(storage, settings, gmail_mails)
+        cached_mails = (
+            st.session_state.get("gmail_test_mails") if last_check is None else None
+        )
+        source = _GmailSyncSource(cached_mails)
+        report = MailSyncService(
+            settings=settings,
+            storage=storage,
+            analyzer=build_analyzer(settings),
+            source=source,
+            source_name="GMAIL",
+        ).run_once()
+        st.session_state["gmail_test_mails"] = source.loaded_mails or []
         st.session_state["gmail_auto_sync_last_check"] = now
+        if report.status == "FAILED":
+            st.session_state["gmail_auto_sync_error"] = report.error_type
+            st.warning(f"Gmail 자동 확인 실패 · {report.error_type}")
+            return
         st.session_state.pop("gmail_auto_sync_error", None)
-        if batch["last_result"]:
-            st.session_state["last_result"] = batch["last_result"].model_dump(
-                mode="json"
-            )
-        if batch["pending_count"]:
+        if report.pending_count:
             st.session_state["batch_flash"] = {
-                "success": batch["success"],
-                "failed": batch["failed"],
+                "success": report.succeeded_count,
+                "failed": [
+                    {"mail_id": mail_id, "error": report.error_type or "ProcessingError"}
+                    for mail_id in report.failed_mail_ids
+                ],
                 "message": (
-                    f"Gmail 자동 확인에서 새 메일 {batch['pending_count']}건을 정리했습니다."
+                    f"Gmail 자동 확인에서 새 메일 {report.pending_count}건을 정리했습니다."
                 ),
             }
             st.rerun()
@@ -1637,6 +1698,48 @@ def _render_operation_settings(storage, gmail_summary: dict) -> None:
         else:
             st.warning("Gmail 사용자 승인이 필요합니다.")
         st.caption("Outlook / Microsoft Graph는 Gmail 실전 Workflow 검증 후 연결합니다.")
+
+    sync_runs = storage.list_sync_runs(source="GMAIL", limit=10)
+    if sync_runs:
+        latest_sync = sync_runs[0]
+        status_label = {
+            "SUCCESS": "정상",
+            "PARTIAL": "일부 실패",
+            "FAILED": "실패",
+            "RUNNING": "실행 중",
+        }.get(latest_sync["status"], latest_sync["status"])
+        st.caption(
+            f"최근 Gmail 자동 실행 · {status_label} · "
+            f"성공 {latest_sync['succeeded_count']}건 · "
+            f"실패 {latest_sync['failed_count']}건 · "
+            f"재시도 {latest_sync['retry_count']}회"
+        )
+        with st.expander("최근 자동 실행 기록"):
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "시작 시각": run["started_at"],
+                            "상태": {
+                                "SUCCESS": "정상",
+                                "PARTIAL": "일부 실패",
+                                "FAILED": "실패",
+                                "RUNNING": "실행 중",
+                            }.get(run["status"], run["status"]),
+                            "가져옴": run["fetched_count"],
+                            "신규": run["pending_count"],
+                            "성공": run["succeeded_count"],
+                            "실패": run["failed_count"],
+                            "중복": run["duplicate_count"],
+                            "재시도": run["retry_count"],
+                            "오류 종류": run.get("error_type") or "-",
+                        }
+                        for run in sync_runs
+                    ]
+                ),
+                width="stretch",
+                hide_index=True,
+            )
 
     st.markdown("### Gmail 자동 정리")
     operation_settings = storage.get_operation_settings()
@@ -1752,40 +1855,78 @@ def _render_operation_settings(storage, gmail_summary: dict) -> None:
             st.success("중요도 Rule을 추가했습니다.")
             st.rerun()
         except Exception as exc:
-            st.error(f"Rule을 추가할 수 없습니다: {exc}")
+            message = str(exc) if isinstance(exc, ValueError) else type(exc).__name__
+            st.error(f"Rule을 추가할 수 없습니다: {message}")
 
     rules = storage.list_priority_rules()
     if not rules:
         st.info("등록된 사용자 Rule이 없습니다. 기한과 회신 대기 기준으로 우선순위를 계산합니다.")
-        return
-    rule_frame = pd.DataFrame(
-        [
-            {
-                "사용": "켜짐" if rule["enabled"] else "꺼짐",
-                "Rule": rule["name"],
-                "조건": PRIORITY_RULE_LABELS.get(rule["rule_type"], rule["rule_type"]),
-                "일치 값": rule["pattern"],
-                "중요도": f"P{rule['importance']}",
-            }
-            for rule in rules
-        ]
-    )
-    st.dataframe(rule_frame, width="stretch", hide_index=True)
-    selected_rule = st.selectbox(
-        "관리할 Rule",
-        rules,
-        format_func=lambda item: f"{item['name']} · {item['pattern']}",
-    )
-    toggle_col, delete_col = st.columns(2)
-    toggle_label = "Rule 끄기" if selected_rule["enabled"] else "Rule 켜기"
-    if toggle_col.button(toggle_label, width="stretch"):
-        storage.set_priority_rule_enabled(
-            selected_rule["rule_id"], not selected_rule["enabled"]
+    else:
+        rule_frame = pd.DataFrame(
+            [
+                {
+                    "사용": "켜짐" if rule["enabled"] else "꺼짐",
+                    "Rule": rule["name"],
+                    "조건": PRIORITY_RULE_LABELS.get(
+                        rule["rule_type"], rule["rule_type"]
+                    ),
+                    "일치 값": rule["pattern"],
+                    "중요도": f"P{rule['importance']}",
+                }
+                for rule in rules
+            ]
         )
-        st.rerun()
-    if delete_col.button("Rule 삭제", width="stretch"):
-        storage.delete_priority_rule(selected_rule["rule_id"])
-        st.rerun()
+        st.dataframe(rule_frame, width="stretch", hide_index=True)
+        selected_rule = st.selectbox(
+            "관리할 Rule",
+            rules,
+            format_func=lambda item: f"{item['name']} · {item['pattern']}",
+        )
+        toggle_col, delete_col = st.columns(2)
+        toggle_label = "Rule 끄기" if selected_rule["enabled"] else "Rule 켜기"
+        if toggle_col.button(toggle_label, width="stretch"):
+            storage.set_priority_rule_enabled(
+                selected_rule["rule_id"], not selected_rule["enabled"]
+            )
+            st.rerun()
+        if delete_col.button("Rule 삭제", width="stretch"):
+            storage.delete_priority_rule(selected_rule["rule_id"])
+            st.rerun()
+
+    st.markdown("### 데이터 내보내기와 복구")
+    st.caption(
+        "Task와 History만 내려받습니다. Gmail 원문과 API Key는 내보내기 파일에 포함하지 않습니다."
+    )
+    export_col, history_export_col = st.columns(2)
+    tasks = storage.list_tasks()
+    histories = storage.list_histories()
+    task_csv = pd.DataFrame(tasks).to_csv(index=False).encode("utf-8-sig")
+    export_col.download_button(
+        "Task CSV 내려받기",
+        data=task_csv,
+        file_name=f"mailtaskagent-tasks-{date.today().isoformat()}.csv",
+        mime="text/csv",
+        width="stretch",
+    )
+    history_export_col.download_button(
+        "History JSON 내려받기",
+        data=json.dumps(histories, ensure_ascii=False, indent=2),
+        file_name=f"mailtaskagent-history-{date.today().isoformat()}.json",
+        mime="application/json",
+        width="stretch",
+    )
+    if st.button("SQLite 복구용 백업 생성", width="stretch"):
+        try:
+            stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+            backup_path = storage.backup_to(
+                PROJECT_ROOT / "data" / "backups" / f"mailtaskagent-{stamp}.db"
+            )
+            st.session_state["operation_settings_flash"] = (
+                f"복구용 백업을 생성했습니다: {backup_path}"
+            )
+            st.rerun()
+        except Exception as exc:
+            st.error(f"백업을 생성할 수 없습니다: {type(exc).__name__}")
 
 
 def main() -> None:

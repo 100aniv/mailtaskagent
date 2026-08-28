@@ -159,3 +159,26 @@ def test_operation_auto_sync_settings_are_persisted_and_validated(tmp_path: Path
             gmail_auto_sync_enabled=True,
             gmail_sync_interval_minutes=0,
         )
+
+
+def test_user_can_create_a_task_with_history_and_priority(tmp_path: Path) -> None:
+    storage = SQLiteStorage(tmp_path / "manual-task.db")
+    storage.initialize()
+
+    task = storage.create_task_by_user(
+        title="직접 등록한 업무",
+        description="메일 없이 등록",
+        due_date="2026-09-01",
+        status="IN_PROGRESS",
+        importance=2,
+    )
+
+    assert task["source_mail_id"] == "USER-DASHBOARD"
+    assert task["status"] == "IN_PROGRESS"
+    assert task["importance_override"] == 2
+    history = storage.list_histories()[0]
+    assert history["action"] == "CREATE_TASK"
+    assert json.loads(history["user_decision"])["decision"] == "MANUAL_CREATE"
+
+    with pytest.raises(ValueError, match="cannot start"):
+        storage.create_task_by_user(title="잘못된 완료 업무", status="COMPLETED")

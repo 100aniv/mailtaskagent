@@ -118,6 +118,19 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 - 검증·사용자 승인 없이 중요 Task 상태를 바꾸지 않는다.
 - API Key와 Mail 원문을 Workflow에 평문으로 저장하지 않는다.
 
+### 2026-08-28 Outlook 제외 운영 자동화 진행 증적
+
+- Streamlit 화면과 분리된 `operations_cli sync-gmail` 1회 실행 Command를 구현했다.
+- Windows Task Scheduler와 n8n Schedule/Execute Command가 호출할 수 있도록
+  `scripts/run_gmail_sync.ps1`을 제공한다.
+- stdout은 Mail 본문·Secret을 포함하지 않는 단일 JSON Object이며 Exit Code는
+  `0=SUCCESS`, `1=PARTIAL`, `2=FAILED`로 고정했다.
+- Timeout·Connection·Rate Limit 계열만 한 번 재시도하고 Validation·정책 오류는 반복하지 않는다.
+- `sync_runs`에 가져온 수, 신규·성공·실패·중복·재시도 수와 오류 종류를 저장하고
+  Dashboard에서 최근 실행 상태를 확인할 수 있다.
+- 실제 n8n 서버 설치, 외부 Webhook과 알림 채널 전송은 수행하지 않았다. 실행 계약과
+  운영 절차는 `09_Post_MVP_운영가이드.md`에 분리했다.
+
 ## 7. 사내 Database와 서비스 배포
 
 ### SQLite 교체 검토
@@ -135,6 +148,18 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 - 사내 DNS·TLS·Proxy·인증서
 - SSO와 역할 기반 접근 제어
 - Health Check, 중앙 Logging, Monitoring, Alert
+
+### 현재 로컬 파일럿 구현
+
+- SQLite Transaction과 `mail_id` 중복 방지 계약을 유지한다.
+- Dashboard와 `operations_cli backup`에서 SQLite Online Backup API 기반 복구용 파일을
+  생성한다. 자동 덮어쓰기·자동 복원은 하지 않는다.
+- Task CSV와 History JSON을 사용자 요청 시에만 내려받을 수 있다. Mail 원문과 Secret은
+  해당 내보내기에 포함하지 않는다.
+- `operations_cli status`는 활성 Task, Priority 수, 검토 대기와 마지막 동기화 상태를
+  기계 판독 가능한 JSON으로 제공한다.
+- 사내 RDBMS, 다중 사용자 격리, SSO, TLS와 중앙 Monitoring은 회사 표준과 실행환경이
+  정해지기 전까지 구현 완료로 표시하지 않는다.
 
 ## 8. 보안·개인정보 Gate
 

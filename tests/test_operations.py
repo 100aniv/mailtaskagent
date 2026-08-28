@@ -1,0 +1,168 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from mailtaskagent.config import PROJECT_ROOT, Settings
+from mailtaskagent.llm_client import MockMailAnalyzer
+from mailtaskagent.operations import MailSyncService
+from mailtaskagent.operations import build_attention_snapshot
+from mailtaskagent.operations_cli import main as operations_main
+from mailtaskagent.storage import SQLiteStorage
+from mailtaskagent.workflow import load_mails
+
+
+class _StaticSource:
+    def __init__(self, mails) -> None:
+        self.mails = mails
+
+    def load(self):
+        return self.mails
+
+
+class _FailingSource:
+    def load(self):
+        raise ConnectionError("synthetic source failure")
+
+
+class _RetryOnceAnalyzer:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.delegate = MockMailAnalyzer()
+
+    def analyze(self, mail):
+        self.calls += 1
+        if self.calls == 1:
+            raise TimeoutError("synthetic timeout")
+        return self.delegate.analyze(mail)
+
+
+def _settings(tmp_path: Path) -> Settings:
+    return Settings(
+        api_url="https://example.test",
+        api_key="",
+        model="mock",
+        api_version="test",
+        timeout_seconds=1,
+        use_mock=True,
+        database_path=tmp_path / "operations.db",
+        confidence_threshold=0.75,
+    )
+
+
+def test_sync_service_records_success_and_duplicate_counts(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    storage = SQLiteStorage(settings.database_path)
+    mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")[:2]
+    service = MailSyncService(
+        settings=settings,
+        storage=storage,
+        analyzer=MockMailAnalyzer(),
+        source=_StaticSource(mails),
+        source_name="GMAIL",
+    )
+
+    first = service.run_once()
+    second = service.run_once()
+
+    assert first.status == "SUCCESS"
+    assert first.fetched_count == 2
+    assert first.pending_count == 2
+    assert first.succeeded_count == 2
+    assert second.status == "SUCCESS"
+    assert second.pending_count == 0
+    assert second.duplicate_count == 2
+    runs = storage.list_sync_runs(source="GMAIL")
+    assert [run["status"] for run in runs] == ["SUCCESS", "SUCCESS"]
+    assert runs[0]["duplicate_count"] == 2
+
+
+def test_sync_service_retries_only_transient_failure(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    storage = SQLiteStorage(settings.database_path)
+    analyzer = _RetryOnceAnalyzer()
+    service = MailSyncService(
+        settings=settings,
+        storage=storage,
+        analyzer=analyzer,
+        source=_StaticSource(
+            load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")[:1]
+        ),
+        source_name="GMAIL",
+    )
+
+    report = service.run_once()
+
+    assert report.status == "SUCCESS"
+    assert report.succeeded_count == 1
+    assert report.retry_count == 1
+    assert report.error_type is None
+    assert analyzer.calls == 2
+
+
+def test_sync_service_records_source_failure_without_error_message(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    storage = SQLiteStorage(settings.database_path)
+    service = MailSyncService(
+        settings=settings,
+        storage=storage,
+        analyzer=MockMailAnalyzer(),
+        source=_FailingSource(),
+        source_name="GMAIL",
+    )
+
+    report = service.run_once()
+
+    assert report.status == "FAILED"
+    assert report.error_type == "ConnectionError"
+    assert "synthetic source failure" not in str(report.model_dump())
+    run = storage.list_sync_runs(limit=1)[0]
+    assert run["error_type"] == "ConnectionError"
+
+
+def test_attention_snapshot_contains_only_operational_task_fields(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    storage = SQLiteStorage(settings.database_path)
+    service = MailSyncService(
+        settings=settings,
+        storage=storage,
+        analyzer=MockMailAnalyzer(),
+        source=_StaticSource(
+            load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")[:1]
+        ),
+        source_name="GMAIL",
+    )
+    service.run_once()
+
+    snapshot = build_attention_snapshot(storage)
+
+    assert snapshot["active_task_count"] == 1
+    assert snapshot["last_sync"]["status"] == "SUCCESS"
+    assert set(snapshot["tasks"][0]) == {
+        "task_id",
+        "title",
+        "status",
+        "due_date",
+        "priority",
+        "priority_reason",
+    }
+
+
+def test_operations_cli_status_and_backup_are_machine_readable(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    database_path = tmp_path / "ops-cli.db"
+    backup_path = tmp_path / "backups" / "ops-cli-backup.db"
+    monkeypatch.setenv("DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+
+    assert operations_main(["status", "--limit", "10"]) == 0
+    status_payload = json.loads(capsys.readouterr().out)
+    assert status_payload["llm_mode"] == "MOCK"
+    assert status_payload["active_task_count"] == 0
+
+    assert operations_main(["backup", "--output", str(backup_path)]) == 0
+    backup_payload = json.loads(capsys.readouterr().out)
+    assert backup_payload["status"] == "SUCCESS"
+    assert Path(backup_payload["backup_path"]) == backup_path.resolve()
+    assert backup_path.exists()
