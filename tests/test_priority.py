@@ -182,3 +182,19 @@ def test_user_can_create_a_task_with_history_and_priority(tmp_path: Path) -> Non
 
     with pytest.raises(ValueError, match="cannot start"):
         storage.create_task_by_user(title="잘못된 완료 업무", status="COMPLETED")
+
+    settings = Settings(
+        api_url="https://example.test",
+        api_key="",
+        model="mock",
+        api_version="test",
+        timeout_seconds=1,
+        use_mock=True,
+        database_path=storage.path,
+        confidence_threshold=0.75,
+    )
+    workflow = MailTaskWorkflow(settings, storage, MockMailAnalyzer())
+    agent_task = workflow.process(
+        load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")[0]
+    )
+    assert agent_task.task["task_id"] == "TASK-001"

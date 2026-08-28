@@ -166,6 +166,8 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
   해당 내보내기에 포함하지 않는다.
 - `operations_cli status`는 활성 Task, Priority 수, 검토 대기와 마지막 동기화 상태를
   기계 판독 가능한 JSON으로 제공한다.
+- `operations_cli health`는 DB·LLM 설정·Gmail OAuth 준비 여부를 Secret 없이 확인하고
+  `READY`, `DEGRADED`, `FAILED` Exit Code 계약을 제공한다.
 - 사내 RDBMS, 다중 사용자 격리, SSO, TLS와 중앙 Monitoring은 회사 표준과 실행환경이
   정해지기 전까지 구현 완료로 표시하지 않는다.
 
@@ -230,3 +232,25 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 - 첨부파일 정밀 분석
 
 향후 실제 비즈니스 요구와 보안 승인, Core 평가 결과로 필요성이 입증될 때 별도 기획한다.
+
+## 12. Outlook 제외 Post-MVP 현재 판정
+
+| 항목 | 현재 판정 | 근거 또는 남은 외부 조건 |
+|---|---|---|
+| 실제 업무 UI·Task 직접 관리 | 구현·자동 테스트 완료 | 오늘/내 업무/검토/메일/기록/설정, 직접 생성·수정·완료 |
+| Priority·고객사·Keyword Rule | 구현·자동 테스트 완료 | P1~P4, 근거, Override, 설정 저장 |
+| 광고·뉴스레터 제외 Rule | 구현·자동 테스트 완료 | 정확한 Email·Domain·제목, IGNORE 근거, 본문 제외 금지 |
+| Gmail 화면 자동 확인 | 구현·자동 테스트 완료 | 제한 Label, 신규 mail_id, 1~60분, Read-only |
+| 무인 1회 Gmail 동기화 | 구현·자동 테스트 완료 | JSON·Exit Code·제한 재시도·sync_runs |
+| 기한·대기 점검 계약 | 구현·자동 테스트 완료 | `operations_cli status`, P1~P4·검토 대기 JSON |
+| Health Check | 구현·자동 테스트 완료 | DB·LLM·OAuth 준비 상태, Secret 미출력 |
+| Backup·Task/History Export | 구현·자동 테스트 완료 | SQLite Online Backup 복구 검증, CSV/JSON |
+| Windows Scheduler·n8n | 호출 계약·Script·가이드 완료 | 실제 등록·서버 설치는 사용자 PC/회사 정책 확인 필요 |
+| 로컬 Dashboard 실행 | 실행 Script 완료 | 상시 서비스 등록·TLS·DNS는 배포환경 필요 |
+| 사내 RDBMS·다중 사용자 | 설계 Gate만 완료 | 승인 DB 종류·접속정보·사용자 격리 정책 필요 |
+| SSO·권한관리 | 설계 Gate만 완료 | 회사 IdP·App Registration·역할 정책 필요 |
+| Teams/Slack/사내 알림 | Payload 원천(status)까지 준비 | 실제 수신자·채널·전송 필드 승인 필요 |
+| 중앙 Logging·Monitoring | 로컬 Event·sync_runs·Health까지 구현 | 회사 Monitoring 수집 규격·Endpoint 필요 |
+| RAG/Vector DB | 적용하지 않음 | 실제 정책 문서 Corpus와 필요성 없음 |
+| 자동 회신·발송·삭제 | 적용하지 않음 | 현재 안전 범위 밖 |
+| Outlook Live | 사용자 요청에 따라 제외 | Graph 합성 Adapter Contract만 별도 보존 |

@@ -65,6 +65,16 @@ Exit Code는 `0=SUCCESS`, `1=PARTIAL`, `2=FAILED`다. Timeout, Connection, Rate 
 
 활성 Task, P1~P4 수, 사용자 검토 대기, 마지막 동기화 상태를 JSON으로 반환한다. Mail 원문은 포함하지 않는다. Task 제목은 업무정보이므로 외부 Webhook이나 공개 채널로 전송하지 않는다.
 
+### Health Check
+
+```powershell
+.\scripts\run_health.ps1
+```
+
+로컬 DB, LLM 실행 설정, Gmail OAuth Credentials·Token 준비 여부와 마지막 동기화 상태를
+JSON으로 반환한다. `READY`는 Exit Code 0, 준비가 부족한 `DEGRADED`는 Exit Code 1,
+실행 자체가 실패한 경우는 Exit Code 2다. Key·Token 값과 경로 내용은 출력하지 않는다.
+
 ### Dashboard 실행
 
 ```powershell

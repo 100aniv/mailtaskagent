@@ -166,3 +166,36 @@ def test_operations_cli_status_and_backup_are_machine_readable(
     assert backup_payload["status"] == "SUCCESS"
     assert Path(backup_payload["backup_path"]) == backup_path.resolve()
     assert backup_path.exists()
+
+
+def test_operations_cli_health_reports_readiness_without_secrets(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "health.db"))
+    monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+    monkeypatch.setenv(
+        "GMAIL_CREDENTIALS_PATH", str(tmp_path / "missing-credentials.json")
+    )
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(tmp_path / "missing-token.json"))
+
+    assert operations_main(["health"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["status"] == "DEGRADED"
+    assert payload["checks"]["database_ready"] is True
+    assert payload["checks"]["llm_ready"] is True
+    assert payload["checks"]["gmail_token_ready"] is False
+    assert "api_key" not in str(payload).casefold()
+
+
+def test_sqlite_backup_can_be_opened_with_task_and_history(tmp_path: Path) -> None:
+    storage = SQLiteStorage(tmp_path / "source.db")
+    storage.initialize()
+    task = storage.create_task_by_user(title="백업 검증 업무", importance=1)
+    backup_path = storage.backup_to(tmp_path / "backups" / "restorable.db")
+
+    restored = SQLiteStorage(backup_path)
+    restored.initialize()
+
+    assert restored.get_task(task["task_id"])["title"] == "백업 검증 업무"
+    assert restored.list_histories()[0]["task_id"] == task["task_id"]

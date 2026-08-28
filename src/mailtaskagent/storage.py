@@ -445,7 +445,11 @@ class SQLiteStorage:
 
     def _next_task_id(self, connection: sqlite3.Connection) -> str:
         rows = connection.execute("SELECT task_id FROM tasks").fetchall()
-        numbers = [int(row["task_id"].split("-")[-1]) for row in rows if row["task_id"].startswith("TASK-")]
+        numbers = []
+        for row in rows:
+            matched = re.fullmatch(r"TASK-(\d+)", row["task_id"])
+            if matched:
+                numbers.append(int(matched.group(1)))
         return f"TASK-{max(numbers, default=0) + 1:03d}"
 
     def _insert_mail(self, connection: sqlite3.Connection, mail: MailInput, now: str) -> None:

@@ -74,6 +74,30 @@ def _run_backup(output: Path | None) -> int:
     return 0
 
 
+def _run_health() -> int:
+    settings = load_settings()
+    storage = SQLiteStorage(settings.database_path)
+    storage.initialize()
+    gmail_settings = load_gmail_source_settings()
+    latest_runs = storage.list_sync_runs(source="GMAIL", limit=1)
+    checks = {
+        "database_ready": settings.database_path.exists(),
+        "llm_ready": settings.use_mock or bool(settings.api_key),
+        "gmail_credentials_ready": gmail_settings.credentials_path.exists(),
+        "gmail_token_ready": gmail_settings.token_path.exists(),
+    }
+    status = "READY" if all(checks.values()) else "DEGRADED"
+    _print_json(
+        {
+            "status": status,
+            "checks": checks,
+            "last_sync_status": latest_runs[0]["status"] if latest_runs else None,
+            "checked_at": datetime.now(UTC).isoformat(),
+        }
+    )
+    return 0 if status == "READY" else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="MailTaskAgent scheduler-safe operations commands."
@@ -82,6 +106,10 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser(
         "sync-gmail",
         help="Fetch the restricted Gmail label once and process only new mail IDs.",
+    )
+    subparsers.add_parser(
+        "health",
+        help="Check local DB, LLM configuration and Gmail OAuth readiness.",
     )
     status_parser = subparsers.add_parser(
         "status",
@@ -100,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_sync_gmail()
         if args.command == "status":
             return _run_status(args.limit)
+        if args.command == "health":
+            return _run_health()
         return _run_backup(args.output)
     except Exception as exc:
         _print_json({"status": "FAILED", "error_type": type(exc).__name__})
