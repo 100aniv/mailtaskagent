@@ -142,6 +142,14 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 방향·Thread·Action·사용자 확인 여부를 자동 대조한다. 미수신·미처리 Case는 `PENDING`,
 기대값 불일치는 `FAILED`로 남기며 20건 전부 일치할 때만 `PASSED`다.
 
+2026-08-28 별도 송신 Gmail 계정과 제한 Label을 사용한 실제 수용시험을 완료했다.
+`SYNC-D841295049BF`에서 GL-001~017·019·020 19건을 신규 처리해 실패 0건을 확인했고,
+발신자 제외 Rule을 활성화한 뒤 `SYNC-5FA2F26B1FDA`에서 GL-018 1건만 신규 처리했다.
+두 번째 실행은 기존 Mail 21건을 모두 중복으로 차단했다. 최종 Pilot Report는 방향,
+Thread, 7 Action, 사용자 확인 여부를 자동 대조해 `20/20 PASSED`, 실패·대기 0건이다.
+실메일 과정에서 Gmail 인용 원문 제거, 변경 없는 `TASK_UPDATE`의 `LINK_TO_TASK`,
+`추가` 표현의 관련 Task 검색과 최고 Token 점수 후보 제한을 보강했다.
+
 ## 6. n8n 자동화
 
 ### 역할
@@ -319,7 +327,8 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 
 2026-08-28 최신 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
 Slack 최소 알림·Dry-run, 6개 역할 기반 운영 UI와 Agent 기본 실행·일시정지 계약을 포함해
-pytest `111 passed`다. 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로
-등록했고 수동 실행 결과 `LastTaskResult=0`, 다음 실행 예약과 Gmail 중복 2건·실패 0건을 확인했다.
+pytest `113 passed`다. 별도 송신 계정 기반 Gmail 실메일 수용시험은 `20/20 PASSED`다.
+로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로 등록했고 수동 실행 결과
+`LastTaskResult=0`, 다음 실행 예약과 Gmail 중복 차단·실패 0건을 확인했다.
 초기 PowerShell 실행 시 나타난 콘솔 창은 예약 작업을 `.venv\Scripts\pythonw.exe` 직접 실행으로
 교체해 제거했으며, 교체 후에도 `LastTaskResult=0`과 다음 1분 실행 예약을 확인했다.

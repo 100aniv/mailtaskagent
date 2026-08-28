@@ -1,17 +1,27 @@
 import json
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 
 from mailtaskagent.config import PROJECT_ROOT, Settings
+from mailtaskagent.decision import decide_action
 from mailtaskagent.evaluation import (
     load_kpi_ground_truth,
     load_saved_evaluation_report,
     run_scenario_evaluation,
 )
 from mailtaskagent.llm_client import MockMailAnalyzer
-from mailtaskagent.models import AgentAction, MailIntent, ReviewDecision, TaskStatus
+from mailtaskagent.models import (
+    AgentAction,
+    MailAnalysis,
+    MailDirection,
+    MailInput,
+    MailIntent,
+    ReviewDecision,
+    TaskCandidate,
+    TaskStatus,
+)
 from mailtaskagent.storage import SQLiteStorage
 from mailtaskagent.workflow import MailTaskWorkflow, load_mails
 
@@ -69,6 +79,46 @@ def test_create_then_update_vertical_slice(settings: Settings) -> None:
         event["step"] == "M-04 DB_TRANSACTION" and event["status"] == "SUCCESS"
         for event in update_events
     )
+
+
+def test_task_update_without_field_change_links_existing_task(settings: Settings) -> None:
+    mail = MailInput(
+        mail_id="MAIL-LINK-NO-CHANGE",
+        conversation_id="THREAD-LINK",
+        direction=MailDirection.INBOUND,
+        sender="requester@example.test",
+        recipients=["worker@example.test"],
+        received_at=datetime(2026, 8, 28, 10, tzinfo=UTC),
+        subject="Re: 서버 패치 결과 확인 요청",
+        body="확인했습니다. 현재 요청 내용은 그대로 진행해 주세요.",
+    )
+    analysis = MailAnalysis(
+        is_task_request=True,
+        intent=MailIntent.TASK_UPDATE,
+        task_title="서버 패치 결과 확인",
+        request_summary="현재 요청을 그대로 진행",
+        requester="requester@example.test",
+        reason="기존 요청 유지 확인",
+        confidence=0.9,
+    )
+    candidate = TaskCandidate(
+        task_id="TASK-LINK",
+        conversation_id="THREAD-LINK",
+        title="서버 패치 결과 확인",
+        requester="requester@example.test",
+        description="서버 패치 적용 결과 확인",
+        due_date=date(2026, 9, 7),
+        status=TaskStatus.TODO,
+        match_score=1.0,
+        match_reason="동일 conversation_id",
+    )
+
+    proposal = decide_action(mail, analysis, [candidate], settings)
+
+    assert proposal.action == AgentAction.LINK_TO_TASK
+    assert proposal.target_task_id == candidate.task_id
+    assert proposal.changes == {}
+    assert proposal.needs_user_confirmation is False
 
 
 def test_waiting_lifecycle_resumes_when_information_arrives(settings: Settings) -> None:

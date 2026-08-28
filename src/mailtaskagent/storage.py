@@ -451,7 +451,14 @@ class SQLiteStorage:
                 )
                 ranked.append((score, candidate))
         ranked.sort(key=lambda item: (-item[0], -item[1].match_score, item[1].task_id))
-        return [candidate for _, candidate in ranked[:limit]]
+        if not ranked:
+            return []
+        best_score = ranked[0][0]
+        return [
+            candidate
+            for score, candidate in ranked
+            if score == best_score
+        ][:limit]
 
     @staticmethod
     def _candidate_from_row(row: sqlite3.Row) -> TaskCandidate:

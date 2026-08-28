@@ -10,5 +10,6 @@ data/*.db
 data/*.db-*
 data/backups/
 data/exports/
+data/recovery/
 logs/
 tmp/*.db

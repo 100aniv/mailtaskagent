@@ -21,6 +21,11 @@ EMAIL_ADDRESS_PATTERN = re.compile(
     r"[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+",
     re.IGNORECASE,
 )
+GMAIL_QUOTE_MARKERS = (
+    re.compile(r"^On .+ wrote:$", re.IGNORECASE),
+    re.compile(r"^20\d{2}년 .+님이 작성:$"),
+    re.compile(r"^-{2,}\s*Original Message\s*-{2,}$", re.IGNORECASE),
+)
 
 
 @dataclass(frozen=True)
@@ -134,6 +139,20 @@ def _extract_addresses(raw_values: list[str]) -> list[str]:
     return unique
 
 
+def _strip_quoted_reply(text: str) -> str:
+    """Keep only the newly written reply and discard quoted thread history."""
+
+    kept: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if any(pattern.match(stripped) for pattern in GMAIL_QUOTE_MARKERS):
+            break
+        if stripped.startswith(">"):
+            break
+        kept.append(line)
+    return "\n".join(kept).strip()
+
+
 def _extract_body(payload: dict[str, Any]) -> str:
     plain_parts: list[str] = []
     html_parts: list[str] = []
@@ -150,11 +169,11 @@ def _extract_body(payload: dict[str, Any]) -> str:
 
     visit(payload)
     if plain_parts:
-        return "\n\n".join(plain_parts).strip()
+        return _strip_quoted_reply("\n\n".join(plain_parts))
     if html_parts:
         extractor = _HTMLTextExtractor()
         extractor.feed("\n".join(html_parts))
-        return extractor.text().strip()
+        return _strip_quoted_reply(extractor.text())
     return ""
 
 

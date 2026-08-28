@@ -132,6 +132,36 @@ def decide_action(
             confidence=analysis.confidence,
         )
 
+    if analysis.intent == MailIntent.TASK_UPDATE and candidate:
+        no_change_markers = ("그대로", "변경 없음", "변경없이", "변경 없이")
+        if any(marker in f"{mail.subject} {mail.body}" for marker in no_change_markers):
+            return ActionProposal(
+                action=AgentAction.LINK_TO_TASK,
+                target_task_id=candidate.task_id,
+                reason=f"명시적인 필드 변경 없이 기존 요청 유지가 확인됨: {analysis.reason}",
+                confidence=analysis.confidence,
+            )
+
+        changes = {}
+        if analysis.request_summary:
+            changes["description"] = analysis.request_summary
+        if analysis.reply_required != candidate.reply_required:
+            changes["reply_required"] = analysis.reply_required
+        if changes:
+            return ActionProposal(
+                action=AgentAction.UPDATE_TASK,
+                target_task_id=candidate.task_id,
+                changes=changes,
+                reason=analysis.reason,
+                confidence=analysis.confidence,
+            )
+        return ActionProposal(
+            action=AgentAction.LINK_TO_TASK,
+            target_task_id=candidate.task_id,
+            reason=f"변경할 Task 필드가 없어 기존 업무에 Mail만 연결함: {analysis.reason}",
+            confidence=analysis.confidence,
+        )
+
     if analysis.intent == MailIntent.INFORMATION_RECEIVED and candidate:
         if candidate.status == TaskStatus.WAITING_REPLY:
             return ActionProposal(

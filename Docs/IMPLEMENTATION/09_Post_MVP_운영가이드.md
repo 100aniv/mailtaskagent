@@ -79,6 +79,11 @@ JSON으로 반환한다. `READY`는 Exit Code 0, 준비가 부족한 `DEGRADED`�
 성공 2건을 확인했다. 같은 Source를 즉시 재실행했을 때 신규 0건·중복 2건으로 집계되어
 LLM과 Task 변경이 재실행되지 않았다.
 
+같은 날 별도 송신 계정을 사용한 실메일 20건 수용시험은 방향·Thread·7 Action·사용자
+확인 여부 `20/20 PASSED`, 처리 실패 0건으로 완료했다. 마지막 GL-018 단독 동기화는
+신규 1건·성공 1건·기존 21건 중복 차단을 확인했다. Dashboard `운영 상태`의
+`Gmail 실메일 수용시험`에서도 20/20 결과를 확인할 수 있다.
+
 ### Dashboard 실행
 
 ```powershell
@@ -173,6 +178,10 @@ Task 변경을 재실행하지 않았고, 정상 실행의 Slack 상태는 `NOT_
 3. 인증·권한 오류는 자동 반복하지 않고 OAuth 상태를 확인한다.
 4. Timeout·Connection·Rate Limit은 다음 Scheduler 실행에서 신규·실패 Mail만 다시 처리한다.
 5. DB 복구가 필요하면 Dashboard를 종료하고 최신 `data/backups/*.db`를 별도 검증한 뒤 복구한다. 자동 덮어쓰기는 제공하지 않는다.
+6. 실행 중인 Dashboard나 Scheduler가 SQLite를 열고 있을 때 DB 파일을 직접 덮어쓰지 않는다.
+   두 프로세스를 먼저 중지하고 `PRAGMA integrity_check`가 `ok`인 백업만 복원한 뒤 재가동한다.
+7. 반복 수용시험은 운영 DB를 교체하지 않고 별도 `DATABASE_PATH`의 격리 DB에서 수행한 뒤,
+   통과본만 위 중지·무결성 확인 절차에 따라 반영한다.
 
 ## 7. 보안·운영 Gate
 

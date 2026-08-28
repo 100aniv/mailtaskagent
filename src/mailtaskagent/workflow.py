@@ -33,7 +33,7 @@ def _duration_ms(started_at: float) -> int:
 
 
 def _needs_related_search(mail: MailInput, analysis: MailAnalysis) -> bool:
-    reference_markers = ("지난", "관련 건", "기존", "앞서", "이전", "같이")
+    reference_markers = ("지난", "관련 건", "기존", "앞서", "이전", "같이", "추가")
     text = f"{mail.subject} {mail.body}"
     return analysis.intent != MailIntent.NEW_TASK or any(marker in text for marker in reference_markers)
 

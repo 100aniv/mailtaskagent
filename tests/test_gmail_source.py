@@ -114,6 +114,21 @@ def test_gmail_message_maps_sent_html_to_outbound_plain_text() -> None:
     assert mail.body == "자료를\n요청\n했습니다."
 
 
+def test_gmail_message_strips_quoted_reply_history() -> None:
+    mail = gmail_message_to_mail_input(
+        _message(
+            "message-reply",
+            body=(
+                "[GL-003] 확인했습니다. 현재 요청 내용은 그대로 진행해 주세요.\n\n"
+                "2026년 8월 28일 (금) 오후 7:47, 요청자 <requester@example.test>님이 작성:\n"
+                "> [GL-002] 공유 기한을 2026-09-07로 변경해 주세요."
+            ),
+        )
+    )
+
+    assert mail.body == "[GL-003] 확인했습니다. 현재 요청 내용은 그대로 진행해 주세요."
+
+
 def test_gmail_source_uses_restricted_query_and_sorts_oldest_first(tmp_path) -> None:
     service = _FakeService(
         {
