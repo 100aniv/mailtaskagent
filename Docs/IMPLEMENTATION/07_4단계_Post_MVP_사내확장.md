@@ -37,11 +37,11 @@ Post-MVP는 AI Master Core E2E의 필수 완료 조건이 아니다. 아래 기�
 
 ### 목표
 
-- 기술 처리량보다 사용자가 지금 해야 할 업무를 먼저 보여주는 `오늘` 중심 화면
-- `홈`, `업무`, `검토함`, `분류 기준`, `설정`의 5개 사용자 언어 Navigation
-- VIP·고객사·중요 키워드와 광고·반복 메일 제외 기준은 `분류 기준`에
-  독립 배치하고, Mail 처리·Agent 실행 기록과 연결·복구는 `설정`의 목적별 하위 화면에서 확인
-- `홈` 하단에서 마지막 Gmail Polling으로 가져온 최근 Mail 5건과 Agent 처리 상태를 확인
+- 기술 처리량보다 사용자가 지금 해야 할 업무를 먼저 보여주는 업무 중심 홈
+- `홈`, `내 업무`, `검토 요청`, `자동 분류`, `운영 상태`, `설정`의 역할 기반 Navigation
+- 사용자 Task 화면과 Gmail 배치·Mail 처리 내역·Agent 단계 로그의 운영 모니터링 분리
+- VIP·고객사·중요 키워드와 광고·반복 메일 제외 기준은 `자동 분류`에 독립 배치
+- `홈` 상단의 얇은 상태 바와 하단의 최근 Mail 3건으로 최소 운영 상태만 확인
 - Task 행에서 완료, 상태·기한·중요도 변경과 원본 Mail·판단 근거 확인
 - 기한·회신 대기 기반 긴급도와 고객사·VIP·키워드·사용자 지정 기반 중요도 분리
 - `🔴 즉시 처리`, `🟠 우선 처리`, `🔵 예정 업무`, `⚪ 일반 업무`의 색상+문자 Label
@@ -268,9 +268,9 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 ### 2026-08-28 P0 구현·검증 증적
 
 - 제출용 MVP는 Git Tag `ai-master-mvp-v1`로 복구 가능 상태를 고정했다.
-- 실제 업무 모드 Navigation을 `홈`, `업무`, `검토함`, `분류 기준`, `설정` 5개로 재구성했다.
-  사용자 중요도·제외 조건을 숨기지 않도록 `분류 기준`을 독립 메뉴로 올리고, Mail 처리와 활동
-  기록은 설정의 목적별 하위 화면으로 유지했으며 기존 시연 모드는 별도로 유지한다.
+- 실제 업무 모드 Navigation을 `홈`, `내 업무`, `검토 요청`, `자동 분류`, `운영 상태`, `설정`으로
+  재구성했다. Task·검토 중심 사용자 화면과 Gmail 배치·Mail 처리 내역·Agent 단계 로그를
+  확인하는 운영 화면을 분리하고, 연결·알림·백업만 `설정`에 유지한다.
 - 기한·회신 대기 긴급도와 발신자 Email·Domain·Keyword·사용자 직접 지정 중요도를
   조합하는 설명 가능한 P1~P4 Priority 계산을 구현했다.
 - `오늘` 화면에서 Priority 근거와 기한·요청자를 확인하고 Task를 직접 완료할 수 있으며,
@@ -299,7 +299,7 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 
 | 항목 | 현재 판정 | 근거 또는 남은 외부 조건 |
 |---|---|---|
-| 실제 업무 UI·Task 직접 관리 | 구현·자동 테스트 완료 | 홈/업무/검토함/분류 기준/설정, 직접 생성·수정·완료 |
+| 실제 업무 UI·Task 직접 관리 | 구현·자동 테스트 완료 | 홈/내 업무/검토 요청/자동 분류/운영 상태/설정, 직접 생성·수정·완료 |
 | Priority·고객사·Keyword Rule | 구현·자동 테스트 완료 | P1~P4, 근거, Override, 설정 저장 |
 | 광고·뉴스레터 제외 Rule | 구현·자동 테스트 완료 | 정확한 Email·Domain·제목, IGNORE 근거, 본문 제외 금지 |
 | Gmail 화면 자동 확인 | 구현·자동 테스트 완료 | 제한 Label, 신규 mail_id, 1~60분, Read-only |
@@ -318,8 +318,8 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 | Outlook Live | 사용자 요청에 따라 제외 | Graph 합성 Adapter Contract만 별도 보존 |
 
 2026-08-28 최신 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
-Slack 최소 알림·Dry-run, 5개 메뉴 운영 UI와 Agent 기본 실행·일시정지 계약을 포함해
-pytest `110 passed`다. 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로
+Slack 최소 알림·Dry-run, 6개 역할 기반 운영 UI와 Agent 기본 실행·일시정지 계약을 포함해
+pytest `111 passed`다. 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로
 등록했고 수동 실행 결과 `LastTaskResult=0`, 다음 실행 예약과 Gmail 중복 2건·실패 0건을 확인했다.
 초기 PowerShell 실행 시 나타난 콘솔 창은 예약 작업을 `.venv\Scripts\pythonw.exe` 직접 실행으로
 교체해 제거했으며, 교체 후에도 `LastTaskResult=0`과 다음 1분 실행 예약을 확인했다.

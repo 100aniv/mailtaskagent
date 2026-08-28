@@ -84,21 +84,11 @@ def test_mode_entry_separates_operational_and_demo_navigation(
 
     assert not app.exception
     navigation = next(radio for radio in app.radio if radio.label == "주 메뉴")
-    assert navigation.options == [
-        "🏠 홈",
-        "✅ 업무",
-        "🟣 검토함",
-        "⭐ 분류 기준",
-        "⚙️ 설정",
-    ]
+    assert navigation.options == ui_module.OPERATION_PAGES
     assert not app.tabs
     assert not any(button.label == "데모 DB 초기화" for button in app.button)
-    assert [(metric.label, metric.value) for metric in app.metric[:4]] == [
-        ("🔴 즉시 처리", "0건"),
-        ("🟠 우선 처리", "0건"),
-        ("🟡 회신 대기", "0건"),
-        ("🟣 검토 필요", "0건"),
-    ]
+    assert any(button.label == "전체 업무 보기" for button in app.button)
+    assert any("긴급 업무" in item.value for item in app.markdown)
 
 
 def test_product_dashboard_and_full_mock_mail_flow(tmp_path, monkeypatch) -> None:
@@ -160,24 +150,26 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
 
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "실제 업무 모드로 시작")
-    app = _select_radio(app, "주 메뉴", "⚙️ 설정")
-    app = _select_radio(app, "설정 항목", "메일 처리 기록")
+    app = _select_radio(app, "주 메뉴", ui_module.MONITORING_PAGE)
+    app = _select_radio(app, "운영 화면", "메일 처리 내역")
     batch_button = next(
         button for button in app.button if button.label.startswith("미처리 메일 전체 분류")
     )
     app = batch_button.click().run(timeout=120)
-    app = _select_radio(app, "주 메뉴", "🏠 홈")
+    app = _select_radio(app, "주 메뉴", ui_module.TASKS_PAGE)
 
     assert not app.exception
-    assert any(button.label == "완료" for button in app.button)
+    assert any(button.label == "상세 보기" for button in app.button)
+    assert any(button.label == "완료 처리" for button in app.button)
+    assert not app.dataframe
+
+    app = _select_radio(app, "주 메뉴", ui_module.HOME_PAGE)
+
+    assert not app.exception
+    assert any(button.label == "완료 처리" for button in app.button)
     assert any("우선순위 근거 ·" in caption.value for caption in app.caption)
-    assert [metric.label for metric in app.metric[:4]] == [
-        "🔴 즉시 처리",
-        "🟠 우선 처리",
-        "🟡 회신 대기",
-        "🟣 검토 필요",
-    ]
-    complete_button = next(button for button in app.button if button.label == "완료")
+    assert any("긴급 업무" in item.value for item in app.markdown)
+    complete_button = next(button for button in app.button if button.label == "완료 처리")
     app = complete_button.click().run(timeout=60)
     assert not app.exception
     assert any("업무를 완료했습니다." in message.value for message in app.success)
@@ -196,14 +188,11 @@ def test_gmail_readonly_source_empty_state(tmp_path, monkeypatch) -> None:
 
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "실제 업무 모드로 시작")
-    app = _select_radio(app, "주 메뉴", "⚙️ 설정")
-    app = _select_radio(app, "설정 항목", "메일 처리 기록")
+    app = _select_radio(app, "주 메뉴", ui_module.MONITORING_PAGE)
+    app = _select_radio(app, "운영 화면", "메일 처리 내역")
 
     assert not app.exception
-    assert any(
-        "Gmail OAuth · 읽기 전용 연결됨" in message.value
-        for message in app.success
-    )
+    assert any("Gmail 연결됨" in message.value for message in app.markdown)
     assert any(
         "현재 입력 Source에서 가져온 메일이 없습니다." in message.value
         for message in app.info
@@ -227,7 +216,7 @@ def test_connected_operation_mode_runs_gmail_agent_by_default(
 
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "실제 업무 모드로 시작")
-    app = _select_radio(app, "주 메뉴", "⭐ 분류 기준")
+    app = _select_radio(app, "주 메뉴", ui_module.AUTOMATION_PAGE)
 
     assert [tab.label for tab in app.tabs] == [
         "⭐ 중요도 기준",
@@ -245,6 +234,39 @@ def test_connected_operation_mode_runs_gmail_agent_by_default(
         "gmail_auto_sync_enabled": True,
         "gmail_sync_interval_minutes": 1,
     }
-    assert any("Gmail 새 메일 자동 분류" in caption.value for caption in app.caption)
-    app = _select_radio(app, "주 메뉴", "🏠 홈")
-    assert any(item.value == gmail_mails[0].subject for item in app.markdown)
+    assert any(toggle.label == "자동 정리 실행" for toggle in app.toggle)
+    app = _select_radio(app, "주 메뉴", ui_module.HOME_PAGE)
+    assert any(gmail_mails[0].subject in item.value for item in app.markdown)
+
+
+def test_operation_monitoring_is_separate_from_task_home(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "monitoring.db"))
+    monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+    monkeypatch.setenv(
+        "GMAIL_CREDENTIALS_PATH", str(tmp_path / "missing-gmail-credentials.json")
+    )
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(tmp_path / "missing-gmail-token.json"))
+
+    app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
+    app = _start_mode(app, "실제 업무 모드로 시작")
+
+    assert any(item.value == "업무 홈" for item in app.subheader)
+    assert not any("Gmail 자동 실행 기록" in item.value for item in app.markdown)
+
+    app = _select_radio(app, "주 메뉴", ui_module.MONITORING_PAGE)
+
+    assert not app.exception
+    assert any(item.value == "운영 상태" for item in app.subheader)
+    assert any("Gmail 자동 실행 기록" in item.value for item in app.markdown)
+    rendered = "\n".join(item.value for item in app.markdown)
+    for label in (
+        "최근 실행",
+        "신규 메일",
+        "처리 성공",
+        "처리 실패",
+        "수신",
+        "통과",
+        "실패",
+        "대기",
+    ):
+        assert label in rendered

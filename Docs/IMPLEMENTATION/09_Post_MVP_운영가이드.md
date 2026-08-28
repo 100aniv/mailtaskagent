@@ -20,7 +20,7 @@ Windows Task Scheduler 또는 n8n Schedule
 사용자 Browser
 -> scripts/run_dashboard.ps1
 -> Streamlit 실제 업무 모드
--> 홈/업무/검토함/분류 기준/설정
+-> 홈/내 업무/검토 요청/자동 분류/운영 상태/설정
 ```
 
 ## 3. 운영 명령 계약
@@ -168,7 +168,7 @@ Task 변경을 재실행하지 않았고, 정상 실행의 Slack 상태는 `NOT_
 
 ## 6. 장애 확인과 복구
 
-1. Dashboard `연결 및 설정`의 최근 자동 실행 기록에서 상태와 오류 종류를 확인한다.
+1. Dashboard `운영 상태`의 최근 자동 실행 기록에서 상태와 오류 종류를 확인한다.
 2. `활동 기록`에서 실패 Mail의 마지막 Processing Event를 확인한다.
 3. 인증·권한 오류는 자동 반복하지 않고 OAuth 상태를 확인한다.
 4. Timeout·Connection·Rate Limit은 다음 Scheduler 실행에서 신규·실패 Mail만 다시 처리한다.
