@@ -367,6 +367,10 @@ def _complete_task_from_dashboard(storage, task: dict) -> None:
     st.rerun()
 
 
+def _go_to_operation_page(page: str) -> None:
+    st.session_state["operation_page"] = page
+
+
 def _render_product_dashboard(storage, mails, *, operation_mode: bool = False) -> None:
     tasks = storage.list_tasks()
     pending_reviews = storage.list_pending_reviews()
@@ -430,37 +434,116 @@ def _render_product_dashboard(storage, mails, *, operation_mode: bool = False) -
         ]
 
     if operation_mode:
-        st.markdown("### 지금 할 일")
         prioritized = sorted(
             filtered_tasks,
             key=lambda task: _task_priority(task, priority_by_task[task["task_id"]].level),
         )
-        if pending_reviews:
-            st.warning(
-                f"🟣 Agent 판단 {len(pending_reviews)}건이 변경을 멈추고 사용자 확인을 기다립니다."
-            )
-        if not prioritized:
-            st.success("현재 처리할 활성 업무가 없습니다.")
-        for task in prioritized[:10]:
-            decision = priority_by_task[task["task_id"]]
+        main_col, side_col = st.columns([1.65, 0.85], gap="large")
+        with main_col:
+            st.markdown("### 지금 할 일")
+            st.caption("중요도와 기한을 함께 계산해, 먼저 볼 업무부터 정렬했습니다.")
+            if not prioritized:
+                st.success("현재 처리할 활성 업무가 없습니다.")
+            for task in prioritized[:8]:
+                decision = priority_by_task[task["task_id"]]
+                with st.container(border=True):
+                    mark_col, content_col, action_col = st.columns([0.45, 5.2, 1.1])
+                    mark_col.markdown(f"### {decision.emoji}")
+                    content_col.markdown(f"**{task['title']}**")
+                    content_col.caption(
+                        f"{decision.label} · {STATUS_LABELS.get(task['status'], task['status'])} · "
+                        f"기한 {task.get('due_date') or '없음'} · {task.get('requester') or '요청자 없음'}"
+                    )
+                    content_col.caption(f"우선순위 근거 · {decision.reason}")
+                    if action_col.button(
+                        "완료",
+                        key=f"complete_today_{task['task_id']}",
+                        width="stretch",
+                    ):
+                        try:
+                            _complete_task_from_dashboard(storage, task)
+                        except ValueError as exc:
+                            st.error(f"완료할 수 없습니다: {exc}")
+            if len(prioritized) > 8:
+                st.caption(f"나머지 {len(prioritized) - 8}건은 업무 메뉴에서 확인할 수 있습니다.")
+
+        with side_col:
+            st.markdown("### 확인할 것")
             with st.container(border=True):
-                mark_col, content_col, action_col = st.columns([0.45, 5.2, 1.1])
-                mark_col.markdown(f"### {decision.emoji}")
-                content_col.markdown(f"**{task['title']}**")
-                content_col.caption(
-                    f"{decision.label} · {STATUS_LABELS.get(task['status'], task['status'])} · "
-                    f"기한 {task.get('due_date') or '없음'} · {task.get('requester') or '요청자 없음'}"
-                )
-                content_col.caption(f"근거 · {decision.reason}")
-                if action_col.button(
-                    "완료",
-                    key=f"complete_today_{task['task_id']}",
+                st.markdown(f"**🟣 검토 대기 {len(pending_reviews)}건**")
+                st.caption("Agent가 확신하지 못해 자동 반영을 멈춘 메일입니다.")
+                st.button(
+                    "검토함 열기",
                     width="stretch",
-                ):
-                    try:
-                        _complete_task_from_dashboard(storage, task)
-                    except ValueError as exc:
-                        st.error(f"완료할 수 없습니다: {exc}")
+                    disabled=not pending_reviews,
+                    on_click=_go_to_operation_page,
+                    args=("🟣 검토함",),
+                )
+
+            operation_settings = storage.get_operation_settings()
+            sync_runs = storage.list_sync_runs(source="GMAIL", limit=1)
+            with st.container(border=True):
+                auto_label = (
+                    f"켜짐 · {operation_settings['gmail_sync_interval_minutes']}분마다"
+                    if operation_settings["gmail_auto_sync_enabled"]
+                    else "꺼짐"
+                )
+                st.markdown("**📥 메일 자동 정리**")
+                st.caption(auto_label)
+                if sync_runs:
+                    latest = sync_runs[0]
+                    st.caption(
+                        f"최근 실행 {latest['status']} · 신규 {latest['pending_count']}건 · "
+                        f"실패 {latest['failed_count']}건"
+                    )
+                else:
+                    st.caption("아직 자동 실행 기록이 없습니다.")
+                st.button(
+                    "자동화 설정 열기",
+                    width="stretch",
+                    on_click=_go_to_operation_page,
+                    args=("⚡ 자동화",),
+                )
+
+            enabled_priority = sum(rule["enabled"] for rule in priority_rules)
+            filter_rules = storage.list_mail_filter_rules()
+            enabled_filters = sum(rule["enabled"] for rule in filter_rules)
+            with st.container(border=True):
+                st.markdown("**⭐ 내 분류 기준**")
+                st.caption(
+                    f"중요 발신자·고객사 {enabled_priority}개 · 광고·반복 메일 제외 {enabled_filters}개"
+                )
+                st.button(
+                    "분류 기준 관리",
+                    width="stretch",
+                    on_click=_go_to_operation_page,
+                    args=("⚡ 자동화",),
+                    key="home_open_rules",
+                )
+
+        st.divider()
+        st.markdown("### 최근 정리")
+        st.caption("Agent와 사용자가 최근에 생성·변경·완료한 업무 흐름입니다.")
+        recent_histories = storage.list_histories()[:5]
+        if recent_histories:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "처리 시각": history["created_at"],
+                            "결과": ACTION_LABELS.get(history["action"], history["action"]),
+                            "대상 업무": history["task_id"] or "-",
+                            "판단 근거": history["reason"],
+                            "사용자 확인": "있음" if history["user_decision"] else "자동 반영",
+                        }
+                        for history in recent_histories
+                    ]
+                ),
+                width="stretch",
+                hide_index=True,
+            )
+        else:
+            st.info("새 메일이 정리되면 최근 처리 결과가 여기에 표시됩니다.")
         return
 
     priority_col, attention_col = st.columns([1.7, 1])
@@ -1073,7 +1156,7 @@ def _render_event_log(storage, mail_ids: list[str]) -> None:
     st.caption("API Key, Authorization Header, Token과 Secret 값은 저장 전에 제거됩니다.")
 
 
-def _render_tasks_and_histories(storage) -> None:
+def _render_tasks_and_histories(storage, *, show_history: bool = True) -> None:
     st.subheader("내 업무")
     with st.expander("새 업무 직접 추가"):
         with st.form("manual_task_create_form"):
@@ -1116,7 +1199,11 @@ def _render_tasks_and_histories(storage) -> None:
             except ValueError as exc:
                 st.error(f"업무를 추가할 수 없습니다: {exc}")
 
-    task_col, history_col = st.columns([1, 1.35])
+    if show_history:
+        task_col, history_col = st.columns([1, 1.35])
+    else:
+        task_col = st.container()
+        history_col = None
     with task_col:
         tasks = storage.list_tasks()
         if tasks:
@@ -1234,6 +1321,9 @@ def _render_tasks_and_histories(storage) -> None:
                         st.error(f"변경할 수 없는 상태 또는 입력입니다: {exc}")
         else:
             st.info("아직 생성된 Task가 없습니다.")
+
+    if not show_history:
+        return
 
     with history_col:
         st.subheader("Task History")
@@ -2060,6 +2150,344 @@ def _render_operation_settings(storage, gmail_summary: dict, mails) -> None:
     )
 
 
+def _render_automation_center(storage, mails) -> None:
+    st.subheader("자동화")
+    st.caption("새 메일을 언제 확인하고, 무엇을 먼저 보거나 제외할지 내 업무 방식에 맞게 정합니다.")
+    settings_flash = st.session_state.pop("operation_settings_flash", None)
+    if settings_flash:
+        st.success(settings_flash)
+
+    operation_settings = storage.get_operation_settings()
+    priority_rules = storage.list_priority_rules()
+    filter_rules = storage.list_mail_filter_rules()
+    active_priority = sum(rule["enabled"] for rule in priority_rules)
+    active_filters = sum(rule["enabled"] for rule in filter_rules)
+    summary_1, summary_2, summary_3 = st.columns(3)
+    summary_1.metric(
+        "메일 자동 정리",
+        "켜짐" if operation_settings["gmail_auto_sync_enabled"] else "꺼짐",
+    )
+    summary_2.metric("중요 발신자·키워드", f"{active_priority}개")
+    summary_3.metric("광고·반복 메일 제외", f"{active_filters}개")
+
+    auto_tab, priority_tab, filter_tab = st.tabs(
+        ["📥 자동 메일 정리", "⭐ 중요도 기준", "🚫 광고·반복 메일 제외"]
+    )
+    with auto_tab:
+        st.markdown("### 새 메일 자동 정리")
+        st.write(
+            "켜 두면 Gmail 테스트 라벨의 새 메일을 주기적으로 확인해 업무 생성·변경·검토 대기로 정리합니다."
+        )
+        with st.form("gmail_auto_sync_form_v2"):
+            auto_sync_enabled = st.checkbox(
+                "새 메일을 자동으로 업무에 반영",
+                value=bool(operation_settings["gmail_auto_sync_enabled"]),
+                help="이미 처리한 메일은 다시 분석하지 않으며, 애매한 결정은 검토함에서 멈춥니다.",
+            )
+            sync_interval = int(
+                st.number_input(
+                    "새 메일 확인 주기(분)",
+                    min_value=1,
+                    max_value=60,
+                    value=int(operation_settings["gmail_sync_interval_minutes"]),
+                    disabled=not auto_sync_enabled,
+                )
+            )
+            save_auto_sync = st.form_submit_button("자동 정리 저장", type="primary")
+        if save_auto_sync:
+            try:
+                storage.update_operation_settings(
+                    gmail_auto_sync_enabled=auto_sync_enabled,
+                    gmail_sync_interval_minutes=sync_interval,
+                )
+                st.session_state.pop("gmail_auto_sync_last_check", None)
+                st.session_state["operation_settings_flash"] = "메일 자동 정리 설정을 저장했습니다."
+                st.rerun()
+            except ValueError as exc:
+                st.error(f"자동 정리 설정을 저장할 수 없습니다: {exc}")
+
+    with priority_tab:
+        st.markdown("### 중요도 계산 기준")
+        st.write("기한과 회신 대기 시간에 더해 VIP 발신자, 고객사 도메인, 중요 키워드를 반영합니다.")
+        settings = storage.get_priority_settings()
+        with st.form("priority_threshold_form_v2"):
+            soon_col, later_col, waiting_col = st.columns(3)
+            due_soon_days = int(
+                soon_col.number_input(
+                    "🟠 기한 임박",
+                    min_value=1,
+                    max_value=29,
+                    value=settings["due_soon_days"],
+                    help="이 일수 이내의 업무를 우선 처리로 표시합니다.",
+                )
+            )
+            due_later_days = int(
+                later_col.number_input(
+                    "🔵 예정 업무",
+                    min_value=2,
+                    max_value=30,
+                    value=settings["due_later_days"],
+                    help="이 일수 이내인 업무를 예정 업무로 표시합니다.",
+                )
+            )
+            waiting_attention_days = int(
+                waiting_col.number_input(
+                    "🟡 회신 대기 확인",
+                    min_value=1,
+                    max_value=30,
+                    value=settings["waiting_attention_days"],
+                    help="이 기간 이상 회신이 없으면 우선 확인합니다.",
+                )
+            )
+            save_thresholds = st.form_submit_button("시간 기준 저장")
+        if save_thresholds:
+            try:
+                storage.update_priority_settings(
+                    {
+                        "due_soon_days": due_soon_days,
+                        "due_later_days": due_later_days,
+                        "waiting_attention_days": waiting_attention_days,
+                    }
+                )
+                st.success("중요도 시간 기준을 저장했습니다.")
+            except ValueError as exc:
+                st.error(f"기준을 저장할 수 없습니다: {exc}")
+
+        st.markdown("#### VIP·고객사·중요 키워드")
+        st.caption("이 기준은 우선순위만 높입니다. 완료·취소·기한을 임의로 확정하지 않습니다.")
+        with st.form("priority_rule_form_v2", clear_on_submit=True):
+            name = st.text_input("표시 이름", placeholder="예: ABC 고객사 또는 김부장님")
+            rule_type = st.selectbox(
+                "무엇을 확인할까요?",
+                list(PRIORITY_RULE_LABELS),
+                format_func=lambda value: PRIORITY_RULE_LABELS[value],
+            )
+            pattern = st.text_input(
+                "이메일·도메인·키워드",
+                placeholder="owner@abc.co.kr, abc.co.kr 또는 장애",
+            )
+            importance = st.selectbox(
+                "표시할 중요도",
+                [1, 2, 3, 4],
+                index=1,
+                format_func=lambda value: (
+                    f"{PRIORITY_PRESENTATION[PriorityLevel(f'P{value}')][0]} P{value}"
+                ),
+            )
+            add_rule = st.form_submit_button("중요 기준 추가", type="primary")
+        if add_rule:
+            try:
+                storage.add_priority_rule(
+                    name=name,
+                    rule_type=rule_type,
+                    pattern=pattern,
+                    importance=importance,
+                )
+                st.rerun()
+            except Exception as exc:
+                message = str(exc) if isinstance(exc, ValueError) else type(exc).__name__
+                st.error(f"중요 기준을 추가할 수 없습니다: {message}")
+
+        priority_rules = storage.list_priority_rules()
+        if not priority_rules:
+            st.info("등록된 VIP·고객사·중요 키워드가 없습니다. 기한과 회신 대기 기준만 사용합니다.")
+        else:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "사용": "켜짐" if rule["enabled"] else "꺼짐",
+                            "이름": rule["name"],
+                            "구분": PRIORITY_RULE_LABELS.get(rule["rule_type"], rule["rule_type"]),
+                            "일치 값": rule["pattern"],
+                            "중요도": f"P{rule['importance']}",
+                        }
+                        for rule in priority_rules
+                    ]
+                ),
+                width="stretch",
+                hide_index=True,
+            )
+            selected_rule = st.selectbox(
+                "수정할 중요 기준",
+                priority_rules,
+                format_func=lambda item: f"{item['name']} · {item['pattern']}",
+                key="priority_rule_selection_v2",
+            )
+            toggle_col, delete_col = st.columns(2)
+            if toggle_col.button(
+                "사용 중지" if selected_rule["enabled"] else "다시 사용",
+                width="stretch",
+                key="priority_rule_toggle_v2",
+            ):
+                storage.set_priority_rule_enabled(
+                    selected_rule["rule_id"], not selected_rule["enabled"]
+                )
+                st.rerun()
+            if delete_col.button("삭제", width="stretch", key="priority_rule_delete_v2"):
+                storage.delete_priority_rule(selected_rule["rule_id"])
+                st.rerun()
+
+    with filter_tab:
+        st.markdown("### 광고·뉴스레터·자동발송 메일 제외")
+        st.write("정확한 발신자, 도메인 또는 제목 키워드가 일치하는 새 메일은 업무로 만들지 않습니다.")
+        st.caption("본문 내용만으로 자동 제외하지 않으며, 제외 결과도 Agent 처리 기록에 남깁니다.")
+        with st.form("mail_filter_rule_form_v2", clear_on_submit=True):
+            filter_name = st.text_input("표시 이름", placeholder="예: 사내 뉴스레터")
+            filter_type = st.selectbox(
+                "무엇을 제외할까요?",
+                list(MAIL_FILTER_RULE_LABELS),
+                format_func=lambda value: MAIL_FILTER_RULE_LABELS[value],
+            )
+            filter_pattern = st.text_input(
+                "이메일·도메인·제목 키워드",
+                placeholder="newsletter@example.com, example.com 또는 뉴스레터",
+            )
+            if filter_pattern.strip():
+                preview_rule = {
+                    "name": filter_name or "미리보기",
+                    "rule_type": filter_type,
+                    "pattern": filter_pattern,
+                    "enabled": True,
+                }
+                preview_count = sum(
+                    match_mail_filter_rule(mail, [preview_rule]) is not None for mail in mails
+                )
+                st.caption(f"현재 메일 기준으로 {preview_count}건이 일치합니다.")
+            add_filter_rule = st.form_submit_button("제외 기준 추가", type="primary")
+        if add_filter_rule:
+            try:
+                storage.add_mail_filter_rule(
+                    name=filter_name,
+                    rule_type=filter_type,
+                    pattern=filter_pattern,
+                )
+                st.rerun()
+            except Exception as exc:
+                message = str(exc) if isinstance(exc, ValueError) else type(exc).__name__
+                st.error(f"제외 기준을 추가할 수 없습니다: {message}")
+
+        filter_rules = storage.list_mail_filter_rules()
+        if not filter_rules:
+            st.info("등록된 제외 기준이 없습니다. 비업무 메일은 Agent 분석 후 제외됩니다.")
+        else:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "사용": "켜짐" if rule["enabled"] else "꺼짐",
+                            "이름": rule["name"],
+                            "구분": MAIL_FILTER_RULE_LABELS.get(rule["rule_type"], rule["rule_type"]),
+                            "일치 값": rule["pattern"],
+                        }
+                        for rule in filter_rules
+                    ]
+                ),
+                width="stretch",
+                hide_index=True,
+            )
+            selected_filter_rule = st.selectbox(
+                "수정할 제외 기준",
+                filter_rules,
+                format_func=lambda item: f"{item['name']} · {item['pattern']}",
+                key="filter_rule_selection_v2",
+            )
+            toggle_col, delete_col = st.columns(2)
+            if toggle_col.button(
+                "사용 중지" if selected_filter_rule["enabled"] else "다시 사용",
+                width="stretch",
+                key="filter_rule_toggle_v2",
+            ):
+                storage.set_mail_filter_rule_enabled(
+                    selected_filter_rule["rule_id"], not selected_filter_rule["enabled"]
+                )
+                st.rerun()
+            if delete_col.button("삭제", width="stretch", key="filter_rule_delete_v2"):
+                storage.delete_mail_filter_rule(selected_filter_rule["rule_id"])
+                st.rerun()
+
+
+def _render_connection_and_data_settings(storage, gmail_summary: dict) -> None:
+    st.subheader("설정")
+    st.caption("메일 연결 상태, 운영 알림, 실행 기록과 데이터 백업을 관리합니다.")
+    connection_tab, data_tab = st.tabs(["🔗 연결·알림", "🗄️ 데이터·복구"])
+
+    with connection_tab:
+        mail_col, slack_col = st.columns(2)
+        with mail_col.container(border=True):
+            st.markdown("### Gmail")
+            if gmail_summary["credentials_ready"] and gmail_summary["token_ready"]:
+                st.success("읽기 전용 연결됨")
+                st.caption(f"제한 Query · {gmail_summary['query']}")
+            else:
+                st.warning("사용자 승인이 필요합니다.")
+            st.caption("Outlook / Microsoft Graph는 Gmail Workflow 검증 이후 연결합니다.")
+        with slack_col.container(border=True):
+            st.markdown("### Slack 운영 알림")
+            slack_settings = load_slack_notification_settings()
+            if slack_settings.enabled and slack_settings.configured:
+                st.success("연결 준비됨")
+            elif slack_settings.enabled:
+                st.warning("Webhook 설정 필요")
+            else:
+                st.info("꺼짐")
+            st.caption("처리 실패와 검토 필요 건수만 알리며 메일 원문과 사용자 정보는 보내지 않습니다.")
+
+        sync_runs = storage.list_sync_runs(source="GMAIL", limit=10)
+        st.markdown("### 최근 Gmail 실행")
+        if not sync_runs:
+            st.info("아직 Gmail 자동 실행 기록이 없습니다.")
+        else:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "시작 시각": run["started_at"],
+                            "상태": {"SUCCESS": "정상", "PARTIAL": "일부 실패", "FAILED": "실패", "RUNNING": "실행 중"}.get(run["status"], run["status"]),
+                            "신규": run["pending_count"],
+                            "성공": run["succeeded_count"],
+                            "실패": run["failed_count"],
+                            "중복": run["duplicate_count"],
+                            "재시도": run["retry_count"],
+                        }
+                        for run in sync_runs
+                    ]
+                ),
+                width="stretch",
+                hide_index=True,
+            )
+
+    with data_tab:
+        st.markdown("### 데이터 내보내기와 복구")
+        st.caption("업무와 변경 기록만 내려받습니다. Gmail 원문과 API Key는 포함하지 않습니다.")
+        export_col, history_export_col = st.columns(2)
+        tasks = storage.list_tasks()
+        histories = storage.list_histories()
+        export_col.download_button(
+            "업무 CSV 내려받기",
+            data=pd.DataFrame(tasks).to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"mailtaskagent-tasks-{date.today().isoformat()}.csv",
+            mime="text/csv",
+            width="stretch",
+        )
+        history_export_col.download_button(
+            "변경 기록 JSON 내려받기",
+            data=json.dumps(histories, ensure_ascii=False, indent=2),
+            file_name=f"mailtaskagent-history-{date.today().isoformat()}.json",
+            mime="application/json",
+            width="stretch",
+        )
+        if st.button("복구용 백업 생성", width="stretch", key="create_database_backup_v2"):
+            try:
+                stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+                backup_path = storage.backup_to(
+                    PROJECT_ROOT / "data" / "backups" / f"mailtaskagent-{stamp}.db"
+                )
+                st.success(f"복구용 백업을 생성했습니다: {backup_path}")
+            except Exception as exc:
+                st.error(f"백업을 생성할 수 없습니다: {type(exc).__name__}")
+
+
 def main() -> None:
     st.set_page_config(page_title="MailTaskAgent", page_icon="📬", layout="wide")
     _apply_styles()
@@ -2093,7 +2521,7 @@ def main() -> None:
             st.subheader("메뉴")
             operation_page = st.radio(
                 "주 메뉴",
-                ["🏠 홈", "☑️ 업무", "🟣 검토함", "⚙️ 설정"],
+                ["🏠 홈", "✅ 업무", "🟣 검토함", "⚡ 자동화", "⚙️ 설정"],
                 label_visibility="collapsed",
                 key="operation_page",
             )
@@ -2130,7 +2558,7 @@ def main() -> None:
 
         if selected_source == GMAIL_TEST_SOURCE:
             refresh_gmail = st.button(
-                "Gmail 새 메일 확인",
+                "지금 새 메일 확인",
                 type="secondary",
                 width="stretch",
             )
@@ -2211,10 +2639,9 @@ def main() -> None:
     if operation_page == "🏠 홈":
         _render_product_dashboard(storage, mails, operation_mode=True)
         return
-    if operation_page == "☑️ 업무":
-        st.subheader("업무")
-        st.caption("메일에서 만들어진 업무와 직접 등록한 업무를 한곳에서 관리합니다.")
-        _render_tasks_and_histories(storage)
+    if operation_page == "✅ 업무":
+        st.caption("메일에서 만들어진 업무와 직접 등록한 업무를 한곳에서 관리하고 완료 처리합니다.")
+        _render_tasks_and_histories(storage, show_history=False)
         return
     if operation_page == "🟣 검토함":
         st.subheader("검토함")
@@ -2222,17 +2649,23 @@ def main() -> None:
         _render_review_queue(storage, settings, mail_by_id)
         return
 
-    st.subheader("설정")
-    st.caption("메일 처리, 자동화 기준, 활동 기록과 복구를 필요한 때만 열어봅니다.")
+    if operation_page == "⚡ 자동화":
+        _render_automation_center(storage, mails)
+        return
+
     settings_page = st.radio(
         "설정 항목",
-        ["메일 처리", "연결·규칙·복구", "활동 기록"],
+        ["연결·데이터", "메일 처리 기록", "Agent 활동 기록"],
         horizontal=True,
         key="operation_settings_page",
     )
-    if settings_page == "메일 처리":
+    if settings_page == "메일 처리 기록":
+        st.subheader("메일 처리 기록")
+        st.caption("가져온 메일이 어떤 업무로 정리되었는지 확인합니다.")
         _render_mailbox(storage, settings, mails, selected_source, demo_mode=False)
-    elif settings_page == "활동 기록":
+    elif settings_page == "Agent 활동 기록":
+        st.subheader("Agent 활동 기록")
+        st.caption("분석·후보 검색·판단·검증·DB 반영 단계와 오류를 확인합니다.")
         _render_event_log(storage, [mail.mail_id for mail in mails])
     else:
-        _render_operation_settings(storage, gmail_summary, mails)
+        _render_connection_and_data_settings(storage, gmail_summary)

@@ -80,7 +80,13 @@ def test_mode_entry_separates_operational_and_demo_navigation(
 
     assert not app.exception
     navigation = next(radio for radio in app.radio if radio.label == "주 메뉴")
-    assert navigation.options == ["🏠 홈", "☑️ 업무", "🟣 검토함", "⚙️ 설정"]
+    assert navigation.options == [
+        "🏠 홈",
+        "✅ 업무",
+        "🟣 검토함",
+        "⚡ 자동화",
+        "⚙️ 설정",
+    ]
     assert not app.tabs
     assert not any(button.label == "데모 DB 초기화" for button in app.button)
     assert [(metric.label, metric.value) for metric in app.metric[:4]] == [
@@ -147,6 +153,7 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "실제 업무 모드로 시작")
     app = _select_radio(app, "주 메뉴", "⚙️ 설정")
+    app = _select_radio(app, "설정 항목", "메일 처리 기록")
     batch_button = next(
         button for button in app.button if button.label.startswith("새 메일 자동 정리")
     )
@@ -155,7 +162,7 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
 
     assert not app.exception
     assert any(button.label == "완료" for button in app.button)
-    assert any("근거 ·" in caption.value for caption in app.caption)
+    assert any("우선순위 근거 ·" in caption.value for caption in app.caption)
     assert [metric.label for metric in app.metric[:4]] == [
         "🔴 즉시 처리",
         "🟠 우선 처리",
@@ -182,6 +189,7 @@ def test_gmail_readonly_source_empty_state(tmp_path, monkeypatch) -> None:
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "실제 업무 모드로 시작")
     app = _select_radio(app, "주 메뉴", "⚙️ 설정")
+    app = _select_radio(app, "설정 항목", "메일 처리 기록")
 
     assert not app.exception
     assert any(
@@ -211,17 +219,26 @@ def test_operation_mode_can_enable_automatic_gmail_processing(
 
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "실제 업무 모드로 시작")
-    app = _select_radio(app, "주 메뉴", "⚙️ 설정")
-    app = _select_radio(app, "설정 항목", "연결·규칙·복구")
+    app = _select_radio(app, "주 메뉴", "⚡ 자동화")
+
+    assert [tab.label for tab in app.tabs] == [
+        "📥 자동 메일 정리",
+        "⭐ 중요도 기준",
+        "🚫 광고·반복 메일 제외",
+    ]
+    assert any(
+        "VIP 발신자, 고객사 도메인, 중요 키워드" in item.value
+        for item in app.markdown
+    )
 
     auto_sync = next(
         checkbox
         for checkbox in app.checkbox
-        if checkbox.label == "새 메일을 자동으로 Task에 반영"
+        if checkbox.label == "새 메일을 자동으로 업무에 반영"
     )
     auto_sync.set_value(True)
     save_button = next(
-        button for button in app.button if button.label == "자동 정리 설정 저장"
+        button for button in app.button if button.label == "자동 정리 저장"
     )
     app = save_button.click().run(timeout=120)
 
@@ -229,6 +246,6 @@ def test_operation_mode_can_enable_automatic_gmail_processing(
     assert SQLiteStorage(database_path).is_processed(gmail_mails[0].mail_id)
     assert any("Gmail 자동 정리" in caption.value for caption in app.caption)
     assert any(
-        "Gmail 자동 확인에서 새 메일 1건을 정리했습니다." in message.value
+        "메일 자동 정리 설정을 저장했습니다." in message.value
         for message in app.success
     )

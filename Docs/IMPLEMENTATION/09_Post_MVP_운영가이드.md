@@ -20,7 +20,7 @@ Windows Task Scheduler 또는 n8n Schedule
 사용자 Browser
 -> scripts/run_dashboard.ps1
 -> Streamlit 실제 업무 모드
--> 홈/업무/검토함/설정
+-> 홈/업무/검토함/자동화/설정
 ```
 
 ## 3. 운영 명령 계약
