@@ -10,12 +10,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$syncScript = Join-Path $PSScriptRoot "run_gmail_sync.ps1"
-$powershellPath = (Get-Command powershell.exe).Source
-$arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$syncScript`""
+$pythonwPath = Join-Path $projectRoot ".venv\Scripts\pythonw.exe"
+$arguments = "-m mailtaskagent.operations_cli sync-gmail"
 
-if (-not (Test-Path -LiteralPath $syncScript)) {
-    throw "Gmail sync script was not found: $syncScript"
+if (-not (Test-Path -LiteralPath $pythonwPath)) {
+    throw "MailTaskAgent windowless Python executable was not found: $pythonwPath"
 }
 
 if ($Mode -eq "Preview") {
@@ -23,7 +22,7 @@ if ($Mode -eq "Preview") {
         Mode = $Mode
         TaskName = $TaskName
         IntervalMinutes = $IntervalMinutes
-        Execute = $powershellPath
+        Execute = $pythonwPath
         Arguments = $arguments
         WorkingDirectory = $projectRoot
     }
@@ -39,7 +38,7 @@ if ($Mode -eq "Remove") {
 }
 
 $action = New-ScheduledTaskAction `
-    -Execute $powershellPath `
+    -Execute $pythonwPath `
     -Argument $arguments `
     -WorkingDirectory $projectRoot
 $trigger = New-ScheduledTaskTrigger `

@@ -31,7 +31,8 @@ class _ConfiguredGmailSource:
 
 
 def _print_json(payload: dict) -> None:
-    print(json.dumps(payload, ensure_ascii=False, default=str))
+    if sys.stdout is not None:
+        print(json.dumps(payload, ensure_ascii=False, default=str))
 
 
 def _default_backup_path() -> Path:

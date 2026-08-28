@@ -127,6 +127,7 @@ Streamlit 화면이 닫혀 있어도 Windows Task Scheduler 또는 n8n이 아래
 
 Windows 예약 작업은 `.\scripts\manage_scheduler.ps1`로 관리한다. 현재 로컬 파일럿에는
 `MailTaskAgent-GmailSync`가 1분 주기로 등록되어 있으며 사이드바의 Agent 상태를 따른다.
+콘솔 창이 나타나지 않도록 예약 작업은 `.venv\Scripts\pythonw.exe`로 실행한다.
 
 회사 LLM Live 전체 평가는 API 호출이 발생하므로 필요할 때만 아래처럼 실행한다.
 

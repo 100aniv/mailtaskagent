@@ -303,3 +303,5 @@ Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 �
 Slack 최소 알림·Dry-run, 5개 메뉴 운영 UI와 Agent 기본 실행·일시정지 계약을 포함해
 pytest `107 passed`다. 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로
 등록했고 수동 실행 결과 `LastTaskResult=0`, 다음 실행 예약과 Gmail 중복 2건·실패 0건을 확인했다.
+초기 PowerShell 실행 시 나타난 콘솔 창은 예약 작업을 `.venv\Scripts\pythonw.exe` 직접 실행으로
+교체해 제거했으며, 교체 후에도 `LastTaskResult=0`과 다음 1분 실행 예약을 확인했다.

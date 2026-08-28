@@ -142,8 +142,8 @@ Task 변경을 재실행하지 않았고, 정상 실행의 Slack 상태는 `NOT_
 .\scripts\manage_scheduler.ps1 -Mode Remove
 ```
 
-1. 프로그램은 `powershell.exe`를 선택한다.
-2. 인수는 `-NoProfile -ExecutionPolicy Bypass -File "<프로젝트 절대경로>\scripts\run_gmail_sync.ps1"`를 사용한다.
+1. 로컬 Windows 예약 작업은 콘솔 창이 나타나지 않도록 `.venv\Scripts\pythonw.exe`를 사용한다.
+2. 인수는 `-m mailtaskagent.operations_cli sync-gmail`을 사용한다. 수동 점검과 n8n 호출은 기존 `run_gmail_sync.ps1`을 유지한다.
 3. 시작 위치는 프로젝트 루트로 지정한다.
 4. 로컬 실전 파일럿은 1분 Polling으로 시작하며 새 `mail_id`만 LLM을 호출한다.
 5. 사이드바에서 Agent를 일시정지하면 Scheduler도 `PAUSED`로 종료하고 Gmail·LLM을 호출하지 않는다.
@@ -153,6 +153,10 @@ Task 변경을 재실행하지 않았고, 정상 실행의 Slack 상태는 `NOT_
 수동 실행 결과 `LastTaskResult=0`과 다음 실행 예약을 확인했으며, 최신 실행은 제한 Gmail
 2건을 모두 중복으로 처리해 신규·실패 0건이었다. 다른 PC나 사내 서버 등록은 실행 계정과
 회사 보안정책을 확인한 뒤 수행한다.
+
+초기 등록에서 `powershell.exe`가 1분마다 콘솔 창을 잠깐 표시하는 문제가 확인되어 예약 작업의
+실행 파일을 콘솔 없는 `.venv\Scripts\pythonw.exe`로 변경했다. 처리 결과와 오류는 stdout 대신
+기존 SQLite `sync_runs`와 Processing Event, Dashboard에서 확인한다.
 
 ## 5. n8n 연결 계약
 
