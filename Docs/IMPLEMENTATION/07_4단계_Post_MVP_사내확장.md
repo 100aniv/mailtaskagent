@@ -69,7 +69,8 @@ Post-MVP는 AI Master Core E2E의 필수 완료 조건이 아니다. 아래 기�
 ### 검토 항목
 
 - App Registration과 Tenant 승인
-- 최소 권한: 초기 Read-only Mail
+- 최소 권한: 메일 본문 분석이 필요하므로 Signed-in User 대상 Delegated `Mail.Read`.
+  `Mail.ReadBasic`은 본문을 제공하지 않으며 `Mail.ReadWrite`, `Mail.Send`는 초기 범위에 추가하지 않는다.
 - 개인 Mailbox 범위와 조직 전체 Mailbox 금지
 - Inbox/Sent Items, Delta Query, Conversation ID 매핑
 - HTML 본문 정규화, 첨부파일 Metadata, 중복·재처리
@@ -81,6 +82,18 @@ Post-MVP는 AI Master Core E2E의 필수 완료 조건이 아니다. 아래 기�
 2. 테스트 Tenant/계정 Read-only 연동
 3. 제한된 실제 사용자 파일럿
 4. 승인된 범위에서 Sent Items 및 증분 수집
+
+### 2026-08-28 P1 Adapter Contract 진행 증적
+
+- Microsoft Graph `message` 합성 Payload를 공통 `MailInput`으로 변환하는
+  `OutlookGraphReadOnlySource`를 구현했다.
+- Inbox와 Sent Items를 각각 `INBOUND`, `OUTBOUND`로 정규화하고 Graph `conversationId`를
+  기존 M-02 Metadata Matching에 사용할 수 있게 매핑했다.
+- `/me/mailFolders/{folder}/messages`의 읽기 전용 목록 요청, 필요한 속성만 요청하는
+  `$select`, 최대 100건 `$top`, Text 본문 `Prefer` Header Contract를 검증했다.
+- Outlook Adapter 테스트 4건과 전체 회귀 pytest `71 passed`를 확인했다.
+- 실제 Microsoft Entra App Registration, OAuth Token과 사내 Tenant Live 호출은 아직
+  수행하지 않았으며, 사용자·관리자 권한 승인 후 별도 Gate로 진행한다.
 
 Gmail 실전 파일럿에서 다음 조건을 통과한 뒤 Outlook Adapter를 시작한다.
 

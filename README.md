@@ -34,8 +34,8 @@
 - Dashboard에서 Task 제목·설명·기한·상태·회신 필요 여부 직접 수정과 History 저장
 - 기대결과를 분리한 대표 Business Case 15개와 제품형 Dashboard·Gmail Adapter Contract,
   운영/시연 모드 및 DB 격리 회귀를 포함한 AI Master MVP pytest 60건
-- Post-MVP Priority Rule·사용자 Override·실전 UI·Gmail 자동 동기화를 포함한 전체
-  pytest 67건
+- Post-MVP Priority Rule·사용자 Override·실전 UI·Gmail 자동 동기화와 합성 Microsoft
+  Graph Adapter Contract를 포함한 전체 pytest 71건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀
@@ -111,10 +111,11 @@ Mail·커뮤니케이션 업무 통계를 적용한 외부 Benchmark로 계산�
 - 후보 2개 -> `ASK_USER` -> 사용자 최종 선택
 - 완료 제안 -> 사용자 승인 -> `COMPLETED`
 
-현재 버튼은 합성 Mail 도착을 재현하는 테스트 트리거다. 실제 Outlook/Microsoft Graph와
-n8n 자동 수집은 Core E2E 완성 후 Post-MVP에서 공통 Mail Schema Adapter로 연결한다.
-테스트 Gmail은 Core MVP 이후 선택적 고도화로 연결과 Live E2E 검증을 완료했다. iCloud Mail은
-현재 확정 범위에 포함하지 않는다.
+현재 버튼은 합성 Mail 도착을 재현하는 테스트 트리거다. 테스트 Gmail은 Core MVP 이후
+읽기 전용 연결과 Live E2E, 화면이 열린 동안의 제한 Label 자동 정리를 구현했다. Microsoft
+Graph는 Inbox/Sent Items 합성 Payload를 공통 Mail Schema로 바꾸는 읽기 전용 Adapter
+Contract까지 구현했으며, 실제 회사 Tenant OAuth와 Live 호출은 권한 승인 후 진행한다.
+n8n과 iCloud Mail은 현재 구현 완료 범위에 포함하지 않는다.
 
 ## 선택적 테스트 Gmail Adapter
 
@@ -154,6 +155,20 @@ Google 공식 Python Quickstart 방식으로 Gmail API와 Desktop OAuth Client�
 실제 Gmail Live E2E 증적은 `evidence/gmail_live_e2e_2026-08-27.json`에 저장한다.
 공식 참고 문서는 [Gmail API Python Quickstart](https://developers.google.com/workspace/gmail/api/quickstart/python)와
 [messages.list](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list)다.
+
+## Outlook / Microsoft Graph Adapter Contract
+
+현재는 실제 회사 Mailbox에 접속하지 않고 합성 Graph `message` Payload로 Inbox·Sent Items,
+Conversation, 발신자·수신자, 시각과 Text/HTML 본문을 공통 `MailInput`으로 정규화한다.
+목록 요청은 `/me/mailFolders/{folder}/messages`와 필요한 속성의 `$select`, 최대 100건
+`$top`만 사용하도록 Contract Test로 고정했다.
+
+실제 연결에는 회사 Microsoft Entra App Registration과 Signed-in User Delegated
+`Mail.Read` 승인이 필요하다. `Mail.ReadBasic`은 메일 본문을 읽을 수 없어 Agent 분석에
+부족하며, 초기 파일럿에는 `Mail.ReadWrite`와 `Mail.Send`를 요청하지 않는다. 실제 Token과
+Client 정보는 `.secrets/` 또는 회사 Secret 관리 방식으로만 보관한다. 참고 문서는
+[Microsoft Graph List messages](https://learn.microsoft.com/en-us/graph/api/user-list-messages?view=graph-rest-1.0)와
+[Permissions reference](https://learn.microsoft.com/en-us/graph/permissions-reference)다.
 
 내일 시연 설명과 순서는 `Docs/IMPLEMENTATION/08_멘토_시연_브리핑.md`를 참고한다.
 
