@@ -48,6 +48,10 @@ END
 - 기본: 합성·비식별 JSON Mail
 - 선택: 테스트 Gmail Adapter가 생성한 동일 Schema
 
+테스트 Gmail Adapter는 제한 Label Query로 신규 후보를 가져오고, Task DB에 저장된 Gmail
+`conversation_id`의 실제 `threadId`를 조회해 같은 업무의 후속 수신·발신 Mail을 합친다.
+Message ID로 중복을 제거한 뒤 발생 시각 순서의 공통 `MailInput`을 M-01에 전달한다.
+
 ### 책임
 
 1. Source별 입력을 공통 Mail Schema로 변환한다.
@@ -172,6 +176,7 @@ Validation은 독립된 Guard이며 LLM 판단을 그대로 실행하지 않는�
 - 처리한 Mail과 연결 History
 - 확인 대기 항목과 오류/재처리 대상
 - 사용자의 직접 수정·완료·취소
+- Task별 수신·발신 Mail, Agent Action과 상태 변화의 시간순 진행 타임라인
 
 ## 9. 권장 코드 모듈 경계
 

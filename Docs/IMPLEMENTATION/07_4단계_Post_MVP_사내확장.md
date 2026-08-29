@@ -288,6 +288,12 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 - Gmail OAuth 연결 후 Agent가 기본 1분 주기로 제한된 Gmail Label을 읽고, 미처리 `mail_id`만
   기존 Agent Core로 처리하도록 변경했다. 사용자는 필요할 때만 사이드바에서 일시정지·재실행한다.
   Gmail 작성·발송·삭제 권한은 추가하지 않았다.
+- 제한 Label은 새 업무 유입에만 사용하고, 이미 Task가 생성·연결된 Gmail Thread는 DB의
+  `conversation_id`로 후속 Message를 조회하도록 보강했다. 따라서 같은 Thread에서 사용자가
+  보낸 회신은 `OUTBOUND`, 상대가 보낸 후속 회신은 `INBOUND`로 계속 처리되며, 보낸편지함
+  전체나 연결되지 않은 사적 Mail은 추가 분석하지 않는다.
+- `내 업무` 상세에 받은 메일·보낸 메일, 처리 시각, 상대방, Agent Action과 반영 상태를
+  시간순으로 표시하는 Mail 진행 타임라인을 추가했다.
 - 기존 Core 회귀와 Post-MVP Priority·UI·자동 동기화 테스트를 함께 실행해 pytest
   `67 passed`를 확인했다. 로컬 Streamlit 서버 기동도 확인했다.
 - 브라우저가 열려 있는 단일 사용자 파일럿을 넘어선 서버 상시 실행, Outlook/Graph,
@@ -310,7 +316,7 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 | 실제 업무 UI·Task 직접 관리 | 구현·자동 테스트 완료 | 홈/내 업무/검토 요청/자동 분류/운영 상태/설정, 직접 생성·수정·완료 |
 | Priority·고객사·Keyword Rule | 구현·자동 테스트 완료 | P1~P4, 근거, Override, 설정 저장 |
 | 광고·뉴스레터 제외 Rule | 구현·자동 테스트 완료 | 정확한 Email·Domain·제목, IGNORE 근거, 본문 제외 금지 |
-| Gmail 화면 자동 확인 | 구현·자동 테스트 완료 | 제한 Label, 신규 mail_id, 1~60분, Read-only |
+| Gmail 화면 자동 확인 | 구현·자동 테스트 완료 | 제한 Label 신규 유입 + Task 연결 Thread 양방향 추적, 신규 mail_id, 1~60분, Read-only |
 | 무인 1회 Gmail 동기화 | 구현·자동 테스트 완료 | JSON·Exit Code·제한 재시도·sync_runs |
 | 기한·대기 점검 계약 | 구현·자동 테스트 완료 | `operations_cli status`, P1~P4·검토 대기 JSON |
 | Health Check | 구현·자동 테스트 완료 | DB·LLM·OAuth 준비 상태, Secret 미출력 |
@@ -325,10 +331,13 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 | 자동 회신·발송·삭제 | 적용하지 않음 | 현재 안전 범위 밖 |
 | Outlook Live | 사용자 요청에 따라 제외 | Graph 합성 Adapter Contract만 별도 보존 |
 
-2026-08-28 최신 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
-Slack 최소 알림·Dry-run, 6개 역할 기반 운영 UI와 Agent 기본 실행·일시정지 계약을 포함해
-pytest `113 passed`다. 별도 송신 계정 기반 Gmail 실메일 수용시험은 `20/20 PASSED`다.
+2026-08-29 최신 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
+Slack 최소 알림·Dry-run, 6개 역할 기반 운영 UI, Agent 기본 실행·일시정지 계약과 Task 연결
+Thread의 양방향 후속 Mail 추적·Task 타임라인을 포함해 pytest `115 passed`다. 별도 송신
+계정 기반 Gmail 실메일 수용시험은 `20/20 PASSED`다.
 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로 등록했고 수동 실행 결과
 `LastTaskResult=0`, 다음 실행 예약과 Gmail 중복 차단·실패 0건을 확인했다.
+Task 연결 Thread 추적을 적용한 Live `SYNC-0BA30F517ECC`도 가져옴 22·신규 0·중복 22·
+실패 0으로 완료됐으며, 실제 OUTBOUND 회신이 포함된 Task 타임라인을 브라우저에서 확인했다.
 초기 PowerShell 실행 시 나타난 콘솔 창은 예약 작업을 `.venv\Scripts\pythonw.exe` 직접 실행으로
 교체해 제거했으며, 교체 후에도 `LastTaskResult=0`과 다음 1분 실행 예약을 확인했다.

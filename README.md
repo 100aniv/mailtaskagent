@@ -39,7 +39,8 @@
 - Post-MVP Priority Rule·사용자 Override·실전 UI·Gmail 자동 동기화, 운영 CLI·재시도·
   SQLite Backup·Mail 제외 Rule과 합성 Microsoft Graph Adapter Contract를 포함한
   Outlook 전 Gmail 전체 Case 수용시험·Slack 최소 알림·6개 역할 기반 운영 UI를 포함한
-  Agent 기본 실행·일시정지 통합과 Gmail 실메일 20건 자동 평가를 포함한 전체 pytest 111건
+  Agent 기본 실행·일시정지 통합, Task 연결 Gmail Thread의 양방향 후속 Mail 추적과
+  Gmail 실메일 20건 자동 평가를 포함한 전체 pytest 115건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀
@@ -106,7 +107,7 @@ Streamlit 화면이 닫혀 있어도 Windows Task Scheduler 또는 n8n이 아래
 주기적으로 호출할 수 있다.
 
 ```powershell
-# 제한 Gmail Label의 신규 mail_id만 처리
+# 제한 Gmail Label 신규 Mail과 Task 연결 Thread의 후속 수신·발신 mail_id 처리
 .venv\Scripts\python.exe -m mailtaskagent.operations_cli sync-gmail
 
 # 활성 업무, Priority, 검토 대기와 마지막 동기화 상태
@@ -194,9 +195,12 @@ Google 공식 Python Quickstart 방식으로 Gmail API와 Desktop OAuth Client�
 
 기본 쿼리 `label:MailTaskAgent-Demo`, 최대 25건이며 빈 쿼리와 100건 초과 입력은 차단한다.
 Gmail 연결 후 Agent는 기본 1분 주기로 제한 Label을 확인하고, SQLite에 처리 결과가 없는
-새 `mail_id`만 기존 Agent Core로 넘긴다. 사이드바에서 일시정지·재실행할 수 있다.
-이 파일럿 Polling은 Streamlit 화면이 열려 있는 동안 동작하며 Gmail 작성·발송·삭제 권한은
-사용하지 않는다. 서버 상시 실행과 Outlook/Microsoft Graph는 후속 사내 적용 단계다.
+새 `mail_id`만 기존 Agent Core로 넘긴다. 한 번 Task로 연결된 Gmail Thread는 이후 Label
+상속 여부와 관계없이 Inbox·Sent 후속 Message를 함께 조회하므로 보낸 회신도 업무 상태에
+이어진다. 보낸편지함 전체는 분석하지 않는다. 사이드바에서 일시정지·재실행할 수 있다.
+화면이 열려 있을 때는 Streamlit Polling이 동작하고, 등록된 로컬 Scheduler는 화면이 닫혀도
+같은 1회 동기화 명령을 실행한다. Gmail 작성·발송·삭제 권한은 사용하지 않는다. 서버 상시
+실행과 Outlook/Microsoft Graph는 후속 사내 적용 단계다.
 실제 Gmail Live E2E 증적은 `evidence/gmail_live_e2e_2026-08-27.json`에 저장한다.
 공식 참고 문서는 [Gmail API Python Quickstart](https://developers.google.com/workspace/gmail/api/quickstart/python)와
 [messages.list](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list)다.

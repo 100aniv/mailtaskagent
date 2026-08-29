@@ -25,10 +25,20 @@ from mailtaskagent.storage import SQLiteStorage
 
 
 class _ConfiguredGmailSource:
+    def __init__(self, storage: SQLiteStorage) -> None:
+        self.storage = storage
+
     def load(self):
         gmail_settings = load_gmail_source_settings()
         service = build_gmail_service(gmail_settings)
-        return GmailReadOnlySource(service, gmail_settings).load()
+        tracked_conversation_ids = [
+            task["conversation_id"] for task in self.storage.list_tasks()
+        ]
+        return GmailReadOnlySource(
+            service,
+            gmail_settings,
+            tracked_conversation_ids=tracked_conversation_ids,
+        ).load()
 
 
 def _print_json(payload: dict) -> None:
@@ -59,7 +69,7 @@ def _run_sync_gmail(*, force: bool = False) -> int:
         settings=settings,
         storage=storage,
         analyzer=build_operational_analyzer(settings, storage),
-        source=_ConfiguredGmailSource(),
+        source=_ConfiguredGmailSource(storage),
         source_name="GMAIL",
     )
     report = service.run_once()

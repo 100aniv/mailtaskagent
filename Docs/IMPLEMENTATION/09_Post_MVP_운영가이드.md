@@ -12,7 +12,7 @@
 Windows Task Scheduler 또는 n8n Schedule
 -> scripts/run_gmail_sync.ps1
 -> operations_cli sync-gmail
--> 제한된 Gmail Label Read-only 조회
+-> 제한된 Gmail Label 신규 유입 + Task 연결 Gmail Thread Read-only 조회
 -> 신규 mail_id만 기존 Agent Core 실행
 -> SQLite Task/History/Processing Event
 -> sync_runs 운영 결과 저장
@@ -38,6 +38,11 @@ Windows Task Scheduler 또는 n8n Schedule
 ```
 
 표준 출력은 한 개의 JSON Object이며 Mail 본문, API Key, OAuth Token을 포함하지 않는다.
+
+신규 업무 후보는 제한 Label에서만 들어온다. 해당 Mail이 Task로 생성되거나 기존 Task에
+연결되면 이후 실행부터 DB의 Gmail `conversation_id`로 정확한 Thread를 함께 조회한다. 이때
+Inbox와 Sent Message를 모두 정규화하므로 사용자가 보낸 회신과 상대방의 후속 회신이 같은
+Task에 이어진다. 보낸편지함 전체를 별도로 조회하지 않는다.
 
 ```json
 {
@@ -78,6 +83,9 @@ JSON으로 반환한다. `READY`는 Exit Code 0, 준비가 부족한 `DEGRADED`�
 2026-08-28 로컬 파일럿에서 Health Check `READY`와 제한 Gmail Label Live 동기화
 성공 2건을 확인했다. 같은 Source를 즉시 재실행했을 때 신규 0건·중복 2건으로 집계되어
 LLM과 Task 변경이 재실행되지 않았다.
+
+2026-08-29 Task 연결 Gmail Thread의 Inbox·Sent 조회를 적용한 뒤 Live 동기화
+`SYNC-0BA30F517ECC`에서 가져옴 22·신규 0·중복 22·실패 0을 확인했다.
 
 같은 날 별도 송신 계정을 사용한 실메일 20건 수용시험은 방향·Thread·7 Action·사용자
 확인 여부 `20/20 PASSED`, 처리 실패 0건으로 완료했다. 마지막 GL-018 단독 동기화는
@@ -186,6 +194,7 @@ Task 변경을 재실행하지 않았고, 정상 실행의 Slack 상태는 `NOT_
 ## 7. 보안·운영 Gate
 
 - Gmail은 제한 Label, 최대 건수, Read-only Scope를 유지한다.
+- Task 연결 Thread 조회는 Gmail `conversation_id`만 사용하고 최대 100개로 제한한다.
 - 회사 LLM 전송 가능 Mail 범위를 별도로 승인받는다.
 - 실제 업무 DB와 MVP 시연 DB를 분리한다.
 - 외부 알림을 연결하기 전 수신자·채널·전송 필드를 승인받는다.

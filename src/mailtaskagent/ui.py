@@ -176,6 +176,55 @@ def _detail_rows(details) -> list[dict]:
     ]
 
 
+def _task_mail_timeline_rows(storage, task: dict, *, limit: int = 50) -> list[dict]:
+    """Build a user-facing, chronological mail lifecycle for one Task."""
+
+    results_by_mail = {
+        item["mail_id"]: item
+        for item in storage.list_processing_results()
+        if item.get("task_id") == task["task_id"]
+    }
+    histories_by_mail = {}
+    for history in storage.list_histories():
+        if history.get("task_id") != task["task_id"]:
+            continue
+        histories_by_mail.setdefault(history["mail_id"], history)
+
+    rows = []
+    mails = reversed(
+        storage.list_thread_mails(task["conversation_id"], limit=limit)
+    )
+    for mail in mails:
+        history = histories_by_mail.get(mail["mail_id"])
+        result = results_by_mail.get(mail["mail_id"])
+        action = None
+        if history:
+            action = history.get("action")
+        elif result:
+            action = result.get("action")
+        after = _parse_json(history.get("after_json")) if history else None
+        direction = mail["direction"]
+        counterpart = (
+            mail["sender"]
+            if direction == "INBOUND"
+            else ", ".join(mail.get("recipients") or []) or "수신자 정보 없음"
+        )
+        rows.append(
+            {
+                "mail_id": mail["mail_id"],
+                "occurred_at": mail["occurred_at"],
+                "direction": direction,
+                "direction_label": "🔵 받은 메일" if direction == "INBOUND" else "🟣 보낸 메일",
+                "counterpart": counterpart,
+                "subject": mail["subject"],
+                "action": action,
+                "action_label": ACTION_LABELS.get(action, action or "처리 기록 없음"),
+                "status": after.get("status") if isinstance(after, dict) else None,
+            }
+        )
+    return rows
+
+
 def _render_mode_entry(*, gmail_connected: bool = False) -> str | None:
     selected_mode = st.session_state.get("app_mode")
     if selected_mode in {OPERATION_MODE, DEMO_MODE}:
@@ -232,22 +281,29 @@ def _gmail_connection_summary() -> dict:
     }
 
 
-def _load_gmail_test_mails():
+def _load_gmail_test_mails(storage=None):
     gmail_settings = load_gmail_source_settings()
+    tracked_conversation_ids = (
+        [task["conversation_id"] for task in storage.list_tasks()]
+        if storage is not None
+        else []
+    )
     source = GmailReadOnlySource(
         build_gmail_service(gmail_settings),
         gmail_settings,
+        tracked_conversation_ids=tracked_conversation_ids,
     )
     return source.load()
 
 
 class _GmailSyncSource:
-    def __init__(self, cached_mails=None) -> None:
+    def __init__(self, storage, cached_mails=None) -> None:
+        self.storage = storage
         self.loaded_mails = cached_mails
 
     def load(self):
         if self.loaded_mails is None:
-            self.loaded_mails = _load_gmail_test_mails()
+            self.loaded_mails = _load_gmail_test_mails(self.storage)
         return list(self.loaded_mails)
 
 
@@ -658,6 +714,7 @@ def _render_product_dashboard(
                     subject_col, status_col = st.columns([4.5, 1.4])
                     subject_col.markdown(f"**{mail.subject}**")
                     subject_col.caption(
+                        f"{'🔵 받은 메일' if mail.direction.value == 'INBOUND' else '🟣 보낸 메일'} · "
                         f"{mail.sender} · {mail.occurred_at.astimezone().strftime('%m-%d %H:%M')}"
                     )
                     status_col.caption(status_text)
@@ -1604,6 +1661,29 @@ def _render_operational_task_list(storage) -> None:
     st.divider()
     st.markdown("### 업무 상세")
     st.caption("업무 상태·기한·중요도를 직접 수정하면 변경 기록이 자동으로 남습니다.")
+    timeline_rows = _task_mail_timeline_rows(storage, selected_task)
+    st.markdown("#### 메일 진행 타임라인")
+    st.caption(
+        "이 업무와 연결된 받은 메일과 보낸 회신을 시간순으로 보여줍니다. "
+        "같은 Gmail 스레드의 후속 메일은 자동으로 이어집니다."
+    )
+    if not timeline_rows:
+        st.info("이 업무에 연결된 메일 기록이 없습니다. 직접 추가한 업무일 수 있습니다.")
+    else:
+        for row in timeline_rows:
+            with st.container(border=True):
+                time_col, content_col, result_col = st.columns([1.35, 4.6, 1.7])
+                occurred_at = datetime.fromisoformat(row["occurred_at"]).astimezone()
+                time_col.markdown(f"**{row['direction_label']}**")
+                time_col.caption(occurred_at.strftime("%m-%d %H:%M"))
+                content_col.markdown(f"**{row['subject']}**")
+                arrow = "보낸 사람" if row["direction"] == "INBOUND" else "받는 사람"
+                content_col.caption(f"{arrow} · {row['counterpart']}")
+                result_col.markdown(f"**{row['action_label']}**")
+                if row["status"]:
+                    result_col.caption(
+                        f"상태 · {STATUS_LABELS.get(row['status'], row['status'])}"
+                    )
     current_due = (
         date.fromisoformat(selected_task["due_date"])
         if selected_task.get("due_date")
@@ -2026,7 +2106,7 @@ def _render_automatic_gmail_sync(storage, settings) -> None:
         cached_mails = (
             st.session_state.get("gmail_test_mails") if last_check is None else None
         )
-        source = _GmailSyncSource(cached_mails)
+        source = _GmailSyncSource(storage, cached_mails)
         report = MailSyncService(
             settings=settings,
             storage=storage,
@@ -2930,7 +3010,7 @@ def main() -> None:
             if "gmail_test_mails" not in st.session_state:
                 try:
                     with st.spinner("제한된 Gmail 테스트 라벨을 확인하고 있습니다..."):
-                        st.session_state["gmail_test_mails"] = _load_gmail_test_mails()
+                        st.session_state["gmail_test_mails"] = _load_gmail_test_mails(storage)
                     st.session_state.pop("gmail_load_error", None)
                 except Exception as exc:
                     st.session_state["gmail_test_mails"] = []

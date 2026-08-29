@@ -73,15 +73,33 @@ class _MessagesApi:
         return _Request(self.raw_messages[kwargs["id"]])
 
 
+class _ThreadsApi:
+    def __init__(self, threads: dict[str, dict]) -> None:
+        self.raw_threads = threads
+        self.get_kwargs: list[dict] = []
+
+    def get(self, **kwargs) -> _Request:
+        self.get_kwargs.append(kwargs)
+        return _Request(self.raw_threads[kwargs["id"]])
+
+
 class _FakeService:
-    def __init__(self, messages: dict[str, dict]) -> None:
+    def __init__(
+        self,
+        messages: dict[str, dict],
+        threads: dict[str, dict] | None = None,
+    ) -> None:
         self.messages_api = _MessagesApi(messages)
+        self.threads_api = _ThreadsApi(threads or {})
 
     def users(self) -> "_FakeService":
         return self
 
     def messages(self) -> _MessagesApi:
         return self.messages_api
+
+    def threads(self) -> _ThreadsApi:
+        return self.threads_api
 
 
 def test_gmail_message_maps_to_common_inbound_schema() -> None:
@@ -153,6 +171,64 @@ def test_gmail_source_uses_restricted_query_and_sorts_oldest_first(tmp_path) -> 
         "includeSpamTrash": False,
     }
     assert all(call["format"] == "full" for call in service.messages_api.get_kwargs)
+
+
+def test_gmail_source_follows_only_task_linked_threads_in_both_directions(
+    tmp_path,
+) -> None:
+    entry = _message("entry", thread_id="tracked-thread")
+    outbound_reply = _message(
+        "sent-reply",
+        thread_id="tracked-thread",
+        internal_date="1787796000000",
+        label_ids=["SENT"],
+        body="요청하신 자료를 확인한 뒤 회신드리겠습니다.",
+    )
+    inbound_reply = _message(
+        "inbound-reply",
+        thread_id="tracked-thread",
+        internal_date="1787799600000",
+        label_ids=["INBOX"],
+        body="추가 자료를 전달드립니다.",
+    )
+    service = _FakeService(
+        {"entry": entry},
+        {
+            "tracked-thread": {
+                "messages": [entry, outbound_reply, inbound_reply],
+            }
+        },
+    )
+    settings = GmailSourceSettings(
+        credentials_path=tmp_path / "credentials.json",
+        token_path=tmp_path / "token.json",
+        query="label:MailTaskAgent-Demo",
+        max_results=10,
+    )
+
+    mails = GmailReadOnlySource(
+        service,
+        settings,
+        tracked_conversation_ids=[
+            "GMAIL-THREAD-tracked-thread",
+            "USER-CONVERSATION-not-gmail",
+            "GMAIL-THREAD-tracked-thread",
+        ],
+    ).load()
+
+    assert [mail.mail_id for mail in mails] == [
+        "GMAIL-entry",
+        "GMAIL-sent-reply",
+        "GMAIL-inbound-reply",
+    ]
+    assert [mail.direction for mail in mails] == [
+        MailDirection.INBOUND,
+        MailDirection.OUTBOUND,
+        MailDirection.INBOUND,
+    ]
+    assert service.threads_api.get_kwargs == [
+        {"userId": "me", "id": "tracked-thread", "format": "full"}
+    ]
 
 
 def test_gmail_settings_reject_unrestricted_query(monkeypatch) -> None:

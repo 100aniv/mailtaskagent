@@ -5,8 +5,10 @@ from pathlib import Path
 from streamlit.testing.v1 import AppTest
 
 from mailtaskagent import ui as ui_module
+from mailtaskagent.config import Settings
+from mailtaskagent.llm_client import MockMailAnalyzer
 from mailtaskagent.storage import SQLiteStorage
-from mailtaskagent.workflow import load_mails
+from mailtaskagent.workflow import MailTaskWorkflow, load_mails
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +51,46 @@ def test_demo_mode_uses_an_isolated_database_path(tmp_path) -> None:
     assert ui_module._database_path_for_mode(
         database_path, ui_module.DEMO_MODE
     ) == tmp_path / "mailtaskagent-demo.db"
+
+
+def test_task_timeline_combines_inbound_and_outbound_lifecycle(tmp_path) -> None:
+    settings = Settings(
+        api_url="https://example.test",
+        api_key="",
+        model="mock",
+        api_version="test",
+        timeout_seconds=1,
+        use_mock=True,
+        database_path=tmp_path / "task-timeline.db",
+        confidence_threshold=0.75,
+    )
+    storage = SQLiteStorage(settings.database_path)
+    workflow = MailTaskWorkflow(settings, storage, MockMailAnalyzer())
+    mails = {
+        mail.mail_id: mail
+        for mail in load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
+    }
+    for mail_id in ("MAIL-001", "MAIL-003", "MAIL-004"):
+        workflow.process(mails[mail_id])
+
+    task = storage.list_tasks()[0]
+    rows = ui_module._task_mail_timeline_rows(storage, task)
+
+    assert [row["direction"] for row in rows] == [
+        "INBOUND",
+        "OUTBOUND",
+        "INBOUND",
+    ]
+    assert [row["action"] for row in rows] == [
+        "CREATE_TASK",
+        "SET_WAITING",
+        "UPDATE_TASK",
+    ]
+    assert [row["status"] for row in rows] == [
+        "TODO",
+        "WAITING_REPLY",
+        "IN_PROGRESS",
+    ]
 
 
 def _start_mode(app: AppTest, button_label: str) -> AppTest:
@@ -184,7 +226,7 @@ def test_gmail_readonly_source_empty_state(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
     monkeypatch.setenv("GMAIL_CREDENTIALS_PATH", str(credentials_path))
     monkeypatch.setenv("GMAIL_TOKEN_PATH", str(token_path))
-    monkeypatch.setattr(ui_module, "_load_gmail_test_mails", lambda: [])
+    monkeypatch.setattr(ui_module, "_load_gmail_test_mails", lambda storage=None: [])
 
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "실제 업무 모드로 시작")
@@ -212,7 +254,11 @@ def test_connected_operation_mode_runs_gmail_agent_by_default(
     monkeypatch.setenv("GMAIL_CREDENTIALS_PATH", str(credentials_path))
     monkeypatch.setenv("GMAIL_TOKEN_PATH", str(token_path))
     gmail_mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")[:1]
-    monkeypatch.setattr(ui_module, "_load_gmail_test_mails", lambda: gmail_mails)
+    monkeypatch.setattr(
+        ui_module,
+        "_load_gmail_test_mails",
+        lambda storage=None: gmail_mails,
+    )
 
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "실제 업무 모드로 시작")

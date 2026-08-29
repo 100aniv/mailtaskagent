@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import os
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.header import decode_header
@@ -17,6 +18,8 @@ from mailtaskagent.models import MailDirection, MailInput
 
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 DEFAULT_GMAIL_QUERY = "label:MailTaskAgent-Demo"
+GMAIL_CONVERSATION_PREFIX = "GMAIL-THREAD-"
+MAX_TRACKED_GMAIL_THREADS = 100
 EMAIL_ADDRESS_PATTERN = re.compile(
     r"[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+",
     re.IGNORECASE,
@@ -212,7 +215,7 @@ def gmail_message_to_mail_input(message: dict[str, Any]) -> MailInput:
     )
     return MailInput(
         mail_id=f"GMAIL-{message['id']}",
-        conversation_id=f"GMAIL-THREAD-{message['threadId']}",
+        conversation_id=f"{GMAIL_CONVERSATION_PREFIX}{message['threadId']}",
         direction=direction,
         sender=sender,
         recipients=recipients,
@@ -223,9 +226,36 @@ def gmail_message_to_mail_input(message: dict[str, Any]) -> MailInput:
 
 
 class GmailReadOnlySource:
-    def __init__(self, service: Any, settings: GmailSourceSettings) -> None:
+    def __init__(
+        self,
+        service: Any,
+        settings: GmailSourceSettings,
+        *,
+        tracked_conversation_ids: Iterable[str] = (),
+    ) -> None:
         self.service = service
         self.settings = settings
+        self.tracked_thread_ids = self._normalize_tracked_thread_ids(
+            tracked_conversation_ids
+        )
+
+    @staticmethod
+    def _normalize_tracked_thread_ids(
+        conversation_ids: Iterable[str],
+    ) -> tuple[str, ...]:
+        thread_ids: list[str] = []
+        seen: set[str] = set()
+        for conversation_id in conversation_ids:
+            if not conversation_id.startswith(GMAIL_CONVERSATION_PREFIX):
+                continue
+            thread_id = conversation_id.removeprefix(GMAIL_CONVERSATION_PREFIX).strip()
+            if not thread_id or thread_id in seen:
+                continue
+            seen.add(thread_id)
+            thread_ids.append(thread_id)
+            if len(thread_ids) >= MAX_TRACKED_GMAIL_THREADS:
+                break
+        return tuple(thread_ids)
 
     def load(self) -> list[MailInput]:
         response = (
@@ -239,7 +269,7 @@ class GmailReadOnlySource:
             )
             .execute()
         )
-        messages = []
+        raw_messages: dict[str, dict[str, Any]] = {}
         for item in response.get("messages", []):
             raw_message = (
                 self.service.users()
@@ -247,5 +277,24 @@ class GmailReadOnlySource:
                 .get(userId="me", id=item["id"], format="full")
                 .execute()
             )
-            messages.append(gmail_message_to_mail_input(raw_message))
+            raw_messages[raw_message["id"]] = raw_message
+
+        # The restricted label is the safe entry gate for new work. Once a Gmail
+        # conversation has created or linked a Task, follow that exact thread so
+        # later Inbox and Sent messages remain part of the same lifecycle even if
+        # an individual reply does not inherit the entry label.
+        for thread_id in self.tracked_thread_ids:
+            thread = (
+                self.service.users()
+                .threads()
+                .get(userId="me", id=thread_id, format="full")
+                .execute()
+            )
+            for raw_message in thread.get("messages", []):
+                raw_messages[raw_message["id"]] = raw_message
+
+        messages = [
+            gmail_message_to_mail_input(raw_message)
+            for raw_message in raw_messages.values()
+        ]
         return sorted(messages, key=lambda mail: (mail.occurred_at, mail.mail_id))
