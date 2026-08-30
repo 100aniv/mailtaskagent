@@ -129,6 +129,47 @@ def test_waiting_lifecycle_resumes_when_information_arrives(settings: Settings) 
     storage = SQLiteStorage(settings.database_path)
     workflow = MailTaskWorkflow(settings, storage, MockMailAnalyzer())
 
+    inbound_waiting = decide_action(
+        MailInput(
+            mail_id="MAIL-INBOUND-WAITING",
+            conversation_id="THREAD-001",
+            direction=MailDirection.INBOUND,
+            sender="requester@example.test",
+            recipients=["worker@example.test"],
+            received_at=datetime(2026, 8, 19, 9, tzinfo=UTC),
+            subject="Re: 주간 현황 보고서 작성 요청",
+            body="확인을 위해 대상 서버 목록을 보내 주세요.",
+        ),
+        MailAnalysis(
+            is_task_request=True,
+            intent=MailIntent.WAITING,
+            task_title="주간 현황 보고서 작성",
+            request_summary="대상 서버 목록 요청",
+            requester="requester@example.test",
+            reply_required=True,
+            reason="상대방에게 자료를 요청하는 문장",
+            confidence=0.95,
+        ),
+        [
+            TaskCandidate(
+                task_id="TASK-001",
+                conversation_id="THREAD-001",
+                title="주간 현황 보고서 작성",
+                requester="requester@example.test",
+                description="주간 현황 보고서 작성",
+                due_date=date(2026, 8, 21),
+                status=TaskStatus.TODO,
+                match_score=1.0,
+                match_reason="동일 conversation_id",
+            )
+        ],
+        settings,
+    )
+
+    assert inbound_waiting.action == AgentAction.ASK_USER
+    assert inbound_waiting.target_task_id == "TASK-001"
+    assert inbound_waiting.needs_user_confirmation is True
+
     workflow.process(mails["MAIL-001"])
     waiting = workflow.process(mails["MAIL-003"])
 

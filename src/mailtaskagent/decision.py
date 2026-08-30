@@ -5,6 +5,7 @@ from mailtaskagent.models import (
     ActionProposal,
     AgentAction,
     MailAnalysis,
+    MailDirection,
     MailInput,
     MailIntent,
     TaskCandidate,
@@ -121,6 +122,17 @@ def decide_action(
         )
 
     if analysis.intent == MailIntent.WAITING and candidate:
+        if mail.direction != MailDirection.OUTBOUND:
+            return ActionProposal(
+                action=AgentAction.ASK_USER,
+                target_task_id=candidate.task_id,
+                reason=(
+                    "SET_WAITING은 사용자가 자료나 답변을 요청해 발신한 Mail에만 "
+                    "자동 적용함. INBOUND Mail의 WAITING 분석은 사용자 확인 필요"
+                ),
+                confidence=min(analysis.confidence, 0.70),
+                needs_user_confirmation=True,
+            )
         return ActionProposal(
             action=AgentAction.SET_WAITING,
             target_task_id=candidate.task_id,
