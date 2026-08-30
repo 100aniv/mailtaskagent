@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import date, datetime
 from pathlib import Path
 from time import perf_counter
@@ -69,6 +70,31 @@ INTENT_LABELS = {
     "NON_TASK": "업무 아님·공지",
     "UNCERTAIN": "사용자 확인 필요",
 }
+
+
+def _initialize_storage_or_stop(storage: SQLiteStorage) -> None:
+    """Fail closed with recovery guidance when the local SQLite file is damaged."""
+
+    try:
+        storage.initialize()
+    except sqlite3.DatabaseError:
+        st.error(
+            "업무 데이터베이스를 열 수 없습니다. 자동 처리를 중지하고 원본 파일을 보존했습니다."
+        )
+        st.info(
+            "앱과 자동 동기화를 모두 종료한 뒤, 무결성이 확인된 최신 백업으로 복원하세요. "
+            "자세한 절차는 Docs/IMPLEMENTATION/09_Post_MVP_운영가이드.md의 DB 복구 항목에 있습니다."
+        )
+        backup_dir = storage.path.parent / "backups"
+        backups = sorted(
+            backup_dir.glob("mailtaskagent-*.db"),
+            key=lambda candidate: candidate.stat().st_mtime,
+            reverse=True,
+        )
+        if backups:
+            st.caption(f"최근 복구용 백업 후보 · {backups[0].name}")
+        st.stop()
+
 
 DEMO_SCENARIOS = {
     "create_update": {
@@ -2957,7 +2983,7 @@ def main() -> None:
         return
     demo_mode = app_mode == DEMO_MODE
     storage = SQLiteStorage(_database_path_for_mode(settings.database_path, app_mode))
-    storage.initialize()
+    _initialize_storage_or_stop(storage)
     synthetic_mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
 
     if demo_mode:

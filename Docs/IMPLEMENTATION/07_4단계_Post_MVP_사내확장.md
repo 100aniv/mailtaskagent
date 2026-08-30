@@ -339,7 +339,8 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 2026-08-29 최신 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
 Slack 최소 알림·Dry-run, 6개 역할 기반 운영 UI, Agent 기본 실행·일시정지 계약과 Task 연결
 Thread의 양방향 후속 Mail 추적·Task 타임라인과 저장 DB 우선 화면 시작을 포함해 pytest
-`118 passed`다. 별도 송신
+`119 passed`다. 로컬 SQLite 무결성 오류가 발생하면 자동 처리를 중지하고 백업 복구 절차를
+안내하는 Fail-closed UI도 포함한다. 별도 송신
 계정 기반 Gmail 실메일 수용시험은 `20/20 PASSED`다.
 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로 등록했고 수동 실행 결과
 `LastTaskResult=0`, 다음 실행 예약과 Gmail 중복 차단·실패 0건을 확인했다.

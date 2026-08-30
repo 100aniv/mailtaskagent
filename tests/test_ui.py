@@ -53,6 +53,38 @@ def test_demo_mode_uses_an_isolated_database_path(tmp_path) -> None:
     ) == tmp_path / "mailtaskagent-demo.db"
 
 
+def test_corrupt_operational_database_fails_closed_with_recovery_guidance(
+    tmp_path, monkeypatch
+) -> None:
+    database_path = tmp_path / "corrupt.db"
+    database_path.write_bytes(b"not-a-sqlite-database")
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    (backup_dir / "mailtaskagent-20260830T010203Z.db").write_bytes(b"backup")
+    monkeypatch.setenv("DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+    monkeypatch.setenv(
+        "GMAIL_CREDENTIALS_PATH", str(tmp_path / "missing-gmail-credentials.json")
+    )
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(tmp_path / "missing-gmail-token.json"))
+
+    app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
+    app = _start_mode(app, "실제 업무 모드로 시작")
+
+    assert not app.exception
+    assert any(
+        "업무 데이터베이스를 열 수 없습니다." in message.value
+        for message in app.error
+    )
+    assert any(
+        "원본 파일을 보존했습니다." in message.value for message in app.error
+    )
+    assert any(
+        "mailtaskagent-20260830T010203Z.db" in message.value
+        for message in app.caption
+    )
+
+
 def test_task_timeline_combines_inbound_and_outbound_lifecycle(tmp_path) -> None:
     settings = Settings(
         api_url="https://example.test",
