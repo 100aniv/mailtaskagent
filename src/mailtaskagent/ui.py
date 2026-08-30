@@ -1285,7 +1285,18 @@ def _render_review_queue(storage, settings, mail_by_id) -> None:
         labels["기존 기한 유지"] = ReviewDecision.IGNORE
     else:
         if candidates:
-            labels["기존 Task 연결"] = ReviewDecision.LINK_EXISTING
+            can_resume_waiting = (
+                source_mail.direction == MailDirection.INBOUND
+                and any(
+                    candidate.get("status") == "WAITING_REPLY"
+                    for candidate in candidates
+                )
+            )
+            if can_resume_waiting:
+                labels["기존 Task 연결 및 진행 재개"] = ReviewDecision.LINK_EXISTING
+                labels["기존 Task에 연결만"] = ReviewDecision.LINK_EXISTING
+            else:
+                labels["기존 Task 연결"] = ReviewDecision.LINK_EXISTING
         labels["신규 Task 생성"] = ReviewDecision.CREATE_NEW
         labels["무시"] = ReviewDecision.IGNORE
     choice_label = st.radio("사용자 최종 결정", list(labels), horizontal=True)
@@ -1301,6 +1312,11 @@ def _render_review_queue(storage, settings, mail_by_id) -> None:
             format_func=lambda item: f"{item['task_id']} · {item['title']}",
         )
         target_task_id = selected_candidate["task_id"]
+        if choice_label == "기존 Task 연결 및 진행 재개":
+            approved_changes = {
+                "status": "IN_PROGRESS",
+                "waiting_since": None,
+            }
     elif decision == ReviewDecision.CREATE_NEW:
         default_title = (
             selected_review["analysis"].get("task_title")

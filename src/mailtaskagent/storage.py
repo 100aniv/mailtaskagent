@@ -844,14 +844,46 @@ class SQLiteStorage:
                     if not task:
                         raise ValueError(f"Task not found: {task_id}")
                     before = task
-                    after = task
-                    final_action = AgentAction.LINK_TO_TASK
+                    resume_requested = approved_changes == {
+                        "status": TaskStatus.IN_PROGRESS.value,
+                        "waiting_since": None,
+                    }
+                    if approved_changes and not resume_requested:
+                        raise ValueError(
+                            "Existing Task review supports IN_PROGRESS resume only"
+                        )
+                    if resume_requested:
+                        if mail.direction.value != "INBOUND":
+                            raise ValueError("Only INBOUND Mail can resume a waiting Task")
+                        if before["status"] != TaskStatus.WAITING_REPLY.value:
+                            raise ValueError("Only a waiting Task can be resumed")
+                        validate_status_transition(
+                            before["status"], TaskStatus.IN_PROGRESS
+                        )
+                        connection.execute(
+                            """
+                            UPDATE tasks
+                            SET status = ?, waiting_since = NULL, updated_at = ?
+                            WHERE task_id = ?
+                            """,
+                            (TaskStatus.IN_PROGRESS.value, now, task_id),
+                        )
+                        after = self._fetch_task(connection, task_id)
+                        task = after
+                        final_action = AgentAction.UPDATE_TASK
+                        link_reason = (
+                            "사용자가 INBOUND 자료를 기존 대기 Task에 연결하고 진행 재개"
+                        )
+                    else:
+                        after = task
+                        final_action = AgentAction.LINK_TO_TASK
+                        link_reason = "사용자가 ASK_USER 후보 중 기존 Task 연결을 확정"
                     self._insert_link(
                         connection,
                         mail.mail_id,
                         task_id,
                         final_action.value,
-                        "사용자가 ASK_USER 후보 중 기존 Task 연결을 확정",
+                        link_reason,
                         1.0,
                         now,
                     )

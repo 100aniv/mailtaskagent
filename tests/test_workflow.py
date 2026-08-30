@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -193,6 +194,46 @@ def test_waiting_lifecycle_resumes_when_information_arrives(settings: Settings) 
         AgentAction.SET_WAITING.value,
         AgentAction.UPDATE_TASK.value,
     ]
+
+    review_settings = replace(
+        settings,
+        database_path=settings.database_path.with_name("review-resume.db"),
+    )
+
+    class NewTaskLikeReplyAnalyzer(MockMailAnalyzer):
+        def analyze(self, mail):
+            analysis = super().analyze(mail)
+            if mail.mail_id == "MAIL-004":
+                return analysis.model_copy(
+                    update={
+                        "intent": MailIntent.NEW_TASK,
+                        "task_title": "대상 서버 점검 진행",
+                        "request_summary": "대상 서버 목록을 전달하고 점검 진행 요청",
+                        "confidence": 0.95,
+                    }
+                )
+            return analysis
+
+    review_storage = SQLiteStorage(review_settings.database_path)
+    review_workflow = MailTaskWorkflow(
+        review_settings,
+        review_storage,
+        NewTaskLikeReplyAnalyzer(),
+    )
+    review_workflow.process(mails["MAIL-001"])
+    review_workflow.process(mails["MAIL-003"])
+    ambiguous_reply = review_workflow.process(mails["MAIL-004"])
+
+    assert ambiguous_reply.proposal.action == AgentAction.ASK_USER
+    resumed_by_user = review_workflow.resolve_review(
+        mail=mails["MAIL-004"],
+        decision=ReviewDecision.LINK_EXISTING,
+        target_task_id="TASK-001",
+        approved_changes={"status": "IN_PROGRESS", "waiting_since": None},
+    )
+    assert resumed_by_user["final_action"] == AgentAction.UPDATE_TASK.value
+    assert resumed_by_user["after"]["status"] == TaskStatus.IN_PROGRESS.value
+    assert resumed_by_user["after"]["waiting_since"] is None
 
 
 def test_information_mail_links_without_unjustified_state_change(settings: Settings) -> None:
