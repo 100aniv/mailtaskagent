@@ -41,6 +41,35 @@ def test_display_value_localizes_status_and_boolean() -> None:
     assert ui_module._display_value(None) == "-"
 
 
+def test_task_history_rows_include_changes_reason_and_user_decision(tmp_path) -> None:
+    storage = SQLiteStorage(tmp_path / "task-history.db")
+    storage.initialize()
+    task = storage.create_task_by_user(
+        title="고객사 견적 검토",
+        due_date="2026-09-01",
+        importance=2,
+    )
+    storage.update_task_by_user(
+        task["task_id"],
+        title="고객사 최종 견적 검토",
+        description="수정 견적 확인",
+        due_date="2026-09-02",
+        status="IN_PROGRESS",
+        reply_required=True,
+    )
+
+    rows = ui_module._task_history_rows(storage, task["task_id"])
+
+    assert len(rows) == 2
+    assert rows[0]["Source Mail"] == "USER-DASHBOARD"
+    assert rows[0]["Action"] == "기존 업무 변경"
+    assert "업무 제목 고객사 견적 검토" in rows[0]["변경 전"]
+    assert "업무 제목 고객사 최종 견적 검토" in rows[0]["변경 후"]
+    assert rows[0]["판단 근거"] == "사용자가 Dashboard에서 Task를 직접 수정"
+    assert rows[0]["사용자 결정"] == "사용자 직접 수정"
+    assert rows[1]["사용자 결정"] == "사용자 직접 생성"
+
+
 def test_demo_mode_uses_an_isolated_database_path(tmp_path) -> None:
     database_path = tmp_path / "mailtaskagent.db"
 
@@ -311,7 +340,7 @@ def test_connected_operation_mode_runs_gmail_agent_by_default(
         "gmail_auto_sync_enabled": True,
         "gmail_sync_interval_minutes": 1,
     }
-    assert any(toggle.label == "자동 정리 실행" for toggle in app.toggle)
+    assert any(toggle.label == "Agent 실행" for toggle in app.toggle)
     app = _select_radio(app, "주 메뉴", ui_module.HOME_PAGE)
     assert any(gmail_mails[0].subject in item.value for item in app.markdown)
 

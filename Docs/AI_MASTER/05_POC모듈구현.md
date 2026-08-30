@@ -12,9 +12,9 @@
 
 **1.2 도구(Tool) 및 함수 연동**
 
-* **구현 기능:** Mail 분석, 중복 확인, Task 후보 검색, Action 실행, 사용자 검토, 품질평가 함수와 선택적 읽기 전용 Gmail Input Adapter 연동
+* **구현 기능:** Mail 분석, 중복 확인, Task 후보 검색, Action 실행, 사용자 검토, 품질평가 함수와 읽기 전용 Gmail Input Adapter 연동
 
-* **동작 원리:** `MailTaskWorkflow.process()`가 처리 순서를 관리합니다. `MailAnalyzer.analyze()`의 구조화 결과를 Pydantic으로 검증하고, `SQLiteStorage.search_candidate_tasks()`가 동일 Thread 우선 후보와 매칭 점수·근거를 반환합니다. `decide_action()`이 Action을 제안하며 `SQLiteStorage.apply()`가 하나의 Transaction 안에서 Task·Link·History를 저장합니다. `resolve_review()`는 사용자가 확정한 결과만 반영하고, `run_scenario_evaluation()`은 각 Case를 격리 DB에서 재현해 기대값과 비교합니다. 선택적 `GmailReadOnlySource.load()`는 제한 Label의 Gmail API 응답을 기존 `MailInput`으로 정규화하며 합성 Payload Contract를 검증했습니다. 실제 OAuth 연결 후 비식별 합성 Mail 2건을 회사 LLM Live로 처리해 `CREATE_TASK`와 동일 Thread `UPDATE_TASK`, 실패 0건을 확인했습니다.
+* **동작 원리:** `MailTaskWorkflow.process()`가 처리 순서를 관리합니다. `MailAnalyzer.analyze()`의 구조화 결과를 Pydantic으로 검증하고, `SQLiteStorage.search_candidate_tasks()`가 동일 Thread 우선 후보와 매칭 점수·근거를 반환합니다. `decide_action()`이 Action을 제안하며 `SQLiteStorage.apply()`가 하나의 Transaction 안에서 Task·Link·History를 저장합니다. `resolve_review()`는 사용자가 확정한 결과만 반영하고, `run_scenario_evaluation()`은 각 Case를 격리 DB에서 재현해 기대값과 비교합니다. `GmailReadOnlySource.load()`는 제한 Label의 신규 Gmail과 Task DB에 연결된 정확한 Thread의 수신·발신 후속 Mail을 기존 `MailInput`으로 정규화합니다. 실제 OAuth 연결 후 별도 테스트 계정의 비식별 합성 Mail 20건을 회사 LLM Live로 처리해 20/20 수용시험과 재조회 중복 차단·실패 0건을 확인했습니다.
 
 * **주요 기술:** Python 함수 기반 Orchestration, Pydantic Schema Validation, SQLite Transaction, Streamlit Form·Session State, pytest Parameterized Test, 선택적 Google Gmail API Python Client와 `gmail.readonly` OAuth Scope
 

@@ -126,7 +126,7 @@ DEMO_MODE = "MVP 시연 모드"
 HOME_PAGE = "🏠 홈"
 TASKS_PAGE = "✅ 내 업무"
 REVIEW_PAGE = "🔔 검토 요청"
-AUTOMATION_PAGE = "⚙️ 자동 분류"
+AUTOMATION_PAGE = "⚙️ 자동화 설정"
 MONITORING_PAGE = "📊 운영 상태"
 SETTINGS_PAGE = "🔧 설정"
 OPERATION_PAGES = [
@@ -161,6 +161,16 @@ MAIL_FILTER_RULE_LABELS = {
     MailFilterRuleType.SUBJECT_KEYWORD.value: "제목 키워드",
 }
 
+USER_DECISION_LABELS = {
+    ReviewDecision.APPROVE_PROPOSAL.value: "Agent 제안 승인",
+    ReviewDecision.LINK_EXISTING.value: "기존 업무 연결",
+    ReviewDecision.CREATE_NEW.value: "신규 업무 생성",
+    ReviewDecision.IGNORE.value: "반영하지 않음",
+    "MANUAL_CREATE": "사용자 직접 생성",
+    "MANUAL_EDIT": "사용자 직접 수정",
+    "PRIORITY_OVERRIDE": "사용자 중요도 지정",
+}
+
 
 def _display_value(value, field: str | None = None) -> str:
     if value is None or value == "":
@@ -188,6 +198,47 @@ def _history_change_rows(before: dict | None, after: dict | None) -> list[dict]:
                 "변경 항목": label,
                 "변경 전": _display_value(before_value, field),
                 "변경 후": _display_value(after_value, field),
+            }
+        )
+    return rows
+
+
+def _user_decision_label(user_decision: dict | None) -> str:
+    if not user_decision:
+        return "자동 반영"
+    decision = user_decision.get("decision")
+    return USER_DECISION_LABELS.get(decision, decision or "사용자 확인")
+
+
+def _task_history_rows(storage, task_id: str, *, limit: int = 20) -> list[dict]:
+    """Build a concise user-facing audit trail for one Task."""
+
+    context = storage.get_task_context(task_id, history_limit=limit)
+    if not context:
+        return []
+    rows = []
+    for history in context["recent_histories"]:
+        before = _parse_json(history.get("before_json"))
+        after = _parse_json(history.get("after_json"))
+        user_decision = _parse_json(history.get("user_decision"))
+        changes = _history_change_rows(before, after)
+        before_summary = "; ".join(
+            f"{change['변경 항목']} {change['변경 전']}" for change in changes
+        )
+        after_summary = "; ".join(
+            f"{change['변경 항목']} {change['변경 후']}" for change in changes
+        )
+        rows.append(
+            {
+                "처리 시각": datetime.fromisoformat(history["created_at"])
+                .astimezone()
+                .strftime("%Y-%m-%d %H:%M:%S"),
+                "Source Mail": history["mail_id"],
+                "Action": ACTION_LABELS.get(history["action"], history["action"]),
+                "변경 전": before_summary or "-",
+                "변경 후": after_summary or "메일 연결·처리 기록",
+                "판단 근거": history["reason"],
+                "사용자 결정": _user_decision_label(user_decision),
             }
         )
     return rows
@@ -556,9 +607,9 @@ def _operation_health_snapshot(storage, *, gmail_connected: bool) -> dict:
     return {
         "tone": tone,
         "agent": (
-            f"자동 정리 실행 중 · {operation_settings['gmail_sync_interval_minutes']}분 주기"
+            f"Agent 실행 중 · {operation_settings['gmail_sync_interval_minutes']}분 주기"
             if enabled
-            else "자동 정리 일시정지"
+            else "Agent 일시정지"
         ),
         "gmail": "Gmail 연결됨" if gmail_connected else "Gmail 연결 필요",
         "last_checked": last_checked_text,
@@ -1109,7 +1160,7 @@ def _render_mailbox(
         st.info(
             "현재 입력 Source에서 가져온 메일이 없습니다. Gmail 테스트라면 "
             "`MailTaskAgent-Demo` 라벨을 붙인 합성 테스트 메일을 준비한 뒤 "
-            "사이드바의 새 메일 확인을 실행하세요."
+            "자동 정리를 켜 두세요. 연결 진단과 최근 실행 결과는 ‘운영 상태’에서 확인할 수 있습니다."
         )
         return
 
@@ -1742,6 +1793,34 @@ def _render_operational_task_list(storage) -> None:
                     result_col.caption(
                         f"상태 · {STATUS_LABELS.get(row['status'], row['status'])}"
                     )
+    st.markdown("#### 업무 변경 기록")
+    st.caption(
+        "Agent의 자동 판단과 사용자 결정으로 이 업무가 어떻게 바뀌었는지 최신순으로 보여줍니다."
+    )
+    task_history_rows = _task_history_rows(storage, selected_task["task_id"])
+    if task_history_rows:
+        for row in task_history_rows[:5]:
+            with st.container(border=True):
+                action_col, source_col, decision_col = st.columns([1.5, 2.4, 1.5])
+                action_col.markdown(f"**{row['Action']}**")
+                source_col.caption(f"{row['처리 시각']} · {row['Source Mail']}")
+                decision_col.markdown(f"**{row['사용자 결정']}**")
+                st.caption(f"판단 근거 · {row['판단 근거']}")
+                if row["변경 전"] == "-":
+                    st.caption(row["변경 후"])
+                else:
+                    before_col, after_col = st.columns(2)
+                    before_col.caption(f"변경 전 · {row['변경 전']}")
+                    after_col.caption(f"변경 후 · {row['변경 후']}")
+        if len(task_history_rows) > 5:
+            with st.expander(f"이전 변경 기록 {len(task_history_rows) - 5}건"):
+                st.dataframe(
+                    pd.DataFrame(task_history_rows[5:]),
+                    width="stretch",
+                    hide_index=True,
+                )
+    else:
+        st.info("아직 이 업무의 변경 기록이 없습니다.")
     current_due = (
         date.fromisoformat(selected_task["due_date"])
         if selected_task.get("due_date")
@@ -2545,7 +2624,7 @@ def _render_operation_settings(storage, gmail_summary: dict, mails) -> None:
 
 
 def _render_automation_center(storage, mails) -> None:
-    st.subheader("자동 분류")
+    st.subheader("자동화 설정")
     st.caption("중요 메일을 먼저 보여주고 광고·반복 메일은 제외하도록 내 업무 기준을 설정합니다.")
     settings_flash = st.session_state.pop("operation_settings_flash", None)
     if settings_flash:
@@ -3043,14 +3122,14 @@ def main() -> None:
             else:
                 st.caption("Gmail OAuth · 선택 연동 전")
         else:
-            st.caption("자동 정리")
+            st.caption("MailTaskAgent")
             st.markdown("🟢 Gmail 연결됨" if gmail_connected else "🟠 Gmail 연결 필요")
 
         if selected_source == GMAIL_TEST_SOURCE:
             if not demo_mode:
                 operation_settings = storage.get_operation_settings()
                 agent_enabled = st.toggle(
-                    "자동 정리 실행",
+                    "Agent 실행",
                     value=bool(operation_settings["gmail_auto_sync_enabled"]),
                     help="Gmail 연결 후 기본 실행됩니다. 점검이나 작업 중단이 필요할 때만 일시정지하세요.",
                 )
