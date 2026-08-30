@@ -100,6 +100,10 @@ LLM과 Task 변경이 재실행되지 않았다.
 
 기본 주소는 `http://localhost:8501`이다. Streamlit 내부 자동 확인은 화면이 열려 있는 파일럿 편의 기능이며, 무인 실행은 위 1회 동기화 명령을 Scheduler가 호출하는 방식으로 분리한다.
 
+운영 DB에 처리 Mail이 있으면 Dashboard는 SQLite 데이터를 먼저 표시하고 Gmail 응답을 기다리지
+않는다. DB가 비어 있는 최초 연결에서만 제한 Label을 즉시 조회한다. 이후 화면 갱신은 1분
+Fragment, 화면이 닫힌 동안의 수집은 Windows Scheduler가 같은 동기화 명령으로 담당한다.
+
 ### SQLite 백업
 
 ```powershell
@@ -195,6 +199,8 @@ Task 변경을 재실행하지 않았고, 정상 실행의 Slack 상태는 `NOT_
 
 - Gmail은 제한 Label, 최대 건수, Read-only Scope를 유지한다.
 - Task 연결 Thread 조회는 Gmail `conversation_id`만 사용하고 최대 100개로 제한한다.
+- 사용자가 삭제한 연결 Thread의 404/410은 해당 Thread만 건너뛰며, 인증·권한·네트워크 오류는
+  전체 실행 실패로 기록해 운영자가 확인할 수 있게 한다.
 - 회사 LLM 전송 가능 Mail 범위를 별도로 승인받는다.
 - 실제 업무 DB와 MVP 시연 DB를 분리한다.
 - 외부 알림을 연결하기 전 수신자·채널·전송 필드를 승인받는다.

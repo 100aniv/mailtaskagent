@@ -294,6 +294,11 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
   전체나 연결되지 않은 사적 Mail은 추가 분석하지 않는다.
 - `내 업무` 상세에 받은 메일·보낸 메일, 처리 시각, 상대방, Agent Action과 반영 상태를
   시간순으로 표시하는 Mail 진행 타임라인을 추가했다.
+- 평소 실제 업무 화면은 저장된 Gmail Mail·Task를 SQLite에서 먼저 읽어 즉시 표시한다. 운영
+  DB가 비어 있는 최초 연결에서만 Gmail을 바로 조회하며, 이후 네트워크 갱신은 1분 Fragment와
+  Windows Scheduler가 담당하도록 화면 첫 진입과 동기화 책임을 분리했다.
+- 추적 중인 Gmail Thread가 삭제되어 API가 404/410을 반환하면 해당 Thread만 건너뛰어 신규
+  Mail 수집을 계속한다. 403 권한 오류와 기타 네트워크 오류는 성공으로 숨기지 않는다.
 - 기존 Core 회귀와 Post-MVP Priority·UI·자동 동기화 테스트를 함께 실행해 pytest
   `67 passed`를 확인했다. 로컬 Streamlit 서버 기동도 확인했다.
 - 브라우저가 열려 있는 단일 사용자 파일럿을 넘어선 서버 상시 실행, Outlook/Graph,
@@ -313,7 +318,7 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 
 | 항목 | 현재 판정 | 근거 또는 남은 외부 조건 |
 |---|---|---|
-| 실제 업무 UI·Task 직접 관리 | 구현·자동 테스트 완료 | 홈/내 업무/검토 요청/자동 분류/운영 상태/설정, 직접 생성·수정·완료 |
+| 실제 업무 UI·Task 직접 관리 | 구현·자동 테스트 완료 | 홈/내 업무/검토 요청/자동 분류/운영 상태/설정, 직접 생성·수정·완료, 저장 DB 우선 빠른 시작 |
 | Priority·고객사·Keyword Rule | 구현·자동 테스트 완료 | P1~P4, 근거, Override, 설정 저장 |
 | 광고·뉴스레터 제외 Rule | 구현·자동 테스트 완료 | 정확한 Email·Domain·제목, IGNORE 근거, 본문 제외 금지 |
 | Gmail 화면 자동 확인 | 구현·자동 테스트 완료 | 제한 Label 신규 유입 + Task 연결 Thread 양방향 추적, 신규 mail_id, 1~60분, Read-only |
@@ -333,7 +338,8 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 
 2026-08-29 최신 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
 Slack 최소 알림·Dry-run, 6개 역할 기반 운영 UI, Agent 기본 실행·일시정지 계약과 Task 연결
-Thread의 양방향 후속 Mail 추적·Task 타임라인을 포함해 pytest `115 passed`다. 별도 송신
+Thread의 양방향 후속 Mail 추적·Task 타임라인과 저장 DB 우선 화면 시작을 포함해 pytest
+`118 passed`다. 별도 송신
 계정 기반 Gmail 실메일 수용시험은 `20/20 PASSED`다.
 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로 등록했고 수동 실행 결과
 `LastTaskResult=0`, 다음 실행 예약과 Gmail 중복 차단·실패 0건을 확인했다.

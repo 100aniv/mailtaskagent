@@ -51,11 +51,19 @@ def _message(
 
 
 class _Request:
-    def __init__(self, response: dict) -> None:
+    def __init__(self, response: dict | Exception) -> None:
         self.response = response
 
     def execute(self) -> dict:
+        if isinstance(self.response, Exception):
+            raise self.response
         return self.response
+
+
+class _HttpError(Exception):
+    def __init__(self, status: int) -> None:
+        super().__init__(f"HTTP {status}")
+        self.resp = type("Response", (), {"status": status})()
 
 
 class _MessagesApi:
@@ -74,7 +82,7 @@ class _MessagesApi:
 
 
 class _ThreadsApi:
-    def __init__(self, threads: dict[str, dict]) -> None:
+    def __init__(self, threads: dict[str, dict | Exception]) -> None:
         self.raw_threads = threads
         self.get_kwargs: list[dict] = []
 
@@ -87,7 +95,7 @@ class _FakeService:
     def __init__(
         self,
         messages: dict[str, dict],
-        threads: dict[str, dict] | None = None,
+        threads: dict[str, dict | Exception] | None = None,
     ) -> None:
         self.messages_api = _MessagesApi(messages)
         self.threads_api = _ThreadsApi(threads or {})
@@ -229,6 +237,58 @@ def test_gmail_source_follows_only_task_linked_threads_in_both_directions(
     assert service.threads_api.get_kwargs == [
         {"userId": "me", "id": "tracked-thread", "format": "full"}
     ]
+
+
+def test_gmail_source_skips_only_missing_tracked_thread(tmp_path) -> None:
+    service = _FakeService(
+        {"entry": _message("entry", thread_id="available-thread")},
+        {
+            "available-thread": {
+                "messages": [_message("entry", thread_id="available-thread")]
+            },
+            "deleted-thread": _HttpError(404),
+        },
+    )
+    settings = GmailSourceSettings(
+        credentials_path=tmp_path / "credentials.json",
+        token_path=tmp_path / "token.json",
+        query="label:MailTaskAgent-Demo",
+        max_results=10,
+    )
+    source = GmailReadOnlySource(
+        service,
+        settings,
+        tracked_conversation_ids=[
+            "GMAIL-THREAD-available-thread",
+            "GMAIL-THREAD-deleted-thread",
+        ],
+    )
+
+    mails = source.load()
+
+    assert [mail.mail_id for mail in mails] == ["GMAIL-entry"]
+    assert source.missing_thread_count == 1
+
+
+def test_gmail_source_does_not_hide_tracked_thread_auth_failure(tmp_path) -> None:
+    service = _FakeService(
+        {},
+        {"forbidden-thread": _HttpError(403)},
+    )
+    settings = GmailSourceSettings(
+        credentials_path=tmp_path / "credentials.json",
+        token_path=tmp_path / "token.json",
+        query="label:MailTaskAgent-Demo",
+        max_results=10,
+    )
+    source = GmailReadOnlySource(
+        service,
+        settings,
+        tracked_conversation_ids=["GMAIL-THREAD-forbidden-thread"],
+    )
+
+    with pytest.raises(_HttpError, match="HTTP 403"):
+        source.load()
 
 
 def test_gmail_settings_reject_unrestricted_query(monkeypatch) -> None:

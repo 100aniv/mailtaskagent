@@ -39,8 +39,9 @@
 - Post-MVP Priority Rule·사용자 Override·실전 UI·Gmail 자동 동기화, 운영 CLI·재시도·
   SQLite Backup·Mail 제외 Rule과 합성 Microsoft Graph Adapter Contract를 포함한
   Outlook 전 Gmail 전체 Case 수용시험·Slack 최소 알림·6개 역할 기반 운영 UI를 포함한
-  Agent 기본 실행·일시정지 통합, Task 연결 Gmail Thread의 양방향 후속 Mail 추적과
-  Gmail 실메일 20건 자동 평가를 포함한 전체 pytest 115건
+  Agent 기본 실행·일시정지 통합, Task 연결 Gmail Thread의 양방향 후속 Mail 추적,
+  저장 DB 우선 화면 시작·삭제 Thread 장애 격리와 Gmail 실메일 20건 자동 평가를 포함한
+  전체 pytest 118건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀
@@ -94,6 +95,7 @@ Editable Package로 함께 등록하므로 별도의 `PYTHONPATH` 설정 없이 
 `MVP 시연 모드`는 품질 검증·데모 도구를 별도로 제공한다. 기본 `홈`은 우선순위·검토 요청,
 최근 변경과 최근 메일 3건만 보여주고, Agent 실행·Gmail 연결·마지막 확인·오류는 얇은 상태 바로
 분리한다. `내 업무`는 내부 Task ID 표 대신 검색·상태 필터·카드·상세 편집·완료 처리를 제공한다.
+운영 DB에 처리 이력이 있으면 저장된 화면을 먼저 표시해 매번 Gmail 조회를 기다리지 않는다.
 Gmail 연결 후 Agent는 기본 실행되며 사이드바에서 일시정지·재실행할 수 있다. `자동 분류`에서는
 VIP·고객사·중요 키워드, 광고·반복 메일 제외와 실행 주기를 관리한다. Gmail 배치 실행,
 메일 처리 내역, Agent 단계 로그와 실메일 20건 진행률은 `운영 상태`에서 확인하고,

@@ -92,7 +92,6 @@ def test_task_timeline_combines_inbound_and_outbound_lifecycle(tmp_path) -> None
         "IN_PROGRESS",
     ]
 
-
 def _start_mode(app: AppTest, button_label: str) -> AppTest:
     buttons = [item for item in app.button if item.label == button_label]
     return buttons[0].click().run(timeout=60) if buttons else app
@@ -283,6 +282,54 @@ def test_connected_operation_mode_runs_gmail_agent_by_default(
     assert any(toggle.label == "자동 정리 실행" for toggle in app.toggle)
     app = _select_radio(app, "주 메뉴", ui_module.HOME_PAGE)
     assert any(gmail_mails[0].subject in item.value for item in app.markdown)
+
+
+def test_connected_operation_mode_renders_stored_mail_without_gmail_wait(
+    tmp_path, monkeypatch
+) -> None:
+    credentials_path = tmp_path / "gmail_credentials.json"
+    token_path = tmp_path / "gmail_token.json"
+    database_path = tmp_path / "stored-mail-fast-start.db"
+    credentials_path.write_text("{}", encoding="utf-8")
+    token_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+    monkeypatch.setenv("GMAIL_CREDENTIALS_PATH", str(credentials_path))
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(token_path))
+
+    settings = Settings(
+        api_url="https://example.test",
+        api_key="",
+        model="mock",
+        api_version="test",
+        timeout_seconds=1,
+        use_mock=True,
+        database_path=database_path,
+        confidence_threshold=0.75,
+    )
+    gmail_mail = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")[0].model_copy(
+        update={
+            "mail_id": "GMAIL-stored-message",
+            "conversation_id": "GMAIL-THREAD-stored-thread",
+        }
+    )
+    MailTaskWorkflow(settings, SQLiteStorage(database_path), MockMailAnalyzer()).process(
+        gmail_mail
+    )
+    restored = ui_module._load_stored_mail_inputs(SQLiteStorage(database_path))
+    assert [mail.mail_id for mail in restored] == ["GMAIL-stored-message"]
+    assert restored[0].direction.value == "INBOUND"
+
+    def fail_if_gmail_is_called(storage=None):
+        raise AssertionError("Stored operational view must not call Gmail on first paint")
+
+    monkeypatch.setattr(ui_module, "_load_gmail_test_mails", fail_if_gmail_is_called)
+
+    app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
+    app = _start_mode(app, "실제 업무 모드로 시작")
+
+    assert not app.exception
+    assert any(gmail_mail.subject in item.value for item in app.markdown)
 
 
 def test_operation_monitoring_is_separate_from_task_home(tmp_path, monkeypatch) -> None:

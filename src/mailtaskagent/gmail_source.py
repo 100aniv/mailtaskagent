@@ -238,6 +238,7 @@ class GmailReadOnlySource:
         self.tracked_thread_ids = self._normalize_tracked_thread_ids(
             tracked_conversation_ids
         )
+        self.missing_thread_count = 0
 
     @staticmethod
     def _normalize_tracked_thread_ids(
@@ -284,12 +285,19 @@ class GmailReadOnlySource:
         # later Inbox and Sent messages remain part of the same lifecycle even if
         # an individual reply does not inherit the entry label.
         for thread_id in self.tracked_thread_ids:
-            thread = (
-                self.service.users()
-                .threads()
-                .get(userId="me", id=thread_id, format="full")
-                .execute()
-            )
+            try:
+                thread = (
+                    self.service.users()
+                    .threads()
+                    .get(userId="me", id=thread_id, format="full")
+                    .execute()
+                )
+            except Exception as exc:
+                status = getattr(getattr(exc, "resp", None), "status", None)
+                if status not in {404, 410}:
+                    raise
+                self.missing_thread_count += 1
+                continue
             for raw_message in thread.get("messages", []):
                 raw_messages[raw_message["id"]] = raw_message
 

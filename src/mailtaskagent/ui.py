@@ -27,7 +27,7 @@ from mailtaskagent.manual_benchmark import (
     load_manual_benchmark_cases,
     save_manual_benchmark_evidence,
 )
-from mailtaskagent.models import AgentAction, ReviewDecision
+from mailtaskagent.models import AgentAction, MailDirection, MailInput, ReviewDecision
 from mailtaskagent.operations import MailSyncService
 from mailtaskagent.priority import (
     PRIORITY_PRESENTATION,
@@ -294,6 +294,38 @@ def _load_gmail_test_mails(storage=None):
         tracked_conversation_ids=tracked_conversation_ids,
     )
     return source.load()
+
+
+def _load_stored_mail_inputs(storage, *, limit: int = 100) -> list[MailInput]:
+    """Restore the already-processed mailbox view without a Gmail network call."""
+
+    mails = []
+    rows = [
+        row
+        for row in storage.list_mails()
+        if row["mail_id"].startswith("GMAIL-")
+    ][:limit]
+    for row in rows:
+        direction = MailDirection(row["direction"])
+        occurred_at = datetime.fromisoformat(row["occurred_at"])
+        timestamp = (
+            {"received_at": occurred_at}
+            if direction == MailDirection.INBOUND
+            else {"sent_at": occurred_at}
+        )
+        mails.append(
+            MailInput(
+                mail_id=row["mail_id"],
+                conversation_id=row["conversation_id"],
+                direction=direction,
+                sender=row["sender"],
+                recipients=row["recipients"],
+                subject=row["subject"],
+                body=row["body"],
+                **timestamp,
+            )
+        )
+    return mails
 
 
 class _GmailSyncSource:
@@ -3009,8 +3041,19 @@ def main() -> None:
                     st.rerun()
             if "gmail_test_mails" not in st.session_state:
                 try:
-                    with st.spinner("제한된 Gmail 테스트 라벨을 확인하고 있습니다..."):
-                        st.session_state["gmail_test_mails"] = _load_gmail_test_mails(storage)
+                    stored_mails = (
+                        [] if demo_mode else _load_stored_mail_inputs(storage)
+                    )
+                    if stored_mails:
+                        st.session_state["gmail_test_mails"] = stored_mails
+                        st.session_state.setdefault(
+                            "gmail_auto_sync_last_check", datetime.now()
+                        )
+                    else:
+                        with st.spinner("제한된 Gmail 테스트 라벨을 확인하고 있습니다..."):
+                            st.session_state["gmail_test_mails"] = _load_gmail_test_mails(
+                                storage
+                            )
                     st.session_state.pop("gmail_load_error", None)
                 except Exception as exc:
                     st.session_state["gmail_test_mails"] = []
