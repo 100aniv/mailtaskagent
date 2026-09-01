@@ -4,6 +4,10 @@
 메일 기반 개인 업무관리 Agent다. 합성 Mail 기반 3단계 Core E2E를 완성하고 회사 LLM API
 Live로 상태 흐름과 세부 KPI를 검증했으며, 읽기 전용 Gmail 개인 파일럿까지 확장한 상태다.
 
+> **2026-09-01 상태:** 현재 코드는 내일 시연 가능한 Core E2E 기준선이다. 멘토 피드백의
+> SQLite 기반 경량 Task Context Agentic RAG와 신규·전체 회귀 테스트가 AI Master 최종 MVP의
+> 남은 기능이다. Outlook·사내 인증·서버와 사내 문서 RAG는 그 이후 Post-MVP다.
+
 ## 현재 구현 범위
 
 - 합성·비식별 JSON Mail 입력

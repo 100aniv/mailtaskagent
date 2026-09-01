@@ -5,8 +5,11 @@
 ```text
 START
   -> M-01 load/normalize/check duplicate/analyze
-  -> M-02 load thread & task context/search candidates
-  -> M-03 decide exactly one Action
+  -> M-02 exact thread or retrieve ranked task contexts
+  -> M-03 Task Context relation judgment when exact thread is unavailable
+     -> low confidence/ambiguous: rewrite query and retrieve exactly once
+     -> still uncertain/error: ASK_USER fail-closed
+  -> M-03 Python policy decides exactly one final Action
   -> Action Validation
      -> IGNORE: M-04 처리 이력 -> M-05 결과
      -> ASK_USER/중요 변경: M-05 사용자 확인
@@ -40,6 +43,10 @@ END
 | `audit_log` | 전체 | M-04, 운영 검토 | 판단과 함수 실행 기록 |
 
 한 Mail 처리가 끝나면 단기 State는 종료한다. Mail, Task, Link, History, 사용자 결정은 SQLite에 장기 저장하고 다음 처리 때 필요한 범위만 다시 조회한다.
+
+최종 MVP의 Task Context RAG 구현 시 `retrieval_query`, `retrieved_task_contexts`,
+`task_context_decision`, `retry_count`를 State에 추가한다. 현재 시연 기준선에는 아직 없는
+계획 필드이며 코드와 테스트 완료 후 구현 증적으로 전환한다.
 
 ## 3. M-01 Mail Input & Analyzer
 
@@ -80,14 +87,22 @@ Prompt Injection과 오탐 위험 때문에 자동 제외 조건으로 사용하
 2. 동일·유사 제목
 3. 동일 요청자
 4. 활성 Task 여부
-5. 요청 요약과 Task 내용의 의미 관련성
+5. 요청 요약과 Task 내용의 구조적 관련성
 
-Metadata로 관계가 명확하면 Rule 결과를 우선한다. 현재 구현은 `conversation_id`와 제목·요청자·요청요약 Token 기반 점수로 후보를 검색하며, 복수 후보나 근거 부족은 `ASK_USER`로 전환한다. 제한적 LLM 의미 비교는 이 방식의 실측 정확도가 목표에 미달할 때만 검토한다.
+Metadata로 관계가 명확하면 Rule 결과를 우선한다. 현재 기준선은 `conversation_id`와
+제목·요청자·요청요약 Token 기반 점수로 최고 동점 후보를 검색하며, 복수 후보나 근거 부족은
+`ASK_USER`로 전환한다.
+
+최종 MVP에서는 동일 `conversation_id`의 단일 활성 Task를 기존 결정론적 경로로 확정한다.
+확정할 수 없는 경우 `tasks`, `mails`, `mail_task_links`, `histories`에서 활성 Task top-k와
+후보당 최근 Mail 3건·History 5건 이하를 조회한다. Token 일치가 없어도 동일 요청자와 최근
+활성 Task를 제한적으로 포함하며, 전체 Mailbox나 전체 Task를 LLM에 전달하지 않는다.
 
 ### 주요 함수 계약
 
 - `search_candidate_tasks(conversation_id, subject, sender, request_summary, open_only, limit)`
 - `get_task_context(task_id, history_limit)`
+- 최종 MVP 추가 예정: `retrieve_task_contexts(query, requester, top_k)`
 
 ### 출력
 
@@ -96,6 +111,8 @@ Metadata로 관계가 명확하면 Rule 결과를 우선한다. 현재 구현은
 Token 비율과 실제 일치 항목을 함께 표시한다. 후보가 복수이거나 근거가 부족하면
 M-03이 `ASK_USER`를 선택한다. 현재 점수는 설명 가능한 1차 Rule 점수이며 LLM 확률값이
 아니다.
+
+최종 MVP의 Retrieval은 최고 동점만이 아니라 top-k 순위 전체와 점수·근거를 반환한다.
 
 ## 5. M-03 Agent Action Decision
 
@@ -106,10 +123,18 @@ M-03이 `ASK_USER`를 선택한다. 현재 점수는 설명 가능한 1차 Rule 
 - `candidate_tasks`
 - 선택 Task의 현재 상태와 최근 History
 - 사용자가 마지막으로 확정한 값
+- 최종 MVP에서는 검색된 Task Context와 별도 Task Context Agent의 관계·Action 제안
 
 ### 출력 계약
 
-Python Application Logic이 정의된 7개 중 정확히 하나의 Action, 대상 Task ID, 생성/변경 Payload, 이유, 신뢰도, 사용자 확인 필요 여부를 Pydantic `ActionProposal`로 반환한다.
+Python Application Logic이 정의된 7개 중 정확히 하나의 Action, 대상 Task ID, 생성/변경
+Payload, 이유, 신뢰도, 사용자 확인 필요 여부를 Pydantic `ActionProposal`로 반환한다.
+Task Context Agent의 `recommended_action`은 제안값이며 최종 Action이 아니다.
+
+최종 MVP의 별도 Task Context Agent 출력은 `relation`, `selected_task_id`,
+`recommended_action`, `confidence`, `reason`, `rewritten_query`로 고정한다. 후보 밖 Task ID,
+Schema 오류, API 실패는 자동 연결하지 않고 `ASK_USER`로 Fail-closed한다. 첫 판단이
+`AMBIGUOUS`이거나 신뢰도 기준 미만이면 rewritten query로 정확히 최대 1회만 재검색·재판단한다.
 
 ### 기본 결정 규칙
 
@@ -137,6 +162,9 @@ Validation은 독립된 Guard이며 LLM 판단을 그대로 실행하지 않는�
 
 구조화 출력 오류는 최대 1회 재시도를 기본값으로 한다. 재시도 횟수는 설정으로 분리하되 무한 재시도는 금지한다.
 
+Task Context RAG의 재검색 횟수도 최대 1회로 고정한다. 완료·취소·기한 단축과 복수 후보의
+기존 사용자 승인 Gate는 RAG 판단으로 우회할 수 없다.
+
 ## 7. M-04 Task State & History Manager
 
 ### 데이터 단위
@@ -155,6 +183,9 @@ Validation은 독립된 Guard이며 LLM 판단을 그대로 실행하지 않는�
 - `IGNORE`, 거절, 오류도 Task 변경 없이 처리 이력은 남긴다.
 - 사용자 확정값은 최신 확정 상태로 보존하고 Agent가 임의 덮어쓰지 않는다.
 - Processing Event는 Task Transaction과 분리해 기록하여 실패 시에도 중단 단계와 오류를 확인할 수 있게 한다. Secret과 인증 정보는 저장 전에 제거한다.
+- 최종 MVP에서는 `RAG_RETRIEVAL`, `RAG_DECISION`, `QUERY_REWRITE`,
+  `RAG_RETRIEVAL_RETRY`, `RAG_REDECISION`, `RAG_FALLBACK` 또는 `ASK_USER` Event에
+  Query, 후보 ID·점수·근거, 선택 ID, 신뢰도, Action, Retry 수와 판단 근거만 기록한다.
 
 ### 주요 함수 계약
 

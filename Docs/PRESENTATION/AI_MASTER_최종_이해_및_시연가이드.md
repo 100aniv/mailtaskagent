@@ -1,4 +1,4 @@
-# MailTaskAgent AI Master 최종 이해 및 시연 가이드
+# MailTaskAgent AI Master 현재 기준 이해 및 시연 가이드
 
 ## 1. 한 문장으로 설명하기
 
@@ -28,6 +28,7 @@ Mail 수집
 | 회사 LLM `gpt-4.1-mini` | Mail의 업무 관련 여부, Intent, 요청사항, 기한, 회신 필요 여부와 판단 근거 구조화 |
 | Python M-02 | `conversation_id` 우선, 제목·요청자·요청요약 Token 기반 기존 Task 후보 검색 |
 | Python M-03 | 현재 상태와 후보 수를 보고 최종 Agent Action 결정 |
+| Task Context Agent *(최종 MVP 잔여)* | 동일 Thread로 확정할 수 없는 top-k 후보의 관계와 Action 제안, 최대 1회 Query Rewrite |
 | Pydantic·Application Logic | Schema, 허용 상태 전이, Task ID와 중요 변경 검증 |
 | 사용자 | 복수 후보, 모호한 기한, 완료·취소 등 중요한 결정을 최종 확인 |
 | SQLite | Task 현재 상태, Mail 연결, Processing Event와 변경 History 저장 |
@@ -116,9 +117,9 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 
 위 수치는 정의된 합성·비식별 Dataset과 별도 테스트 Gmail의 결과다. 실제 회사 Mailbox 전체 성능이나 실제 시간 절감률로 확대해서 말하면 안 된다. 수동 업무 정리시간 Baseline은 아직 측정하지 않았다.
 
-## 9. AI Master 완료 범위와 남은 범위
+## 9. AI Master 현재 단계와 남은 범위
 
-### AI Master 제출 기준으로 완료
+### 시연 가능한 Core E2E 기준선으로 검증 완료
 
 - 문제 정의와 3개 핵심 사용자 시나리오
 - M-01~M-05 단일 Agent Workflow
@@ -130,6 +131,15 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 - 읽기 전용 Gmail 개인 파일럿과 1분 자동 동기화
 - SQLite 동시 접근·백업·손상 감지 안전장치
 
+### AI Master 최종 MVP까지 남은 기능
+
+- 동일 Thread가 아닌 다른 표현의 Mail을 위한 SQLite Task Context top-k Retrieval
+- 별도 Task Context Agent의 `SAME_TASK` / `NEW_TASK` / `AMBIGUOUS` 관계와 Action 제안
+- 첫 판단이 모호하거나 저신뢰일 때 최대 1회 Query Rewrite·재검색·재판단
+- 후보 밖 Task ID, API·Schema 실패와 두 번째 불확실 판단의 `ASK_USER` Fail-closed
+- 기존 완료·취소·기한 단축 승인 Gate와 전체 회귀 유지
+- 신규 RAG 평가 Evidence와 전체 pytest 통과
+
 ### 사내 운영 전 추가로 필요한 것
 
 - M365 Outlook / Microsoft Graph 또는 사내 허용 Connector
@@ -140,12 +150,14 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 - 다중 사용자와 조직 Mailbox 지원
 - Push/Event Subscription 기반 실시간 수신이 필요할 경우 별도 설계
 
-따라서 “AI Master MVP가 미완성이고 Outlook만 붙이면 완성”이 아니다. **AI Master 제출용 MVP는 완료**됐고, 위 항목은 별도의 사내 운영 제품화 단계다.
+따라서 현재는 “아무것도 안 된 PoC”도 아니고 “Outlook만 붙이면 되는 최종 MVP”도 아니다.
+**Core E2E와 Gmail 파일럿은 시연 가능한 수준으로 검증됐고, 멘토 피드백의 Task Context RAG가
+최종 MVP의 남은 기능**이다. Outlook과 위 사내 운영 항목은 그 이후 단계다.
 
 ## 10. 현재 의도적으로 구현하지 않은 기능
 
 - Mail 한 건 안의 독립적인 여러 요청을 여러 Task로 자동 분해하는 기능
-- RAG·Vector DB·LangGraph·Multi-Agent
+- 사내 문서·첨부파일 RAG, Vector DB·LangGraph·Multi-Agent
 - 실제 Mail 자동 발송·삭제·이동
 - Calendar 자동 생성
 - Outlook·Microsoft Graph 사내 연결
@@ -163,7 +175,14 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 6. Task 상세의 Mail 타임라인과 변경 전·후 History를 보여준다.
 7. 운영 상태에서 단계별 Processing Event와 오류 확인 화면을 보여준다.
 8. 마지막에 15/15, 28/28, Gmail 20/20, pytest 122 passed와 측정 한계를 설명한다.
+9. “현재 수치는 Task Context RAG 전의 검증된 기준선이며, 해당 기능은 멘토 피드백을 반영한
+   최종 MVP 잔여 과제”라고 정확히 선을 긋는다.
 
 ## 12. 발표용 30초 결론
 
-“MailTaskAgent는 Mail을 요약하는 도구가 아니라 Mail Thread와 현재 Task 상태를 함께 보고 다음 Action을 결정하는 개인 업무관리 Agent입니다. LLM은 자연어 의미만 구조화하고, 기존 Task 검색과 최종 Action, DB 변경은 검증 가능한 Python Logic이 담당합니다. 중요한 완료·취소·복수 후보는 사용자가 승인해야 반영됩니다. 회사 LLM Live 15개 실행 단위와 28개 Action 단계, 테스트 Gmail 20건, 전체 자동 테스트 122건을 통과했습니다. 현재 AI Master 제출용 MVP와 Gmail 개인 파일럿은 완료했으며 Outlook·사내 인증·서버 배포는 별도의 사내 운영 확장 범위입니다.”
+“MailTaskAgent는 Mail을 요약하는 도구가 아니라 Mail Thread와 현재 Task 상태를 함께 보고 다음
+Action을 결정하는 개인 업무관리 Agent입니다. 현재 Core 기준선은 회사 LLM Live 15개 실행
+단위와 28개 Action 단계, 테스트 Gmail 20건, 자동 테스트 122건을 통과했습니다. 멘토 피드백의
+Task Context RAG를 최종 MVP 잔여 기능으로 반영해 다른 표현의 동일 업무 판단과 최대 1회
+재검색을 보강할 예정이며, 그래도 불확실하면 사용자에게 넘깁니다. Outlook·사내 인증·서버
+배포와 사내 문서 RAG는 그 이후 Post-MVP 범위입니다.”

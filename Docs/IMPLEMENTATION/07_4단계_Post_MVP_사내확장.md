@@ -4,9 +4,13 @@
 
 3단계에서 검증한 M-01~M-05 Agent Core를 유지하면서 먼저 테스트 Gmail 기반 실전 개인 사용성과 Priority Rule을 검증하고, 이후 입력, 자동 실행, Database, 배포, 인증·보안을 사내 운영환경으로 교체·확장한다.
 
-Post-MVP는 AI Master Core E2E의 필수 완료 조건이 아니다. 아래 기능은 현재 구현 완료로 간주하지 않는다.
+Post-MVP는 AI Master 최종 MVP의 필수 완료 조건이 아니다. 아래 기능은 현재 구현 완료로 간주하지 않는다.
 
-제출용 MVP 복구 기준은 Git Tag `ai-master-mvp-v1`이며, Post-MVP 기능 실패가 해당 Tag의 시연·제출 가능 상태에 영향을 주지 않도록 기능 단위로 테스트·커밋한다.
+경량 Task Context Agentic RAG는 2026-09-01 멘토 피드백에 따라 Post-MVP가 아니라 최종 MVP
+잔여 범위로 이동했다. 이 문서의 RAG는 사내 정책·매뉴얼·첨부파일 지식검색과 Vector DB를 뜻한다.
+
+기존 Git Tag `ai-master-mvp-v1`는 RAG 적용 전 역사적 Core 복구 기준으로 유지한다. Tag 이름은
+바꾸지 않지만 현재 최종 MVP 완료 표기로 사용하지 않으며, 이후 기능은 작은 단위로 테스트·커밋한다.
 
 ## 2. 목표 아키텍처
 
@@ -71,9 +75,12 @@ History·Processing Result에 남긴다. 본문 Keyword만으로는 자동 제�
 미리보기를 구현했다. Rule 일치 시 회사 LLM 호출을 생략하고 M-01 Processing Event에
 적용 근거를 남기며, 비활성 Rule은 기존 Analyzer로 전달되는 회귀를 검증했다.
 
-### RAG 적용 Gate
+### 사내 지식 RAG 적용 Gate
 
-고객사 SLA, 사내 절차, 프로젝트 매뉴얼처럼 검색할 실제 문서 Corpus가 준비되고 정형 Rule만으로 설명할 수 없는 정책 해석 요구가 확인될 때만 RAG를 검토한다. 발신자, Domain, Keyword, 날짜와 사용자 Preference는 RAG가 아니라 검증 가능한 Application Rule로 처리한다.
+고객사 SLA, 사내 절차, 프로젝트 매뉴얼처럼 검색할 실제 문서 Corpus가 준비되고 정형 Rule만으로
+설명할 수 없는 정책 해석 요구가 확인될 때만 문서 RAG와 Vector DB를 검토한다. 발신자,
+Domain, Keyword, 날짜와 사용자 Preference는 RAG가 아니라 검증 가능한 Application Rule로
+처리한다. 이 Gate는 최종 MVP의 SQLite Task Context RAG와 별개다.
 
 ## 5. Outlook 및 Microsoft Graph
 
@@ -275,7 +282,7 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 
 ### 2026-08-28 P0 구현·검증 증적
 
-- 제출용 MVP는 Git Tag `ai-master-mvp-v1`로 복구 가능 상태를 고정했다.
+- RAG 적용 전 역사적 Core 기준선은 Git Tag `ai-master-mvp-v1`로 복구 가능 상태를 고정했다.
 - 실제 업무 모드 Navigation을 `홈`, `내 업무`, `검토 요청`, `자동화 설정`, `운영 상태`, `설정`으로
   재구성했다. Task·검토 중심 사용자 화면과 Gmail 배치·Mail 처리 내역·Agent 단계 로그를
   확인하는 운영 화면을 분리하고, 연결·알림·백업만 `설정`에 유지한다.
@@ -332,7 +339,7 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 | SSO·권한관리 | 설계 Gate만 완료 | 회사 IdP·App Registration·역할 정책 필요 |
 | Slack 사내 알림 | Payload·Dry-run·실패 시 전송 계약 구현 | 실제 Webhook·채널 승인 후 Live 수신 확인 필요 |
 | 중앙 Logging·Monitoring | 로컬 Event·sync_runs·Health까지 구현 | 회사 Monitoring 수집 규격·Endpoint 필요 |
-| RAG/Vector DB | 적용하지 않음 | 실제 정책 문서 Corpus와 필요성 없음 |
+| 사내 지식 RAG/Vector DB | 적용하지 않음 | 실제 정책 문서 Corpus와 필요성 없음. SQLite Task Context RAG는 최종 MVP 잔여 범위 |
 | 자동 회신·발송·삭제 | 적용하지 않음 | 현재 안전 범위 밖 |
 | Outlook Live | 사용자 요청에 따라 제외 | Graph 합성 Adapter Contract만 별도 보존 |
 

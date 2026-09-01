@@ -24,7 +24,14 @@
 
 * **동작 원리:** 한 건의 Mail을 처리하는 동안 동일 Thread의 선행 Mail, Mail 분석 결과, 후보 Task, 선택 Task의 최근 History, Action 제안, Validation과 실행 결과를 Pydantic 객체로 유지합니다. 처리가 끝나면 Task 현재 상태, 원본 Mail ID, 변경 전·후 값, 판단 근거, 신뢰도, 사용자 결정을 SQLite에 저장하고 다음 Mail 처리 시 필요한 Context만 다시 조회합니다. 동일 `mail_id`는 기존 결과를 반환하여 LLM과 DB 변경을 재실행하지 않습니다.
 
-* **주요 기술:** SQLite, Pydantic State Model, `conversation_id` Metadata 우선 검색, 설명 가능한 Token 기반 후보 점수. 현재 문제는 문서 지식검색이 아니라 Mail–Task 관계와 상태 관리이므로 RAG·Embedding·Vector DB는 사용하지 않았습니다.
+* **주요 기술:** SQLite, Pydantic State Model, `conversation_id` Metadata 우선 검색, 설명 가능한 Token 기반 후보 점수. 현재 시연 기준선에는 RAG·Embedding·Vector DB를 사용하지 않았습니다. 멘토 피드백에 따라 최종 MVP에는 SQLite Task·Mail·History를 검색 Source로 쓰는 경량 Task Context Agentic RAG를 추가할 예정이며, 사내 문서검색 RAG·Embedding·Vector DB는 Post-MVP로 유지합니다.
+
+* **최종 MVP 잔여 구현:** 동일 Thread로 확정할 수 없는 경우 top-k Task Context를 검색하고,
+  별도 Task Context Agent가 `SAME_TASK`, `NEW_TASK`, `AMBIGUOUS` 관계와 7개 Action 중 제안값을
+  구조화합니다. 첫 판단이 모호하거나 저신뢰면 Query를 최대 1회 재작성·재검색하고, 재판단도
+  불확실하거나 API·Schema 오류가 나면 `ASK_USER`로 Fail-closed합니다. Python M-03과 기존
+  완료·취소·기한 단축 승인 Gate는 그대로 최종 Guard로 유지합니다. 이 항목은 아직 코드·테스트
+  결과가 없으므로 아래 PoC 검증 수치에 포함하지 않습니다.
 
 ### 주요 문제 해결 및 기술 리서치
 
