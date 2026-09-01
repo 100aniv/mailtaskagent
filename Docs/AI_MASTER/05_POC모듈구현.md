@@ -37,6 +37,7 @@
 | **Task 연결** | 같은 DDC 주제의 활성 Task가 여러 개면 하나를 임의 선택할 위험 | **리서치:** Metadata 우선 Entity Resolution과 Human-in-the-loop 방식을 검토했습니다. **적용:** 동일 `conversation_id`를 최우선으로 하고 후보별 점수·근거를 표시하며, 복수 후보는 `ASK_USER`로 전환했습니다. |
 | **상태·안전** | 완료·취소·기한 단축은 오판 시 업무 상태를 크게 훼손할 수 있음 | **리서치:** 중요 변경 승인 Gate와 Audit History 방식을 적용했습니다. **적용:** 사용자 승인 전 Task를 변경하지 않고 Agent 제안과 사용자 최종 결정을 모두 History에 저장했습니다. |
 | **운영 추적** | 결과만 보면 어느 단계에서 실패했는지 알 수 없음 | **리서치:** 단계별 Event Logging과 Secret Redaction 방식을 검토했습니다. **적용:** Mail 입력부터 DB 반영까지 단계·시각·처리시간·오류를 SQLite Processing Event와 Streamlit 운영 로그에 표시하고 Secret을 저장 전에 마스킹했습니다. |
+| **운영 안정성** | Dashboard와 1분 주기 Gmail Scheduler가 동시에 SQLite에 쓰면 잠금 충돌이나 비정상 종료 위험이 있음 | **리서치:** SQLite WAL·Busy Timeout·동기화 수준과 Process 단일 실행 잠금을 검토했습니다. **적용:** WAL, 30초 Busy Timeout, `synchronous=FULL`, OS 단일 실행 잠금과 Online Backup·무결성 점검을 적용했습니다. |
 
 ### 핵심 동작 검증
 
@@ -63,3 +64,5 @@
 * **최종 결과:**
 
 `TASK-001` 한 건만 유지되며 기한은 `2026-08-24`로 변경됩니다. Agent Action, 판단 근거, 원본 Mail ID, 변경 전·후 값과 처리 시각은 Dashboard의 Task History와 운영 로그에서 확인할 수 있습니다. 복수 후보·모호한 기한·완료·취소 Case는 자동 변경하지 않고 사용자 확인으로 전환됩니다.
+
+최종 회귀 검증은 `pytest 122 passed`이며, 회사 LLM Live 15/15 실행 단위·28/28 Action 단계, 별도 테스트 Gmail 비식별 합성 Mail 20/20 수용시험, Windows Scheduler 반복 실행 성공(`LastTaskResult=0`)과 SQLite `quick_check=ok`를 확인했습니다.
