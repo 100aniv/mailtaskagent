@@ -42,7 +42,7 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 읽기 전용 Gmail 개�
   Agent 기본 실행·일시정지 통합, Task 연결 Gmail Thread의 양방향 후속 Mail 추적,
   저장 DB 우선 화면 시작·삭제 Thread 장애 격리와 Gmail 실메일 20건 자동 평가를 포함한
   로컬 SQLite 무결성 오류 시 자동 처리 중지·복구 안내와 업무별 변경 이력 UI까지 포함한
-  전체 pytest 120건
+  SQLite WAL·동시 동기화 단일 실행 잠금까지 포함한 전체 pytest 122건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀

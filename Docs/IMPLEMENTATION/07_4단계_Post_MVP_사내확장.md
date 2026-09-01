@@ -326,7 +326,7 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 | 기한·대기 점검 계약 | 구현·자동 테스트 완료 | `operations_cli status`, P1~P4·검토 대기 JSON |
 | Health Check | 구현·자동 테스트 완료 | DB·LLM·OAuth 준비 상태, Secret 미출력 |
 | Backup·Migration·Task/History Export | 구현·자동 테스트 완료 | SQLite Online Backup 복구, MVP→Post-MVP Schema Migration, CSV/JSON |
-| Windows Scheduler·n8n | 로컬 Scheduler 1분 등록·실행 검증, n8n 계약·가이드 완료 | 사내 서버 설치는 회사 정책 확인 필요 |
+| Windows Scheduler·n8n | 로컬 Scheduler 1분 등록·실행 검증, Dashboard·Scheduler 동시 Gmail 실행 단일 잠금, n8n 계약·가이드 완료 | 사내 서버 설치는 회사 정책 확인 필요 |
 | 로컬 Dashboard 실행 | 실행 Script 완료 | 상시 서비스 등록·TLS·DNS는 배포환경 필요 |
 | 사내 RDBMS·다중 사용자 | 설계 Gate만 완료 | 승인 DB 종류·접속정보·사용자 격리 정책 필요 |
 | SSO·권한관리 | 설계 Gate만 완료 | 회사 IdP·App Registration·역할 정책 필요 |
@@ -339,7 +339,7 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 2026-08-29 최신 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
 Slack 최소 알림·Dry-run, 6개 역할 기반 운영 UI, Agent 기본 실행·일시정지 계약과 Task 연결
 Thread의 양방향 후속 Mail 추적·Task 타임라인과 저장 DB 우선 화면 시작을 포함해 pytest
-`120 passed`다. 로컬 SQLite 무결성 오류가 발생하면 자동 처리를 중지하고 백업 복구 절차를
+`122 passed`다. 로컬 SQLite 무결성 오류가 발생하면 자동 처리를 중지하고 백업 복구 절차를
 안내하는 Fail-closed UI도 포함한다. 별도 송신
 계정 기반 Gmail 실메일 수용시험은 `20/20 PASSED`다.
 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로 등록했고 수동 실행 결과

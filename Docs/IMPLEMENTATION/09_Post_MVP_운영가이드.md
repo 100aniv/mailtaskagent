@@ -100,6 +100,10 @@ LLM과 Task 변경이 재실행되지 않았다.
 
 기본 주소는 `http://localhost:8501`이다. Streamlit 내부 자동 확인은 화면이 열려 있는 파일럿 편의 기능이며, 무인 실행은 위 1회 동기화 명령을 Scheduler가 호출하는 방식으로 분리한다.
 
+Dashboard와 Scheduler가 같은 시각에 동기화를 시작하면 운영 DB별 OS 파일 잠금으로 한 실행만
+진행하고 다른 실행은 `SKIPPED`·`SyncAlreadyRunning`으로 종료한다. 잠금은 Process 종료 시
+운영체제가 해제하므로 비정상 종료 뒤에도 오래된 잠금 파일 때문에 자동수집이 영구 중단되지 않는다.
+
 운영 DB에 처리 Mail이 있으면 Dashboard는 SQLite 데이터를 먼저 표시하고 Gmail 응답을 기다리지
 않는다. DB가 비어 있는 최초 연결에서만 제한 Label을 즉시 조회한다. 이후 화면 갱신은 1분
 Fragment, 화면이 닫힌 동안의 수집은 Windows Scheduler가 같은 동기화 명령으로 담당한다.
@@ -165,6 +169,14 @@ Task 변경을 재실행하지 않았고, 정상 실행의 Slack 상태는 `NOT_
 4. 로컬 실전 파일럿은 1분 Polling으로 시작하며 새 `mail_id`만 LLM을 호출한다.
 5. 사이드바에서 Agent를 일시정지하면 Scheduler도 `PAUSED`로 종료하고 Gmail·LLM을 호출하지 않는다.
 6. Exit Code가 1 또는 2일 때만 운영자가 확인하도록 설정한다.
+7. SQLite는 WAL Journal, 30초 `busy_timeout`, Foreign Key 검사와 `synchronous=FULL`을 사용한다.
+   Scheduler 중복 실행은 위 단일 실행 잠금으로 차단하고, Dashboard의 Task 수정과 짧게 겹치는
+   쓰기는 SQLite가 대기 후 순차 반영한다.
+
+2026-09-01 운영 DB 복구 후 위 동시 실행 방어를 적용했다. 전체 pytest `122 passed`, Health
+Check `READY`, 실제 Gmail 재조회 가져옴 26·신규 0·중복 26·실패 0, SQLite `quick_check=ok`와
+WAL 적용을 확인한 뒤 1분 Scheduler를 재등록했다. 당시 손상 파일은 원인 분석을 위해 별도
+보존하고 정상 백업을 새로 생성했으며, 확인되지 않은 단일 원인을 단정하지 않는다.
 
 2026-08-28 현재 로컬 파일럿에는 `MailTaskAgent-GmailSync`가 1분 주기로 등록되어 있다.
 수동 실행 결과 `LastTaskResult=0`과 다음 실행 예약을 확인했으며, 최신 실행은 제한 Gmail

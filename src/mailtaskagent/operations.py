@@ -9,6 +9,7 @@ from mailtaskagent.config import Settings
 from mailtaskagent.llm_client import MailAnalyzer
 from mailtaskagent.models import MailInput
 from mailtaskagent.priority import PriorityLevel, calculate_task_priority
+from mailtaskagent.process_lock import interprocess_lock
 from mailtaskagent.storage import SQLiteStorage
 from mailtaskagent.workflow import MailTaskWorkflow
 
@@ -67,6 +68,24 @@ class MailSyncService:
         self.max_attempts = max_attempts
 
     def run_once(self) -> SyncRunReport:
+        lock_path = self.storage.path.with_name(f"{self.storage.path.name}.sync.lock")
+        with interprocess_lock(lock_path) as acquired:
+            if not acquired:
+                return SyncRunReport(
+                    run_id=f"SYNC-{uuid4().hex[:12].upper()}",
+                    source=self.source_name,
+                    status="SKIPPED",
+                    fetched_count=0,
+                    pending_count=0,
+                    succeeded_count=0,
+                    failed_count=0,
+                    duplicate_count=0,
+                    retry_count=0,
+                    error_type="SyncAlreadyRunning",
+                )
+            return self._run_once_locked()
+
+    def _run_once_locked(self) -> SyncRunReport:
         self.storage.initialize()
         run_id = f"SYNC-{uuid4().hex[:12].upper()}"
         self.storage.start_sync_run(run_id=run_id, source=self.source_name)

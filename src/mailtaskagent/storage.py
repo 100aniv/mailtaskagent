@@ -208,8 +208,11 @@ class SQLiteStorage:
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.path)
+        connection = sqlite3.connect(self.path, timeout=30.0)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout = 30000")
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA synchronous = FULL")
         try:
             yield connection
         finally:
@@ -217,6 +220,7 @@ class SQLiteStorage:
 
     def initialize(self) -> None:
         with self.connect() as connection:
+            connection.execute("PRAGMA journal_mode = WAL")
             connection.executescript(SCHEMA)
             columns = {
                 row["name"] for row in connection.execute("PRAGMA table_info(tasks)").fetchall()

@@ -9,6 +9,7 @@ from mailtaskagent.llm_client import MockMailAnalyzer
 from mailtaskagent.operations import MailSyncService
 from mailtaskagent.operations import build_attention_snapshot
 from mailtaskagent.operations_cli import main as operations_main
+from mailtaskagent.process_lock import interprocess_lock
 from mailtaskagent.storage import SQLiteStorage
 from mailtaskagent.workflow import load_mails
 
@@ -76,6 +77,44 @@ def test_sync_service_records_success_and_duplicate_counts(tmp_path: Path) -> No
     runs = storage.list_sync_runs(source="GMAIL")
     assert [run["status"] for run in runs] == ["SUCCESS", "SUCCESS"]
     assert runs[0]["duplicate_count"] == 2
+
+
+def test_sync_service_skips_when_another_process_holds_database_sync_lock(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    storage = SQLiteStorage(settings.database_path)
+    service = MailSyncService(
+        settings=settings,
+        storage=storage,
+        analyzer=MockMailAnalyzer(),
+        source=_StaticSource(
+            load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")[:1]
+        ),
+        source_name="GMAIL",
+    )
+    lock_path = storage.path.with_name(f"{storage.path.name}.sync.lock")
+
+    with interprocess_lock(lock_path) as acquired:
+        assert acquired is True
+        report = service.run_once()
+
+    assert report.status == "SKIPPED"
+    assert report.error_type == "SyncAlreadyRunning"
+    storage.initialize()
+    assert storage.list_sync_runs(source="GMAIL") == []
+
+
+def test_sqlite_storage_enables_wal_and_waits_for_concurrent_writes(
+    tmp_path: Path,
+) -> None:
+    storage = SQLiteStorage(tmp_path / "wal.db")
+    storage.initialize()
+
+    with storage.connect() as connection:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        assert connection.execute("PRAGMA busy_timeout").fetchone()[0] == 30000
+        assert connection.execute("PRAGMA synchronous").fetchone()[0] == 2
 
 
 def test_sync_service_retries_only_transient_failure(tmp_path: Path) -> None:
