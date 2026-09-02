@@ -1,0 +1,79 @@
+{
+  "evidence_type": "final_mvp_acceptance",
+  "generated_at": "2026-09-02T22:26:05+09:00",
+  "commit": "f49aa049ebf00b6b7c0efb440e87acc4cb46d4dd",
+  "data_policy": "synthetic_and_deidentified_only",
+  "secrets_recorded": false,
+  "automated_test_result": {
+    "command": ".venv/Scripts/python.exe -m pytest -q -p no:cacheprovider",
+    "passed": 149,
+    "failed": 0,
+    "duration_seconds": 18.46
+  },
+  "scenario_evaluation": {
+    "mode": "MOCK",
+    "passed": "15/15",
+    "action_steps": "28/28",
+    "classification_accuracy": 1.0,
+    "field_accuracy": 1.0,
+    "task_link_accuracy": 1.0,
+    "duration_ms": 17992
+  },
+  "company_llm_evidence": {
+    "mail_scenarios_passed": "15/15",
+    "action_steps": "28/28",
+    "task_context_agent_live_passed": "3/3",
+    "source_files": [
+      "evidence/live_evaluation_2026-08-27.json",
+      "evidence/task_context_rag_evaluation_2026-09-01.json",
+      "evidence/agent_action_guard_evaluation_2026-09-02.json"
+    ]
+  },
+  "gmail_pilot": {
+    "status": "PASSED",
+    "passed_cases": "20/20",
+    "failed_cases": 0,
+    "pending_cases": 0,
+    "directions_verified": [
+      "INBOUND",
+      "OUTBOUND"
+    ],
+    "scope": "read-only Gmail test account with de-identified synthetic mail"
+  },
+  "runtime_recovery_and_verification": {
+    "corrupt_source_preserved": "data/recovery/mailtaskagent-corrupt-20260902T222409.db",
+    "restored_from_verified_backup": "data/backups/mailtaskagent-20260901T014623Z.db",
+    "fresh_backup": "data/backups/mailtaskagent-20260902T132452Z.db",
+    "quick_check": "ok",
+    "integrity_check": "ok",
+    "health": "READY",
+    "gmail_resync": {
+      "fetched": 26,
+      "pending": 0,
+      "duplicates": 26,
+      "failed": 0
+    },
+    "streamlit_health": "HTTP 200 ok",
+    "scheduler_enabled": true,
+    "scheduler_last_task_result": 0
+  },
+  "final_mvp_gate": {
+    "status": "PASSED",
+    "included": [
+      "M-01 through M-05 single Agent workflow",
+      "7 Agent Actions and 5 Task Statuses",
+      "SQLite Task Context RAG",
+      "one Query Rewrite and ReAct re-decision",
+      "Agent Action Proposal and Python Safety Guard",
+      "Human-in-the-loop and fail-closed behavior",
+      "execution observation and Agent Trace",
+      "read-only Gmail inbound and outbound thread tracking"
+    ]
+  },
+  "scope_limits": [
+    "Results prove the defined synthetic and test-Gmail cases, not arbitrary production mailbox accuracy.",
+    "One mail is modeled as one representative task action; multi-task extraction is not implemented.",
+    "Mail drafting and sending, Outlook integration, company authentication, and server deployment remain Post-MVP.",
+    "The database was restored from a verified backup; the preserved corrupt file remains available for later root-cause analysis."
+  ]
+}

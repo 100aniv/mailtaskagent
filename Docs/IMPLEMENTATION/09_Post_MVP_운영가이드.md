@@ -181,6 +181,13 @@ WAL 적용을 확인한 뒤 1분 Scheduler를 재등록했다. 당시 손상 파
 2026-09-02 Task Context RAG·최대 1회 ReAct 재판단·Agent Action Proposal·Python Safety Guard·
 Agent Trace를 추가한 뒤 기존 운영 방어를 포함한 전체 회귀는 `149 passed`다.
 
+2026-09-02 최종 Acceptance 재점검 중 운영 DB 손상을 실제로 감지해 Scheduler를 즉시 중지하고
+손상 원본을 `data/recovery/`에 보존했다. `quick_check=ok`인 최신 백업으로 복구한 뒤
+`integrity_check=ok`, Health Check `READY`, Gmail Pilot `20/20 PASSED`, Gmail 재조회
+가져옴 26·신규 0·중복 26·실패 0을 확인했다. 이후 Streamlit `HTTP 200`, Scheduler 수동
+예약 실행 `LastTaskResult=0`과 새 정상 백업 생성을 확인한 뒤 1분 Scheduler를 재활성화했다.
+이는 자동 복원이 아니라 원본 보존·검증된 백업 복구·재검증 절차를 실제로 수행한 결과다.
+
 2026-08-28 현재 로컬 파일럿에는 `MailTaskAgent-GmailSync`가 1분 주기로 등록되어 있다.
 수동 실행 결과 `LastTaskResult=0`과 다음 실행 예약을 확인했으며, 최신 실행은 제한 Gmail
 2건을 모두 중복으로 처리해 신규·실패 0건이었다. 다른 PC나 사내 서버 등록은 실행 계정과
