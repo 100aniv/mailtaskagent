@@ -27,9 +27,9 @@ Mail 수집
 |---|---|
 | 회사 LLM `gpt-4.1-mini` | Mail의 업무 관련 여부, Intent, 요청사항, 기한, 회신 필요 여부와 판단 근거 구조화 |
 | Python M-02 | `conversation_id` 우선, 확정 불가 시 SQLite Task·최근 Mail·History top-k 검색 |
-| Python M-03 | 현재 상태와 후보 수를 보고 최종 Agent Action 결정 |
-| Task Context Agent | 동일 Thread로 확정할 수 없는 top-k 후보의 관계와 Action 제안, 최대 1회 Query Rewrite·재판단 |
-| Pydantic·Application Logic | Schema, 허용 상태 전이, Task ID와 중요 변경 검증 |
+| Task Context Agent | 동일 Thread로 확정할 수 없는 top-k 후보의 관계·대상 Task·Action 선택, 최대 1회 Query Rewrite·재판단 |
+| Python M-03 | Agent Action의 Payload를 만들고 후보·Intent·관계·상태 전이·중요 변경 검증 |
+| Pydantic·Application Logic | Schema와 Guard를 통과한 Action만 실행하고 실제 저장 결과 재조회 |
 | 사용자 | 복수 후보, 모호한 기한, 완료·취소 등 중요한 결정을 최종 확인 |
 | SQLite | Task 현재 상태, Mail 연결, Processing Event와 변경 History 저장 |
 | Streamlit | 사용자의 Task 관리, 검토 요청, Mail 타임라인과 운영 상태 표시 |
@@ -42,7 +42,7 @@ LLM이 DB를 직접 수정하지 않는 것이 핵심 안전 설계다.
 |---|---|
 | M-01 Mail Input & Analyzer | 합성 Dataset 또는 Gmail을 공통 Schema로 바꾸고 LLM으로 의미를 구조화 |
 | M-02 Task Context Matcher | 같은 Thread를 우선하고 확정 불가 시 제한 Task Context top-k 검색 |
-| M-03 Agent Action Decision | 검색 결과를 관찰·재판단하고 Python Guard로 7개 Action 중 하나를 결정 |
+| M-03 Agent Action Decision | 검색 결과를 관찰·재판단해 Action을 제안하고 Python Guard가 승인 또는 사용자 확인으로 이관 |
 | M-04 Task State & History Manager | 검증된 결과를 SQLite Transaction으로 반영하고 History 저장 |
 | M-05 User Review & Dashboard | 사용자가 애매하거나 중요한 결정을 승인·수정·거절하고 결과 확인 |
 
@@ -111,7 +111,7 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 | 기존 Task 연결 | 8/8 |
 | 테스트 Gmail 수용시험 | 20/20 |
 | Task Context Agent Live 합성 검증 | 3/3 |
-| 전체 자동 테스트 | 136 passed |
+| 전체 자동 테스트 | 149 passed |
 | Gmail 재조회 | 신규 처리 0, 중복 차단 20, 실패 0 |
 | Windows Scheduler | 반복 실행 성공, `LastTaskResult=0` |
 | SQLite 무결성 | `quick_check=ok` |
@@ -132,12 +132,13 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 - 읽기 전용 Gmail 개인 파일럿과 1분 자동 동기화
 - SQLite 동시 접근·백업·손상 감지 안전장치
 - 동일 Thread가 아닌 다른 표현의 Mail을 위한 SQLite Task Context top-k Retrieval
-- 별도 Task Context Agent의 `SAME_TASK` / `NEW_TASK` / `AMBIGUOUS` 관계와 Action 제안
+- 별도 Task Context Agent의 `SAME_TASK` / `NEW_TASK` / `AMBIGUOUS` 관계·대상·Action Proposal
 - 첫 판단이 모호하거나 저신뢰일 때 최대 1회 Query Rewrite·재검색·재판단
 - 후보 밖 Task ID, API·Schema 실패와 두 번째 불확실 판단의 `ASK_USER` Fail-closed
 - 기존 완료·취소·기한 단축 승인 Gate와 전체 회귀 유지
+- Agent Action Proposal과 Python Safety Guard를 분리한 실행 통제
 - Observe Input부터 Final Output까지의 Agentic Workflow Trace
-- 신규 RAG 평가 Evidence와 전체 pytest 136개 통과
+- 신규 RAG·Guard 평가 Evidence와 전체 pytest 149개 통과
 
 ### 사내 운영 전 추가로 필요한 것
 
@@ -172,14 +173,14 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 5. 복수 후보 Case에서 `ASK_USER`가 멈추고 사용자 선택 후에만 DB가 바뀌는 것을 보여준다.
 6. Task 상세의 Mail 타임라인과 변경 전·후 History를 보여준다.
 7. 운영 상태의 Agentic Workflow Trace에서 RAG 검색, 후보 관찰, 판단, Query Rewrite,
-   Python Guard와 실행 결과 관찰을 보여준다.
-8. 마지막에 15/15, 28/28, Task Context Live 3/3, Gmail 20/20, pytest 136 passed와 측정 한계를 설명한다.
+   Agent Action Proposal, Python Safety Guard와 실행 결과 관찰을 보여준다.
+8. 마지막에 15/15, 28/28, Task Context Live 3/3, Gmail 20/20, pytest 149 passed와 측정 한계를 설명한다.
 
 ## 12. 발표용 30초 결론
 
 “MailTaskAgent는 Mail을 요약하는 도구가 아니라 Mail Thread와 현재 Task 상태를 함께 보고 다음
 Action을 결정하는 개인 업무관리 Agent입니다. 회사 LLM Mail 분석 15개 실행 단위와 28개 Action
-단계, Task Context Agent Live 3건, 테스트 Gmail 20건, 자동 테스트 136건을 통과했습니다.
+단계, Task Context Agent Live 3건, 테스트 Gmail 20건, 자동 테스트 149건을 통과했습니다.
 다른 표현의 동일 업무는 SQLite Task Context를 검색하고 최대 한 번 재검색하며, 그래도
 불확실하면 사용자에게 넘깁니다. Outlook·사내 인증·서버 배포와 사내 문서 RAG는 그 이후
 Post-MVP 범위입니다.”

@@ -12,6 +12,7 @@ from uuid import uuid4
 from mailtaskagent.models import (
     ActionProposal,
     AgentAction,
+    GuardedActionResult,
     MailAnalysis,
     MailInput,
     ReviewDecision,
@@ -668,6 +669,7 @@ class SQLiteStorage:
         retrieval_query: str | None = None,
         retrieved_task_contexts: list[dict] | None = None,
         task_context_decision: TaskContextDecision | None = None,
+        guard_result: GuardedActionResult | None = None,
         rag_retry_count: int = 0,
         match_route: str = "LEGACY",
     ) -> tuple[dict | None, dict | None, dict | None]:
@@ -819,6 +821,9 @@ class SQLiteStorage:
                         task_context_decision.model_dump(mode="json")
                         if task_context_decision
                         else None
+                    ),
+                    "guard_result": (
+                        guard_result.model_dump(mode="json") if guard_result else None
                     ),
                     "rag_retry_count": rag_retry_count,
                     "match_route": match_route,

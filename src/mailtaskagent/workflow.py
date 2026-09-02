@@ -6,11 +6,13 @@ from time import perf_counter
 from uuid import uuid4
 
 from mailtaskagent.config import Settings
-from mailtaskagent.decision import decide_action
+from mailtaskagent.decision import build_guarded_agent_proposal, decide_action
 from mailtaskagent.llm_client import MailAnalyzer
 from mailtaskagent.models import (
     ActionProposal,
     AgentAction,
+    GuardedActionResult,
+    GuardVerdict,
     MailAnalysis,
     MailInput,
     MailIntent,
@@ -222,6 +224,11 @@ class MailTaskWorkflow:
                         if previous.get("task_context_decision")
                         else None
                     ),
+                    guard_result=(
+                        GuardedActionResult.model_validate(previous["guard_result"])
+                        if previous.get("guard_result")
+                        else None
+                    ),
                     rag_retry_count=previous.get("rag_retry_count", 0),
                     match_route=previous.get("match_route", "LEGACY"),
                     validation_result=previous.get("validation_result", {}),
@@ -323,6 +330,7 @@ class MailTaskWorkflow:
             retrieval_query: str | None = None
             retrieved_task_contexts: list[dict] = []
             task_context_decision: TaskContextDecision | None = None
+            guard_result: GuardedActionResult | None = None
             rag_retry_count = 0
             rag_fallback_reason: str | None = None
             match_route = "LEGACY"
@@ -600,6 +608,48 @@ class MailTaskWorkflow:
                     ),
                     needs_user_confirmation=True,
                 )
+                if task_context_decision is not None:
+                    self._event(
+                        case_id,
+                        mail.mail_id,
+                        "M-03 AGENT_ACTION_PROPOSAL",
+                        "SUCCESS",
+                        (
+                            "Task Context Agent의 저신뢰·모호한 Action 제안을 "
+                            "Safety Guard로 전달"
+                        ),
+                        details={
+                            "route": match_route,
+                            "relation": task_context_decision.relation.value,
+                            "action": task_context_decision.recommended_action.value,
+                            "selected_task_id": task_context_decision.selected_task_id,
+                            "confidence": task_context_decision.confidence,
+                            "reason": task_context_decision.reason,
+                        },
+                    )
+                    guard_result = GuardedActionResult(
+                        verdict=GuardVerdict.ESCALATED,
+                        agent_action=task_context_decision.recommended_action,
+                        final_proposal=proposal,
+                        reason=rag_fallback_reason,
+                    )
+                    self._event(
+                        case_id,
+                        mail.mail_id,
+                        "M-03 PYTHON_GUARD",
+                        "WAITING",
+                        "Task Context 신뢰도 정책에 따라 사용자 확인 단계로 이관",
+                        level="WARNING",
+                        details={
+                            "route": match_route,
+                            "verdict": guard_result.verdict.value,
+                            "agent_action": guard_result.agent_action.value,
+                            "action": proposal.action.value,
+                            "target_task_id": proposal.target_task_id,
+                            "reason": guard_result.reason,
+                            "needs_user_confirmation": True,
+                        },
+                    )
                 self._event(
                     case_id,
                     mail.mail_id,
@@ -613,6 +663,73 @@ class MailTaskWorkflow:
                         "task_db_changed": False,
                     },
                 )
+            elif match_route == "STRUCTURED_RAG" and task_context_decision is not None:
+                self._event(
+                    case_id,
+                    mail.mail_id,
+                    "M-03 AGENT_ACTION_PROPOSAL",
+                    "SUCCESS",
+                    f"Task Context Agent Action 제안: {task_context_decision.recommended_action.value}",
+                    details={
+                        "route": match_route,
+                        "relation": task_context_decision.relation.value,
+                        "action": task_context_decision.recommended_action.value,
+                        "selected_task_id": task_context_decision.selected_task_id,
+                        "confidence": task_context_decision.confidence,
+                        "reason": task_context_decision.reason,
+                    },
+                )
+                guard_result = build_guarded_agent_proposal(
+                    mail,
+                    analysis,
+                    candidates,
+                    task_context_decision,
+                    self.settings,
+                )
+                proposal = guard_result.final_proposal
+                self._event(
+                    case_id,
+                    mail.mail_id,
+                    "M-03 PYTHON_GUARD",
+                    "SUCCESS" if guard_result.verdict == GuardVerdict.ACCEPTED else "WAITING",
+                    (
+                        "Python Safety Guard가 Agent Proposal 실행 승인"
+                        if guard_result.verdict == GuardVerdict.ACCEPTED
+                        else "Python Safety Guard가 Agent Proposal을 사용자 확인 단계로 이관"
+                    ),
+                    level=(
+                        "INFO"
+                        if guard_result.verdict == GuardVerdict.ACCEPTED
+                        else "WARNING"
+                    ),
+                    details={
+                        "route": match_route,
+                        "verdict": guard_result.verdict.value,
+                        "agent_action": guard_result.agent_action.value,
+                        "action": proposal.action.value,
+                        "target_task_id": proposal.target_task_id,
+                        "materialized_fields": sorted(
+                            set(proposal.task_payload) | set(proposal.changes)
+                        ),
+                        "reason": guard_result.reason,
+                        "needs_user_confirmation": proposal.needs_user_confirmation,
+                    },
+                )
+                if guard_result.verdict == GuardVerdict.ESCALATED:
+                    self._event(
+                        case_id,
+                        mail.mail_id,
+                        "ASK_USER",
+                        "WAITING",
+                        "Safety Guard 정책에 따라 사용자에게 최종 결정 이관",
+                        level="WARNING",
+                        details={
+                            "agent_action": guard_result.agent_action.value,
+                            "final_action": proposal.action.value,
+                            "reason": guard_result.reason,
+                            "task_db_changed": False,
+                        },
+                    )
             else:
                 proposal = decide_action(mail, analysis, candidates, self.settings)
             self._event(
@@ -634,8 +751,11 @@ class MailTaskWorkflow:
                         else None
                     ),
                     "python_guard_override": bool(
-                        task_context_decision
-                        and task_context_decision.recommended_action != proposal.action
+                        guard_result
+                        and guard_result.agent_action != proposal.action
+                    ),
+                    "guard_verdict": (
+                        guard_result.verdict.value if guard_result else None
                     ),
                 },
                 duration_ms=_duration_ms(decision_started),
@@ -690,6 +810,7 @@ class MailTaskWorkflow:
                     retrieval_query=retrieval_query,
                     retrieved_task_contexts=retrieved_task_contexts,
                     task_context_decision=task_context_decision,
+                    guard_result=guard_result,
                     rag_retry_count=rag_retry_count,
                     match_route=match_route,
                 )
@@ -782,6 +903,7 @@ class MailTaskWorkflow:
                 retrieval_query=retrieval_query,
                 retrieved_task_contexts=retrieved_task_contexts,
                 task_context_decision=task_context_decision,
+                guard_result=guard_result,
                 rag_retry_count=rag_retry_count,
                 match_route=match_route,
                 validation_result=validation_result,

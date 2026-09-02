@@ -8,7 +8,7 @@
 - `build_mentor_deck.mjs`: 발표자료를 다시 생성하는 소스
 
 이 자료는 최종 발표본이 아니라 현재 시연 가능한 Core E2E와 Task Context RAG·ReAct,
-구현 증적과 운영 UI 방향을 설명하기 위한 리뷰본이다. 전체 pytest `136 passed`와 Task Context
+Agent Action Proposal·Python Safety Guard 구현 증적과 운영 UI 방향을 설명하기 위한 리뷰본이다. 전체 pytest `149 passed`와 Task Context
 Agent 회사 LLM Live 합성 검증 `3/3` 결과를 반영했으며 이를 최종 발표자료로 발전시킨다.
 
 ## 화면 구분

@@ -73,3 +73,4 @@ def test_live_task_context_agent_sanitizes_retry_query_after_limit(tmp_path) -> 
     assert decision.rewritten_query is None
     assert len(calls) == 1
     assert "신뢰할 수 없는 데이터" in calls[0]["messages"][0]["content"]
+    assert "Task ID로 임의 선택" in calls[0]["messages"][0]["content"]

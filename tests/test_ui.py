@@ -41,6 +41,13 @@ def test_display_value_localizes_status_and_boolean() -> None:
     assert ui_module._display_value(None) == "-"
 
 
+def test_agentic_trace_separates_agent_proposal_and_python_guard() -> None:
+    assert ui_module._agentic_trace_phase("M-03 AGENT_ACTION_PROPOSAL")[0] == (
+        "Agent Action Proposal"
+    )
+    assert ui_module._agentic_trace_phase("M-03 PYTHON_GUARD")[0] == "Python Guard"
+
+
 def test_task_history_rows_include_changes_reason_and_user_decision(tmp_path) -> None:
     storage = SQLiteStorage(tmp_path / "task-history.db")
     storage.initialize()

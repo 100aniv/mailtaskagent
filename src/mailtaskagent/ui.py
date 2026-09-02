@@ -1385,7 +1385,9 @@ def _agentic_trace_phase(step: str) -> tuple[str, str]:
         return "Re-evaluate / Decide", "🧠"
     if step == "M-03 QUERY_REWRITE":
         return "Reason / Re-plan", "🔁"
-    if step in {"M-03 ACTION_DECISION", "ACTION_VALIDATION"}:
+    if step == "M-03 AGENT_ACTION_PROPOSAL":
+        return "Agent Action Proposal", "🤖"
+    if step in {"M-03 PYTHON_GUARD", "M-03 ACTION_DECISION", "ACTION_VALIDATION"}:
         return "Python Guard", "🛡️"
     if step == "M-04 DB_TRANSACTION":
         return "Act / Execute", "🛠️"
@@ -1443,7 +1445,10 @@ def _render_agentic_trace(events: list[dict], mail_ids: list[str]) -> None:
                 for key, label in (
                     ("route", "경로"),
                     ("relation", "관계"),
+                    ("agent_action", "Agent 제안"),
+                    ("verdict", "Guard"),
                     ("action", "Action"),
+                    ("final_action", "최종 Action"),
                     ("selected_task_id", "선택 Task"),
                     ("confidence", "신뢰도"),
                     ("retry_count", "재시도"),

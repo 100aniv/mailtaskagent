@@ -93,6 +93,20 @@ class _FailingAgent:
         raise ConnectionError("synthetic Task Context API failure")
 
 
+class _ActionAgent:
+    def __init__(self, action: AgentAction) -> None:
+        self.action = action
+
+    def judge(self, current_mail, mail_analysis, retrieved_task_contexts, *, retry_count):
+        return TaskContextDecision(
+            relation=TaskRelation.SAME_TASK,
+            selected_task_id=retrieved_task_contexts[0]["candidate"]["task_id"],
+            recommended_action=self.action,
+            confidence=0.93,
+            reason="합성 Guard 검증용 Agent Action 제안",
+        )
+
+
 @pytest.fixture
 def base_settings(tmp_path: Path) -> Settings:
     return Settings(
@@ -235,6 +249,8 @@ def test_different_thread_and_wording_connects_same_task(base_settings: Settings
     assert result.match_route == "STRUCTURED_RAG"
     assert result.task_context_decision is not None
     assert result.task_context_decision.relation == TaskRelation.SAME_TASK
+    assert result.guard_result is not None
+    assert result.guard_result.verdict.value == "ACCEPTED"
     assert result.proposal.action == AgentAction.UPDATE_TASK
     assert result.proposal.target_task_id == seeded["task_id"]
     assert len(storage.list_tasks()) == 1
@@ -242,6 +258,8 @@ def test_different_thread_and_wording_connects_same_task(base_settings: Settings
         event["step"] == "M-03 RAG_DECISION"
         for event in storage.list_events("RAG-01")
     )
+    steps = {event["step"] for event in storage.list_events("RAG-01")}
+    assert {"M-03 AGENT_ACTION_PROPOSAL", "M-03 PYTHON_GUARD"} <= steps
 
 
 def test_exact_thread_bypasses_rag_agent(base_settings: Settings) -> None:
@@ -304,8 +322,12 @@ def test_ambiguous_after_retry_fails_closed_to_ask_user(base_settings: Settings)
 
     assert result.rag_retry_count == 1
     assert result.proposal.action == AgentAction.ASK_USER
+    assert result.guard_result is not None
+    assert result.guard_result.verdict.value == "ESCALATED"
     assert storage.list_tasks() == before
     assert len(storage.list_pending_reviews()) == 1
+    steps = {event["step"] for event in storage.list_events("RAG-03")}
+    assert {"M-03 AGENT_ACTION_PROPOSAL", "M-03 PYTHON_GUARD", "ASK_USER"} <= steps
 
 
 @pytest.mark.parametrize("agent", [_OutsideCandidateAgent(), _FailingAgent()])
@@ -382,17 +404,33 @@ def test_execution_observation_is_recorded(base_settings: Settings) -> None:
 
 
 @pytest.mark.parametrize(
-    ("intent", "due_date", "expected_action"),
+    ("intent", "due_date", "agent_action", "expected_action"),
     [
-        (MailIntent.COMPLETION, None, AgentAction.MARK_COMPLETED),
-        (MailIntent.CANCELLATION, None, AgentAction.ASK_USER),
-        (MailIntent.DUE_DATE_CHANGE, date(2026, 9, 5), AgentAction.ASK_USER),
+        (
+            MailIntent.COMPLETION,
+            None,
+            AgentAction.MARK_COMPLETED,
+            AgentAction.MARK_COMPLETED,
+        ),
+        (
+            MailIntent.CANCELLATION,
+            None,
+            AgentAction.ASK_USER,
+            AgentAction.ASK_USER,
+        ),
+        (
+            MailIntent.DUE_DATE_CHANGE,
+            date(2026, 9, 5),
+            AgentAction.UPDATE_TASK,
+            AgentAction.ASK_USER,
+        ),
     ],
 )
 def test_rag_keeps_high_risk_user_approval_gates(
     base_settings: Settings,
     intent: MailIntent,
     due_date: date | None,
+    agent_action: AgentAction,
     expected_action: AgentAction,
 ) -> None:
     storage = SQLiteStorage(base_settings.database_path)
@@ -407,7 +445,7 @@ def test_rag_keeps_high_risk_user_approval_gates(
         _rag_settings(base_settings),
         storage,
         _StaticAnalyzer(analysis),
-        task_context_agent=_SelectFirstAgent(),
+        task_context_agent=_ActionAgent(agent_action),
     )
 
     result = workflow.process(
@@ -469,3 +507,39 @@ def test_agentic_rag_improves_no_token_cross_thread_case(
     assert rag_result.proposal.action == AgentAction.UPDATE_TASK
     assert rag_result.proposal.target_task_id == seeded["task_id"]
     assert rag_result.match_route == "STRUCTURED_RAG"
+
+
+def test_agent_action_mismatch_escalates_without_task_change(
+    base_settings: Settings,
+) -> None:
+    storage = SQLiteStorage(base_settings.database_path)
+    seeded = _seed_task(base_settings, storage)
+    before = storage.get_task(seeded["task_id"])
+    workflow = MailTaskWorkflow(
+        _rag_settings(base_settings),
+        storage,
+        _StaticAnalyzer(
+            _analysis(
+                MailIntent.COMPLETION,
+                title=None,
+                summary="기존 장애 점검 업무를 완료한다.",
+            )
+        ),
+        task_context_agent=_ActionAgent(AgentAction.UPDATE_TASK),
+    )
+
+    result = workflow.process(
+        _mail(
+            "RAG-GUARD-MISMATCH",
+            "THREAD-GUARD-MISMATCH",
+            subject="장애 점검 완료",
+            body="기존 장애 점검 업무를 완료했습니다.",
+        )
+    )
+
+    assert result.guard_result is not None
+    assert result.guard_result.verdict.value == "ESCALATED"
+    assert result.proposal.action == AgentAction.ASK_USER
+    assert storage.get_task(seeded["task_id"]) == before
+    steps = {event["step"] for event in storage.list_events("RAG-GUARD-MISMATCH")}
+    assert {"M-03 AGENT_ACTION_PROPOSAL", "M-03 PYTHON_GUARD", "ASK_USER"} <= steps

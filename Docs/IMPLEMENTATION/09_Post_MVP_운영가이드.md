@@ -178,8 +178,8 @@ Check `READY`, 실제 Gmail 재조회 가져옴 26·신규 0·중복 26·실패 
 WAL 적용을 확인한 뒤 1분 Scheduler를 재등록했다. 당시 손상 파일은 원인 분석을 위해 별도
 보존하고 정상 백업을 새로 생성했으며, 확인되지 않은 단일 원인을 단정하지 않는다.
 
-2026-09-02 Task Context RAG·최대 1회 ReAct 재판단·Agent Trace를 추가한 뒤 기존 운영 방어를
-포함한 전체 회귀는 `136 passed`다.
+2026-09-02 Task Context RAG·최대 1회 ReAct 재판단·Agent Action Proposal·Python Safety Guard·
+Agent Trace를 추가한 뒤 기존 운영 방어를 포함한 전체 회귀는 `149 passed`다.
 
 2026-08-28 현재 로컬 파일럿에는 `MailTaskAgent-GmailSync`가 1분 주기로 등록되어 있다.
 수동 실행 결과 `LastTaskResult=0`과 다음 실행 예약을 확인했으며, 최신 실행은 제한 Gmail

@@ -55,6 +55,11 @@ class TaskRelation(StrEnum):
     AMBIGUOUS = "AMBIGUOUS"
 
 
+class GuardVerdict(StrEnum):
+    ACCEPTED = "ACCEPTED"
+    ESCALATED = "ESCALATED"
+
+
 class MailInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -141,6 +146,15 @@ class TaskContextDecision(BaseModel):
         return self
 
 
+class GuardedActionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: GuardVerdict
+    agent_action: AgentAction
+    final_proposal: ActionProposal
+    reason: str = Field(min_length=1)
+
+
 class WorkflowResult(BaseModel):
     case_id: str
     mail: MailInput
@@ -152,6 +166,7 @@ class WorkflowResult(BaseModel):
     retrieval_query: str | None = None
     retrieved_task_contexts: list[dict[str, Any]] = Field(default_factory=list)
     task_context_decision: TaskContextDecision | None = None
+    guard_result: GuardedActionResult | None = None
     rag_retry_count: int = 0
     match_route: str = "LEGACY"
     validation_result: dict[str, Any] = Field(default_factory=dict)

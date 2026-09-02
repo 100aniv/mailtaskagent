@@ -5,8 +5,9 @@
 Live로 상태 흐름과 세부 KPI를 검증했으며, 읽기 전용 Gmail 개인 파일럿까지 확장한 상태다.
 
 > **2026-09-02 상태:** Core E2E에 SQLite 기반 경량 Task Context Agentic RAG, 최대 1회
-> Query Rewrite·재판단, Python Guard, 실행 결과 재조회와 안전한 Agent Trace를 결합했다.
-> 전체 pytest `136 passed`와 Task Context Agent 회사 LLM Live 합성 검증 `3/3`을 통과했다.
+> Query Rewrite·재판단, Agent Action Proposal, Python Safety Guard, 실행 결과 재조회와 안전한
+> Agent Trace를 결합했다. 전체 pytest `149 passed`와 Task Context Agent 회사 LLM Live 합성
+> 검증 `3/3`을 통과했다.
 > Outlook·사내 인증·서버와 사내 문서 RAG는 그 이후 Post-MVP다.
 
 ## 현재 구현 범위
@@ -21,7 +22,8 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 읽기 전용 Gmail 개�
   top-k로 검색하는 Structured Task Context RAG
 - 별도 Task Context Agent의 `SAME_TASK`·`NEW_TASK`·`AMBIGUOUS` 관계 판단과 저신뢰 시
   최대 1회 Query Rewrite·재검색, 실패 시 `ASK_USER` Fail-closed
-- LLM 제안을 다시 검증하는 Python Guard와 DB 반영 결과 재조회, 검증 가능한 Agent Trace
+- Task Context Agent가 선택한 Action을 실행 Payload로 구성하고 승인·이관하는 Python Safety
+  Guard, DB 반영 결과 재조회와 검증 가능한 Agent Trace
 - Pydantic 구조화 결과 검증
 - 잘못된 LLM 구조화 출력 1회 재시도
 - SQLite Task/History/중복 처리
@@ -52,8 +54,8 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 읽기 전용 Gmail 개�
   Agent 기본 실행·일시정지 통합, Task 연결 Gmail Thread의 양방향 후속 Mail 추적,
   저장 DB 우선 화면 시작·삭제 Thread 장애 격리와 Gmail 실메일 20건 자동 평가를 포함한
   로컬 SQLite 무결성 오류 시 자동 처리 중지·복구 안내와 업무별 변경 이력 UI까지 포함한
-  SQLite WAL·동시 동기화 단일 실행 잠금, Task Context RAG·ReAct·Agent Trace까지 포함한
-  전체 pytest 136건
+  SQLite WAL·동시 동기화 단일 실행 잠금, Task Context RAG·ReAct·Agent Action Guard·Trace까지
+  포함한 전체 pytest 149건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀

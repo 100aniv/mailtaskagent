@@ -133,13 +133,14 @@ M-03이 `ASK_USER`를 선택한다. 현재 점수는 설명 가능한 1차 Rule 
 - `candidate_tasks`
 - 선택 Task의 현재 상태와 최근 History
 - 사용자가 마지막으로 확정한 값
-- 최종 MVP에서는 검색된 Task Context와 별도 Task Context Agent의 관계·Action 제안
+- 최종 MVP에서는 검색된 Task Context와 별도 Task Context Agent의 관계·대상·Action Proposal
 
 ### 출력 계약
 
-Python Application Logic이 정의된 7개 중 정확히 하나의 Action, 대상 Task ID, 생성/변경
-Payload, 이유, 신뢰도, 사용자 확인 필요 여부를 Pydantic `ActionProposal`로 반환한다.
-Task Context Agent의 `recommended_action`은 제안값이며 최종 Action이 아니다.
+Task Context Agent는 정의된 7개 중 정확히 하나의 `recommended_action`, 대상 Task ID, 이유와
+신뢰도를 Pydantic `TaskContextDecision`으로 반환한다. `STRUCTURED_RAG` 경로에서는 이 값을
+실제 Agent Action Proposal로 사용하며, Python `build_guarded_agent_proposal()`이 생성/변경
+Payload를 구성하고 안전 정책을 검증한 `GuardedActionResult`를 반환한다.
 
 최종 MVP의 별도 Task Context Agent 출력은 `relation`, `selected_task_id`,
 `recommended_action`, `confidence`, `reason`, `rewritten_query`로 고정한다. 후보 밖 Task ID,
@@ -183,9 +184,10 @@ Task Context RAG의 재검색 횟수도 최대 1회로 고정한다. 완료·취
 4. 회사 LLM용 Task Context Agent와 결정론적 Mock을 같은 출력 계약으로 구성한다.
 5. Workflow에서 동일 Thread 단일 후보는 기존 경로를 유지하고, 확정 불가 Case에만 RAG를 호출한다.
 6. 첫 판단이 저신뢰 또는 `AMBIGUOUS`이고 유효한 `rewritten_query`가 있을 때만 1회 재시도한다.
-7. 두 판단 결과를 Python M-03과 Validation에 전달해 최종 7 Action 중 하나를 결정한다.
+7. 두 판단 결과의 Agent Action Proposal을 Python M-03이 Payload로 구체화하고 후보 범위·관계·
+   Intent·상태 전이·중요 변경을 검증한다. 통과하면 Proposal을 실행하고 실패하면 `ASK_USER`로 이관한다.
 8. 처리 결과에는 Query, 제한 후보, 판단, 재시도 수와 Route를 남기되 Secret과 전체 Mailbox는 남기지 않는다.
-9. RAG 전용 테스트와 전체 pytest 136개를 통과하고 새 Evidence를 생성했다.
+9. RAG와 Agent Action Guard 전용 테스트를 포함한 전체 pytest 149개를 통과하고 새 Evidence를 생성했다.
 
 환경설정은 `TASK_CONTEXT_RAG_ENABLED`, `TASK_CONTEXT_RAG_TOP_K`,
 `TASK_CONTEXT_RAG_CONFIDENCE_THRESHOLD`, `TASK_CONTEXT_RAG_MAX_RETRIES`를 사용한다. 기본 계획값은

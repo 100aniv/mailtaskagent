@@ -103,8 +103,10 @@ MailTaskAgent는 다음과 같은 반복 구조를 가진다.
 
 다만 이 프로젝트에서 `Agentic`이라는 말은 LLM이 모든 권한을 가진다는 뜻이 아니다.
 
-- LLM은 메일의 의미를 구조화한다.
-- Python은 후보 검색과 최종 Action 정책을 담당한다.
+- M-01 LLM은 메일의 의미와 Intent를 구조화한다.
+- Python은 후보 Context를 검색한다.
+- Task Context Agent는 확정하기 어려운 후보의 관계·대상 Task·다음 Action을 선택해 제안한다.
+- Python은 제안 Action의 Payload와 안전 정책을 검증한다.
 - DB 변경은 Validation을 통과한 Application Logic만 수행한다.
 - 완료·취소·기한 단축·복수 후보는 사용자가 최종 확정한다.
 
@@ -136,8 +138,9 @@ Core는 회사 LLM API를 호출하고, 검증된 결과를 SQLite에 저장한 
 flowchart LR
     A[MailInput] --> B[M-01 Mail Analyzer]
     B --> C[M-02 Task Matcher]
-    C --> D[M-03 Action Decision]
-    D --> E[Validation]
+    C --> D[M-03 Task Context Agent]
+    D --> P[Agent Action Proposal]
+    P --> E[Python Payload / Safety Guard]
     E --> F{사용자 확인 필요?}
     F -- 아니오 --> G[M-04 DB Transaction]
     F -- 예 --> H[M-05 User Review]
@@ -154,8 +157,8 @@ flowchart LR
 | 입력 | 메일을 공통 형식으로 변환 | `models.py`, `gmail_source.py`, `outlook_source.py` |
 | M-01 | 메일 의미 구조화 | `llm_client.py`, `mail_filters.py` |
 | M-02 | 기존 Task 후보 검색 | `storage.py` |
-| M-03 | 7개 Action 중 최종 선택 | `decision.py` |
-| Validation | 잘못된 Action과 상태 전이 차단 | `workflow.py`, `policy.py`, `models.py` |
+| M-03 Agent | 관계·대상 Task·7개 Action 중 다음 행동 선택 | `task_context_agent.py` |
+| M-03 Python Guard | Payload 구성, 잘못된 관계·Action·상태 전이·중요 변경 차단 | `decision.py`, `workflow.py`, `policy.py`, `models.py` |
 | M-04 | Task·Mail·History 저장 | `storage.py` |
 | M-05 | 사용자 확인과 Dashboard | `workflow.py`, `storage.py`, `ui.py` |
 | 자동 동기화 | Gmail을 주기적으로 가져와 Core 실행 | `operations.py`, `operations_cli.py` |
@@ -444,22 +447,28 @@ LLM이 잘못된 JSON이나 필수 필드가 빠진 결과를 반환하면 Pydan
 
 Thread가 다르고 사용하는 단어도 다르지만 실제로 같은 업무인 경우 Token Matching만으로 놓칠 수
 있다. 현재는 동일 Thread로 확정할 수 없을 때 활성 Task·최근 Mail·History를 top-k로 검색하고,
-별도 Task Context Agent가 관계를 판단하는 Structured Task Context RAG로 이 한계를 보완한다.
+별도 Task Context Agent가 관계·대상 Task·다음 Action을 판단하는 Structured Task Context RAG로 이 한계를 보완한다.
 저신뢰면 Query를 한 번만 재작성해 다시 검색하고, 그래도 불확실하면 `ASK_USER`로 전환한다.
 
 ### 6.3 M-03 Agent Action Decision
 
 ### 쉬운 설명
 
-M-01의 분석과 M-02의 후보를 보고 7개 Action 중 하나를 선택한다.
+동일 Thread처럼 정답이 확실한 경로는 기존 Python 규칙을 유지한다. 동일 Thread로 확정할 수 없는
+`STRUCTURED_RAG` 경로에서는 Task Context Agent가 M-01 분석과 M-02 후보를 보고 7개 Action 중
+하나를 선택해 Proposal로 반환한다.
 
 ### 실제 파일
 
-- `decision.py`의 `decide_action()`
+- `task_context_agent.py`의 `TaskContextAgent.judge()`
+- `decision.py`의 `build_guarded_agent_proposal()`
+- 확정 경로용 `decision.py`의 `decide_action()`
 
 ### 중요한 원칙
 
-최종 Action은 Python 규칙이 결정한다. LLM이 직접 Action을 실행하지 않는다.
+Task Context Agent는 Action을 선택하지만 직접 실행하거나 DB를 수정하지 않는다. Python은 Agent가
+제안한 Action을 실행 가능한 Payload로 만들고 후보 범위·관계·Intent·상태 전이·위험 변경을
+검증한다. 안전하지 않으면 다른 자동 Action으로 몰래 바꾸지 않고 `ASK_USER`로 보낸다.
 
 예를 들면 다음과 같다.
 
@@ -613,7 +622,8 @@ Pydantic이 없다면 LLM이 `confidence: "높음"`처럼 예상하지 못한 �
 
 ## 9. 7개 Action을 결정하는 실제 규칙
 
-`decision.py`의 `decide_action()`을 쉬운 의사코드로 바꾸면 다음과 같다.
+확정 경로의 `decide_action()`과 `STRUCTURED_RAG` 경로의 `build_guarded_agent_proposal()`을 함께
+쉬운 의사코드로 바꾸면 다음과 같다.
 
 ```text
 후보가 여러 개다
@@ -1227,8 +1237,8 @@ PROCESS_COMPLETED
 
 코드가 정해진 입력에 대해 기대 결과를 내는지 자동으로 확인한다.
 
-RAG 적용 전 Core 기준선은 `122 passed`였고, 현재 Task Context RAG·ReAct·Agent Trace까지 포함한
-전체 회귀는 `136 passed`다.
+RAG 적용 전 Core 기준선은 `122 passed`, RAG·ReAct 기준선은 `136 passed`였고, 현재 Agent
+Action Proposal·Python Safety Guard·Agent Trace까지 포함한 전체 회귀는 `149 passed`다.
 
 주요 테스트 파일은 다음과 같다.
 
@@ -1237,6 +1247,7 @@ RAG 적용 전 Core 기준선은 `122 passed`였고, 현재 Task Context RAG·Re
 | `test_models.py` | Mail 방향과 시각 Schema |
 | `test_llm_client.py` | LLM JSON/Pydantic 재시도 |
 | `test_workflow.py` | CREATE, UPDATE, WAITING, 완료, ASK_USER, Rollback |
+| `test_agent_action_guard.py` | Agent Proposal Payload 구성과 Python Safety Guard |
 | `test_gmail_source.py` | Gmail Message 변환과 Thread 추적 |
 | `test_operations.py` | 동기화, Lock, WAL, Backup, Health |
 | `test_priority.py` | 우선순위 Rule |
@@ -1290,11 +1301,12 @@ Gmail 범위에서 기대값이 일치했다는 의미다.
 - Priority Rule과 Mail 제외 Rule
 - 운영 CLI, Health, Status, Backup
 - Slack 최소 알림 코드와 Dry-run
-- pytest 136건
+- pytest 149건
 
 ### 22.2 최종 MVP Agentic AI 보강 결과
 
-멘토 피드백을 반영해 **Structured Task Context RAG와 최대 1회 ReAct 재판단**을 구현했다.
+멘토 피드백을 반영해 **Structured Task Context RAG, 최대 1회 ReAct 재판단, Agent Action
+Proposal과 Python Safety Guard**를 구현했다.
 
 기존 확정 경로는 다음과 같이 유지한다.
 
@@ -1309,14 +1321,16 @@ Gmail 범위에서 기대값이 일치했다는 의미다.
 동일 Thread로 확정 불가
   → 활성 Task top-k Context 검색
   → 현재 Task 상태 + 최근 Mail + History 구성
-  → 별도 Task Context Agent가 SAME_TASK / NEW_TASK / AMBIGUOUS 판단
+  → 별도 Task Context Agent가 관계 / 대상 Task / Action 선택
   → 저신뢰 시 Query Rewrite 1회
   → 그래도 불확실하면 ASK_USER
-  → Python Guard가 최종 Action 확정
+  → Python이 실행 Payload 구성
+  → Safety Guard가 ACCEPTED 또는 ASK_USER 결정
 ```
 
-LLM의 관계·Action은 제안값이며 Python Guard가 최종 Action을 확정한다. 후보 밖 Task ID,
-API·Schema 오류, 재판단 이후 저신뢰 결과는 DB를 자동 변경하지 않고 `ASK_USER`로 보낸다.
+Task Context Agent의 관계·Action은 실제 실행 Proposal이며 Python Guard가 안전성을 승인하거나
+사용자 확인으로 이관한다. 후보 밖 Task ID, API·Schema 오류, 재판단 이후 저신뢰 결과는 DB를
+자동 변경하지 않고 `ASK_USER`로 보낸다.
 DB 반영 뒤 Task를 다시 조회해 기대 상태와 실제 저장 상태가 같은지도 관찰한다.
 
 ### 22.3 Post-MVP
@@ -1338,8 +1352,9 @@ Contract와 테스트가 있다. 그러나 실제 회사 Tenant OAuth와 Live Ma
 
 ### Q1. LLM이 Task를 직접 만들고 수정하는가?
 
-아니다. LLM은 메일 의미를 `MailAnalysis`로 구조화한다. Python이 Action을 결정하고 Validation을
-통과한 Application Logic만 DB를 바꾼다.
+아니다. M-01 LLM은 메일 의미를 `MailAnalysis`로 구조화하고 Task Context Agent는 관계·대상·
+Action을 Proposal로 반환한다. Python이 Payload와 안전성을 검증하며 Validation을 통과한
+Application Logic만 DB를 바꾼다.
 
 ### Q2. 사용자가 매번 분석 버튼을 눌러야 하는가?
 
@@ -1436,7 +1451,8 @@ http://localhost:8501
 
 > MailTaskAgent는 메일을 요약하는 도구가 아니라, 새 Mail과 현재 Task 상태를 함께 보고 7개
 > Action 중 다음 행동을 결정해 업무 Lifecycle을 관리하는 Agent입니다. 회사 LLM은 Mail Intent와
-> 요청·기한·근거를 구조화하고, Python M-02와 M-03이 Task 후보 검색과 최종 Action을 담당합니다.
+> 요청·기한·근거를 구조화하고, M-02가 Task Context를 검색하며 Task Context Agent가 관계와
+> Action을 선택합니다. Python M-03은 Payload와 안전 정책을 검증합니다.
 > Pydantic과 상태 전이 Validation을 통과한 결과만 SQLite Transaction으로 반영하며, 완료·취소·기한
 > 단축·복수 후보는 Human-in-the-loop에서 사용자가 확정합니다. 모든 처리 단계는 Processing Event로,
 > 실제 Task 변경 전후는 Audit History로 저장됩니다.
@@ -1444,7 +1460,8 @@ http://localhost:8501
 현재 상태까지 포함하면 다음 문장을 덧붙인다.
 
 > 현재 회사 LLM, M-01~M-05, Gmail 읽기 전용 파일럿과 Structured Task Context RAG·최대 1회
-> 재판단·Agent Trace가 연결된 Core E2E를 검증했습니다. 전체 pytest 136개와 Task Context Agent
+> 재판단·Agent Action Proposal·Python Safety Guard·Agent Trace가 연결된 Core E2E를 검증했습니다.
+> 전체 pytest 149개와 Task Context Agent
 > 회사 LLM Live 합성 검증 3/3을 통과했고, Outlook과 사내 운영환경은 그 이후 Post-MVP입니다.
 
 ---
@@ -1491,7 +1508,7 @@ http://localhost:8501
 | `llm_client.py` | 회사 LLM Mail Analyzer |
 | `mail_filters.py` | 사용자 Mail 제외 Rule |
 | `workflow.py` | 전체 M-01~M-05 실행 지휘자 |
-| `decision.py` | 최종 Action Python 정책 |
+| `decision.py` | 확정 경로 Action 정책과 Agent Proposal Payload·Safety Guard |
 | `policy.py` | Task 상태 전이 허용 규칙 |
 | `storage.py` | SQLite 검색·Transaction·History |
 | `priority.py` | P1~P4 중요도·긴급도 계산 |

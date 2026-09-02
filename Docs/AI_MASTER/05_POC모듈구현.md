@@ -6,7 +6,7 @@
 
 * **구현 기능:** 합성 Mail 입력부터 의미 분석, Task 후보 검색, 7개 Action 결정, Validation, 사용자 확인, Task·History 저장까지 연결한 단일 Agent Workflow
 
-* **동작 원리:** M-01이 회사 LLM API로 Mail Intent와 요청사항·기한을 구조화하고, M-02가 `conversation_id`와 제목·요청자·요약을 이용해 기존 Task 후보를 찾습니다. M-03의 Python Application Logic이 현재 Task 상태와 후보 수를 바탕으로 `CREATE_TASK`, `UPDATE_TASK`, `LINK_TO_TASK`, `SET_WAITING`, `MARK_COMPLETED`, `ASK_USER`, `IGNORE` 중 하나를 결정합니다. Pydantic Validation을 통과한 결과만 M-04가 SQLite에 반영하며, 중요하거나 불명확한 변경은 M-05 사용자 확인 이후 반영합니다. Streamlit 첫 화면에서는 실제 업무 모드와 MVP 시연 모드를 선택하고, 동일 Agent Core를 공유하되 실제 업무 DB와 시연 DB를 분리합니다.
+* **동작 원리:** M-01이 회사 LLM API로 Mail Intent와 요청사항·기한을 구조화하고, M-02가 `conversation_id`와 제목·요청자·요약을 이용해 기존 Task 후보를 찾습니다. 동일 Thread로 확정할 수 없는 `STRUCTURED_RAG` 경로에서는 Task Context Agent가 관계·대상 Task와 `CREATE_TASK`, `UPDATE_TASK`, `LINK_TO_TASK`, `SET_WAITING`, `MARK_COMPLETED`, `ASK_USER`, `IGNORE` 중 다음 Action을 선택해 제안합니다. Python M-03은 실행 Payload와 후보 범위·Intent·상태 전이·중요 변경을 검증하여 승인하거나 `ASK_USER`로 이관합니다. Pydantic Validation을 통과한 결과만 M-04가 SQLite에 반영하며, 중요하거나 불명확한 변경은 M-05 사용자 확인 이후 반영합니다. Streamlit 첫 화면에서는 실제 업무 모드와 MVP 시연 모드를 선택하고, 동일 Agent Core를 공유하되 실제 업무 DB와 시연 DB를 분리합니다.
 
 * **주요 기술:** Python 3.12.13 로컬 실행 환경, OpenAI Python SDK의 `AzureOpenAI` 호환 Client, 회사 LLM `gpt-4.1-mini`, Pydantic, SQLite, Streamlit
 
@@ -14,7 +14,7 @@
 
 * **구현 기능:** Mail 분석, 중복 확인, Task 후보 검색, Action 실행, 사용자 검토, 품질평가 함수와 읽기 전용 Gmail Input Adapter 연동
 
-* **동작 원리:** `MailTaskWorkflow.process()`가 처리 순서를 관리합니다. `MailAnalyzer.analyze()`의 구조화 결과를 Pydantic으로 검증하고, `SQLiteStorage.search_candidate_tasks()`가 동일 Thread 우선 후보와 매칭 점수·근거를 반환합니다. `decide_action()`이 Action을 제안하며 `SQLiteStorage.apply()`가 하나의 Transaction 안에서 Task·Link·History를 저장합니다. `resolve_review()`는 사용자가 확정한 결과만 반영하고, `run_scenario_evaluation()`은 각 Case를 격리 DB에서 재현해 기대값과 비교합니다. `GmailReadOnlySource.load()`는 제한 Label의 신규 Gmail과 Task DB에 연결된 정확한 Thread의 수신·발신 후속 Mail을 기존 `MailInput`으로 정규화합니다. 실제 OAuth 연결 후 별도 테스트 계정의 비식별 합성 Mail 20건을 회사 LLM Live로 처리해 20/20 수용시험과 재조회 중복 차단·실패 0건을 확인했습니다.
+* **동작 원리:** `MailTaskWorkflow.process()`가 처리 순서를 관리합니다. `MailAnalyzer.analyze()`의 구조화 결과를 Pydantic으로 검증하고, `SQLiteStorage.search_candidate_tasks()`와 `retrieve_task_contexts()`가 동일 Thread 또는 top-k 후보와 매칭 점수·근거를 반환합니다. 확정 경로는 기존 `decide_action()`을 유지하고, `STRUCTURED_RAG` 경로는 `TaskContextAgent.judge()`의 Action Proposal을 `build_guarded_agent_proposal()`이 Payload로 구체화하고 안전 검증합니다. `SQLiteStorage.apply()`가 승인된 Proposal만 하나의 Transaction 안에서 Task·Link·History로 저장하고 실제 상태를 재조회합니다. `resolve_review()`는 사용자가 확정한 결과만 반영하고, `run_scenario_evaluation()`은 각 Case를 격리 DB에서 재현해 기대값과 비교합니다. `GmailReadOnlySource.load()`는 제한 Label의 신규 Gmail과 Task DB에 연결된 정확한 Thread의 수신·발신 후속 Mail을 기존 `MailInput`으로 정규화합니다. 실제 OAuth 연결 후 별도 테스트 계정의 비식별 합성 Mail 20건을 회사 LLM Live로 처리해 20/20 수용시험과 재조회 중복 차단·실패 0건을 확인했습니다.
 
 * **주요 기술:** Python 함수 기반 Orchestration, Pydantic Schema Validation, SQLite Transaction, Streamlit Form·Session State, pytest Parameterized Test, 선택적 Google Gmail API Python Client와 `gmail.readonly` OAuth Scope
 
@@ -27,11 +27,12 @@
 * **주요 기술:** SQLite, Pydantic State Model, `conversation_id` Metadata 우선 검색, 설명 가능한 Token 기반 후보 점수, SQLite Task·Mail·History를 Source로 쓰는 경량 Task Context Agentic RAG와 최대 1회 Query Rewrite입니다. 사내 문서검색 RAG·Embedding·Vector DB는 Post-MVP로 유지합니다.
 
 * **최종 MVP Agentic 보강:** 동일 Thread로 확정할 수 없는 경우 top-k Task Context를 검색하고,
-  별도 Task Context Agent가 `SAME_TASK`, `NEW_TASK`, `AMBIGUOUS` 관계와 7개 Action 중 제안값을
-  구조화합니다. 첫 판단이 모호하거나 저신뢰면 Query를 최대 1회 재작성·재검색하고, 재판단도
-  불확실하거나 API·Schema 오류가 나면 `ASK_USER`로 Fail-closed합니다. Python M-03과 기존
-  완료·취소·기한 단축 승인 Gate는 그대로 최종 Guard로 유지합니다. Agent 실행 과정은
-  `processing_events`와 Streamlit의 Agentic Workflow Trace에서 확인할 수 있습니다.
+  별도 Task Context Agent가 `SAME_TASK`, `NEW_TASK`, `AMBIGUOUS` 관계·대상 Task와 7개 Action 중
+  실행 Proposal을 선택합니다. 첫 판단이 모호하거나 저신뢰면 Query를 최대 1회 재작성·재검색하고,
+  재판단도 불확실하거나 API·Schema 오류가 나면 `ASK_USER`로 Fail-closed합니다. Python M-03은
+  Action을 다시 선택하는 대신 Payload를 구성하고 후보 범위·관계·Intent·상태 전이와 완료·취소·
+  기한 단축 승인 Gate를 검증합니다. Agent 실행 과정은 `processing_events`와 Streamlit의 Agentic
+  Workflow Trace에서 Agent Proposal, Python Guard, Final Action으로 구분해 확인할 수 있습니다.
 
 ### 주요 문제 해결 및 기술 리서치
 
@@ -72,4 +73,4 @@
 
 `TASK-001` 한 건만 유지되며 기한은 `2026-08-24`로 변경됩니다. Agent Action, 판단 근거, 원본 Mail ID, 변경 전·후 값과 처리 시각은 Dashboard의 Task History와 운영 로그에서 확인할 수 있습니다. 복수 후보·모호한 기한·완료·취소 Case는 자동 변경하지 않고 사용자 확인으로 전환됩니다.
 
-최종 회귀 검증은 `pytest 136 passed`이며, 회사 LLM Mail 분석 Live 15/15 실행 단위·28/28 Action 단계, Task Context Agent Live 합성 검증 3/3, 별도 테스트 Gmail 비식별 합성 Mail 20/20 수용시험, Windows Scheduler 반복 실행 성공(`LastTaskResult=0`)과 SQLite `quick_check=ok`를 확인했습니다.
+최종 회귀 검증은 `pytest 149 passed`이며, 회사 LLM Mail 분석 Live 15/15 실행 단위·28/28 Action 단계, Task Context Agent Live 합성 검증 3/3, Agent Action Proposal·Python Safety Guard 신규 회귀 13건, 별도 테스트 Gmail 비식별 합성 Mail 20/20 수용시험, Windows Scheduler 반복 실행 성공(`LastTaskResult=0`)과 SQLite `quick_check=ok`를 확인했습니다.

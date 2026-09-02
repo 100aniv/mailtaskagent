@@ -82,6 +82,22 @@ History·Processing Result에 남긴다. 본문 Keyword만으로는 자동 제�
 Domain, Keyword, 날짜와 사용자 Preference는 RAG가 아니라 검증 가능한 Application Rule로
 처리한다. 이 Gate는 최종 MVP의 SQLite Task Context RAG와 별개다.
 
+### Mail-to-Action 단계적 확장
+
+다음 기능은 AI Master 최종 MVP에 포함하지 않고 Post-MVP에서 순서대로 검증한다.
+
+1. **Mail-to-Action Draft:** Task Context를 바탕으로 `NO_REPLY`, `SIMPLE_ACK`, `DATE_REPLY`,
+   `VALUE_REPLY`, `APPROVE_REPLY`, `DRAFT_REPLY`, `ASK_USER` 중 필요한 회신 방식을 판단하고,
+   날짜·값·승인·일반 Draft 입력 화면을 제공한다. 이 단계에서는 실제 메일을 발송하지 않는다.
+2. **Gmail 사용자 승인 발송:** Gmail Send OAuth, 수신자·Reply-All·CC/BCC 검증, Thread·서명·
+   인용문 처리와 발송 History를 추가한다. 사용자가 명시적으로 전송을 승인한 경우에만 발송하고
+   성공 후 기존 `SET_WAITING` 상태 전이를 적용한다.
+3. **사내 Outlook 운영 전환:** Gmail 테스트 계정에서 전체 흐름을 검증한 뒤 Microsoft Graph
+   Read·Send, 사내 인증·권한·서버·운영 DB·Event Subscription과 Slack 운영 알림을 연결한다.
+
+Mail-to-Action은 현재 고정된 7개 Task Lifecycle Action을 대체하지 않는다. Task 관리 계층과
+회신 수행 계층을 분리하고, 실제 발송은 항상 Human-in-the-loop와 Audit History를 통과해야 한다.
+
 ## 5. Outlook 및 Microsoft Graph
 
 ### 검토 항목
@@ -346,8 +362,8 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 2026-08-29 RAG 적용 전 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
 Slack 최소 알림·Dry-run, 6개 역할 기반 운영 UI, Agent 기본 실행·일시정지 계약과 Task 연결
 Thread의 양방향 후속 Mail 추적·Task 타임라인과 저장 DB 우선 화면 시작을 포함해 pytest
-`122 passed`였다. 2026-09-02 Task Context RAG·ReAct·Agent Trace 회귀까지 포함한 현재 결과는
-`136 passed`다. 로컬 SQLite 무결성 오류가 발생하면 자동 처리를 중지하고 백업 복구 절차를
+`122 passed`였다. 2026-09-02 Task Context RAG·ReAct·Agent Action Proposal·Python Safety Guard·
+Agent Trace 회귀까지 포함한 현재 결과는 `149 passed`다. 로컬 SQLite 무결성 오류가 발생하면 자동 처리를 중지하고 백업 복구 절차를
 안내하는 Fail-closed UI도 포함한다. 별도 송신
 계정 기반 Gmail 실메일 수용시험은 `20/20 PASSED`다.
 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로 등록했고 수동 실행 결과
