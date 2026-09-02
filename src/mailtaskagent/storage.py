@@ -16,6 +16,7 @@ from mailtaskagent.models import (
     MailInput,
     ReviewDecision,
     TaskCandidate,
+    TaskContextDecision,
     TaskStatus,
 )
 from mailtaskagent.policy import validate_status_transition
@@ -464,6 +465,156 @@ class SQLiteStorage:
             if score == best_score
         ][:limit]
 
+    def retrieve_task_contexts(
+        self,
+        query: str,
+        requester: str | None,
+        *,
+        top_k: int = 5,
+        conversation_id: str | None = None,
+        mail_limit: int = 3,
+        history_limit: int = 5,
+        body_limit: int = 500,
+    ) -> list[dict]:
+        """Return a bounded, explainable Task Context candidate pool for the Agent."""
+        bounded_top_k = max(1, min(10, top_k))
+        bounded_mail_limit = max(1, min(3, mail_limit))
+        bounded_history_limit = max(1, min(5, history_limit))
+        bounded_body_limit = max(100, min(1000, body_limit))
+        with self.connect() as connection:
+            task_rows = connection.execute(
+                """
+                SELECT task_id, conversation_id, title, requester, description, due_date,
+                       reply_required, status, waiting_since, updated_at
+                FROM tasks
+                WHERE status NOT IN ('COMPLETED', 'CANCELLED')
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (max(50, bounded_top_k * 10),),
+            ).fetchall()
+
+            contexts: list[dict] = []
+            query_tokens = _match_tokens(query)
+            requester_key = (requester or "").strip().casefold()
+            task_count = max(1, len(task_rows))
+            for recency_rank, row in enumerate(task_rows):
+                task_data = dict(row)
+                task_data.pop("updated_at", None)
+                task_data["reply_required"] = bool(task_data["reply_required"])
+
+                mail_rows = connection.execute(
+                    """
+                    SELECT m.mail_id, m.direction, m.sender, m.occurred_at,
+                           m.subject, m.body
+                    FROM mail_task_links AS l
+                    JOIN mails AS m ON m.mail_id = l.mail_id
+                    WHERE l.task_id = ?
+                    ORDER BY m.occurred_at DESC
+                    LIMIT ?
+                    """,
+                    (task_data["task_id"], bounded_mail_limit),
+                ).fetchall()
+                recent_mails = []
+                for mail_row in mail_rows:
+                    mail_data = dict(mail_row)
+                    body = mail_data.get("body") or ""
+                    mail_data["body"] = body[:bounded_body_limit]
+                    mail_data["body_truncated"] = len(body) > bounded_body_limit
+                    recent_mails.append(mail_data)
+
+                history_rows = connection.execute(
+                    """
+                    SELECT history_id, mail_id, action, before_json, after_json,
+                           reason, confidence, user_decision, created_at
+                    FROM histories
+                    WHERE task_id = ?
+                    ORDER BY history_id DESC
+                    LIMIT ?
+                    """,
+                    (task_data["task_id"], bounded_history_limit),
+                ).fetchall()
+                recent_histories = []
+                for history_row in history_rows:
+                    history = dict(history_row)
+                    history["before"] = (
+                        json.loads(history.pop("before_json"))
+                        if history.get("before_json")
+                        else None
+                    )
+                    history["after"] = (
+                        json.loads(history.pop("after_json"))
+                        if history.get("after_json")
+                        else None
+                    )
+                    recent_histories.append(history)
+
+                searchable = " ".join(
+                    filter(
+                        None,
+                        [
+                            task_data.get("title"),
+                            task_data.get("description"),
+                            task_data.get("requester"),
+                            *(item.get("subject") for item in recent_mails),
+                            *(item.get("body") for item in recent_mails),
+                            *(item.get("reason") for item in recent_histories),
+                        ],
+                    )
+                )
+                candidate_tokens = _match_tokens(searchable)
+                matched_tokens = sorted(query_tokens & candidate_tokens)
+                lexical_ratio = len(matched_tokens) / max(1, len(query_tokens))
+                requester_match = bool(
+                    requester_key
+                    and (task_data.get("requester") or "").strip().casefold()
+                    == requester_key
+                )
+                thread_match = bool(
+                    conversation_id
+                    and task_data.get("conversation_id") == conversation_id
+                )
+                recency_score = max(0.0, 1.0 - (recency_rank / task_count))
+                score = min(
+                    1.0,
+                    lexical_ratio * 0.65
+                    + (0.20 if requester_match else 0.0)
+                    + (0.10 if thread_match else 0.0)
+                    + recency_score * 0.05,
+                )
+                reasons = []
+                if thread_match:
+                    reasons.append("동일 conversation_id")
+                if matched_tokens:
+                    reasons.append(f"Context Token 일치: {', '.join(matched_tokens[:8])}")
+                if requester_match:
+                    reasons.append("동일 requester")
+                if not reasons:
+                    reasons.append("최근 활성 Task 후보")
+
+                candidate = TaskCandidate.model_validate(task_data).model_copy(
+                    update={
+                        "match_score": round(score, 4),
+                        "match_reason": " · ".join(reasons),
+                    }
+                )
+                contexts.append(
+                    {
+                        "candidate": candidate.model_dump(mode="json"),
+                        "recent_mails": recent_mails,
+                        "recent_histories": recent_histories,
+                        "retrieval_reasons": reasons,
+                    }
+                )
+
+        contexts.sort(
+            key=lambda item: (
+                -float(item["candidate"]["match_score"]),
+                item["candidate"]["task_id"],
+            )
+        )
+        return contexts[:bounded_top_k]
+
     @staticmethod
     def _candidate_from_row(row: sqlite3.Row) -> TaskCandidate:
         data = dict(row)
@@ -514,6 +665,11 @@ class SQLiteStorage:
         thread_history: list[dict] | None = None,
         current_task_context: dict | None = None,
         validation_result: dict | None = None,
+        retrieval_query: str | None = None,
+        retrieved_task_contexts: list[dict] | None = None,
+        task_context_decision: TaskContextDecision | None = None,
+        rag_retry_count: int = 0,
+        match_route: str = "LEGACY",
     ) -> tuple[dict | None, dict | None, dict | None]:
         now = _now()
         with self.connect() as connection:
@@ -657,6 +813,15 @@ class SQLiteStorage:
                     "thread_history": thread_history or [],
                     "candidate_tasks": [item.model_dump(mode="json") for item in candidate_tasks],
                     "current_task_context": current_task_context,
+                    "retrieval_query": retrieval_query,
+                    "retrieved_task_contexts": retrieved_task_contexts or [],
+                    "task_context_decision": (
+                        task_context_decision.model_dump(mode="json")
+                        if task_context_decision
+                        else None
+                    ),
+                    "rag_retry_count": rag_retry_count,
+                    "match_route": match_route,
                     "validation_result": validation_result or {},
                     "action": proposal.action.value,
                     "task_id": task_id,

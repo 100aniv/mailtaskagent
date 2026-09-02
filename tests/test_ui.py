@@ -190,7 +190,7 @@ def test_mode_entry_separates_operational_and_demo_navigation(
     assert not app.tabs
     assert not any(button.label == "데모 DB 초기화" for button in app.button)
     assert any(button.label == "전체 업무 보기" for button in app.button)
-    assert any("긴급 업무" in item.value for item in app.markdown)
+    assert any("즉시 처리" in item.value for item in app.markdown)
 
 
 def test_product_dashboard_and_full_mock_mail_flow(tmp_path, monkeypatch) -> None:
@@ -238,6 +238,8 @@ def test_product_dashboard_and_full_mock_mail_flow(tmp_path, monkeypatch) -> Non
         message.value == "미처리 합성 메일 15건 자동 정리를 실행했습니다. 성공 15건"
         for message in app.success
     )
+    assert any("Agentic Workflow Trace" in item.value for item in app.markdown)
+    assert any(item.label == "Trace를 확인할 Mail" for item in app.selectbox)
 
 
 def test_operation_mode_renders_explainable_priority_and_direct_completion(
@@ -265,12 +267,19 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
     assert any(button.label == "완료 처리" for button in app.button)
     assert not app.dataframe
 
+    detail_button = next(button for button in app.button if button.label == "상세 보기")
+    app = detail_button.click().run(timeout=60)
+    assert not app.exception
+    assert any("메일 진행 타임라인" in item.value for item in app.markdown)
+    assert any("업무 변경 기록" in item.value for item in app.markdown)
+    assert any(button.label == "변경 내용 저장" for button in app.button)
+
     app = _select_radio(app, "주 메뉴", ui_module.HOME_PAGE)
 
     assert not app.exception
     assert any(button.label == "완료 처리" for button in app.button)
     assert any("우선순위 근거 ·" in caption.value for caption in app.caption)
-    assert any("긴급 업무" in item.value for item in app.markdown)
+    assert any("즉시 처리" in item.value for item in app.markdown)
     complete_button = next(button for button in app.button if button.label == "완료 처리")
     app = complete_button.click().run(timeout=60)
     assert not app.exception
@@ -325,12 +334,12 @@ def test_connected_operation_mode_runs_gmail_agent_by_default(
     app = _select_radio(app, "주 메뉴", ui_module.AUTOMATION_PAGE)
 
     assert [tab.label for tab in app.tabs] == [
-        "⭐ 중요도 기준",
+        "⭐ 우선순위 기준",
         "🚫 광고·반복 메일 제외",
         "⚙️ 실행 주기",
     ]
     assert any(
-        "VIP 발신자, 고객사 도메인, 중요 키워드" in item.value
+        "VIP 발신자·고객사 도메인·중요 키워드" in item.value
         for item in app.markdown
     )
 

@@ -26,9 +26,9 @@ Mail 수집
 | 구분 | 담당 역할 |
 |---|---|
 | 회사 LLM `gpt-4.1-mini` | Mail의 업무 관련 여부, Intent, 요청사항, 기한, 회신 필요 여부와 판단 근거 구조화 |
-| Python M-02 | `conversation_id` 우선, 제목·요청자·요청요약 Token 기반 기존 Task 후보 검색 |
+| Python M-02 | `conversation_id` 우선, 확정 불가 시 SQLite Task·최근 Mail·History top-k 검색 |
 | Python M-03 | 현재 상태와 후보 수를 보고 최종 Agent Action 결정 |
-| Task Context Agent *(최종 MVP 잔여)* | 동일 Thread로 확정할 수 없는 top-k 후보의 관계와 Action 제안, 최대 1회 Query Rewrite |
+| Task Context Agent | 동일 Thread로 확정할 수 없는 top-k 후보의 관계와 Action 제안, 최대 1회 Query Rewrite·재판단 |
 | Pydantic·Application Logic | Schema, 허용 상태 전이, Task ID와 중요 변경 검증 |
 | 사용자 | 복수 후보, 모호한 기한, 완료·취소 등 중요한 결정을 최종 확인 |
 | SQLite | Task 현재 상태, Mail 연결, Processing Event와 변경 History 저장 |
@@ -41,8 +41,8 @@ LLM이 DB를 직접 수정하지 않는 것이 핵심 안전 설계다.
 | 모듈 | 하는 일 |
 |---|---|
 | M-01 Mail Input & Analyzer | 합성 Dataset 또는 Gmail을 공통 Schema로 바꾸고 LLM으로 의미를 구조화 |
-| M-02 Task Context Matcher | 같은 Thread와 Metadata·Token을 이용해 관련 Task 후보 검색 |
-| M-03 Agent Action Decision | 7개 Action 중 하나를 결정 |
+| M-02 Task Context Matcher | 같은 Thread를 우선하고 확정 불가 시 제한 Task Context top-k 검색 |
+| M-03 Agent Action Decision | 검색 결과를 관찰·재판단하고 Python Guard로 7개 Action 중 하나를 결정 |
 | M-04 Task State & History Manager | 검증된 결과를 SQLite Transaction으로 반영하고 History 저장 |
 | M-05 User Review & Dashboard | 사용자가 애매하거나 중요한 결정을 승인·수정·거절하고 결과 확인 |
 
@@ -110,16 +110,17 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 | 요청사항·기한 필수 필드 | 26/26 |
 | 기존 Task 연결 | 8/8 |
 | 테스트 Gmail 수용시험 | 20/20 |
-| 전체 자동 테스트 | 122 passed |
+| Task Context Agent Live 합성 검증 | 3/3 |
+| 전체 자동 테스트 | 136 passed |
 | Gmail 재조회 | 신규 처리 0, 중복 차단 20, 실패 0 |
 | Windows Scheduler | 반복 실행 성공, `LastTaskResult=0` |
 | SQLite 무결성 | `quick_check=ok` |
 
 위 수치는 정의된 합성·비식별 Dataset과 별도 테스트 Gmail의 결과다. 실제 회사 Mailbox 전체 성능이나 실제 시간 절감률로 확대해서 말하면 안 된다. 수동 업무 정리시간 Baseline은 아직 측정하지 않았다.
 
-## 9. AI Master 현재 단계와 남은 범위
+## 9. AI Master 최종 MVP 완료 범위
 
-### 시연 가능한 Core E2E 기준선으로 검증 완료
+### 구현·검증 완료
 
 - 문제 정의와 3개 핵심 사용자 시나리오
 - M-01~M-05 단일 Agent Workflow
@@ -130,15 +131,13 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 - 품질·보안·장애·UI·Gmail 회귀 테스트
 - 읽기 전용 Gmail 개인 파일럿과 1분 자동 동기화
 - SQLite 동시 접근·백업·손상 감지 안전장치
-
-### AI Master 최종 MVP까지 남은 기능
-
 - 동일 Thread가 아닌 다른 표현의 Mail을 위한 SQLite Task Context top-k Retrieval
 - 별도 Task Context Agent의 `SAME_TASK` / `NEW_TASK` / `AMBIGUOUS` 관계와 Action 제안
 - 첫 판단이 모호하거나 저신뢰일 때 최대 1회 Query Rewrite·재검색·재판단
 - 후보 밖 Task ID, API·Schema 실패와 두 번째 불확실 판단의 `ASK_USER` Fail-closed
 - 기존 완료·취소·기한 단축 승인 Gate와 전체 회귀 유지
-- 신규 RAG 평가 Evidence와 전체 pytest 통과
+- Observe Input부터 Final Output까지의 Agentic Workflow Trace
+- 신규 RAG 평가 Evidence와 전체 pytest 136개 통과
 
 ### 사내 운영 전 추가로 필요한 것
 
@@ -150,9 +149,8 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 - 다중 사용자와 조직 Mailbox 지원
 - Push/Event Subscription 기반 실시간 수신이 필요할 경우 별도 설계
 
-따라서 현재는 “아무것도 안 된 PoC”도 아니고 “Outlook만 붙이면 되는 최종 MVP”도 아니다.
-**Core E2E와 Gmail 파일럿은 시연 가능한 수준으로 검증됐고, 멘토 피드백의 Task Context RAG가
-최종 MVP의 남은 기능**이다. Outlook과 위 사내 운영 항목은 그 이후 단계다.
+따라서 AI Master 최종 MVP의 기술 Gate는 완료했다. 다만 실제 시간 절감률과 실제 Mailbox
+전체 정확도는 아직 측정하지 않았고, Outlook과 위 사내 운영 항목은 그 이후 단계다.
 
 ## 10. 현재 의도적으로 구현하지 않은 기능
 
@@ -173,16 +171,15 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 4. 같은 Thread의 후속 Mail로 `UPDATE_TASK` 또는 `SET_WAITING`을 보여준다.
 5. 복수 후보 Case에서 `ASK_USER`가 멈추고 사용자 선택 후에만 DB가 바뀌는 것을 보여준다.
 6. Task 상세의 Mail 타임라인과 변경 전·후 History를 보여준다.
-7. 운영 상태에서 단계별 Processing Event와 오류 확인 화면을 보여준다.
-8. 마지막에 15/15, 28/28, Gmail 20/20, pytest 122 passed와 측정 한계를 설명한다.
-9. “현재 수치는 Task Context RAG 전의 검증된 기준선이며, 해당 기능은 멘토 피드백을 반영한
-   최종 MVP 잔여 과제”라고 정확히 선을 긋는다.
+7. 운영 상태의 Agentic Workflow Trace에서 RAG 검색, 후보 관찰, 판단, Query Rewrite,
+   Python Guard와 실행 결과 관찰을 보여준다.
+8. 마지막에 15/15, 28/28, Task Context Live 3/3, Gmail 20/20, pytest 136 passed와 측정 한계를 설명한다.
 
 ## 12. 발표용 30초 결론
 
 “MailTaskAgent는 Mail을 요약하는 도구가 아니라 Mail Thread와 현재 Task 상태를 함께 보고 다음
-Action을 결정하는 개인 업무관리 Agent입니다. 현재 Core 기준선은 회사 LLM Live 15개 실행
-단위와 28개 Action 단계, 테스트 Gmail 20건, 자동 테스트 122건을 통과했습니다. 멘토 피드백의
-Task Context RAG를 최종 MVP 잔여 기능으로 반영해 다른 표현의 동일 업무 판단과 최대 1회
-재검색을 보강할 예정이며, 그래도 불확실하면 사용자에게 넘깁니다. Outlook·사내 인증·서버
-배포와 사내 문서 RAG는 그 이후 Post-MVP 범위입니다.”
+Action을 결정하는 개인 업무관리 Agent입니다. 회사 LLM Mail 분석 15개 실행 단위와 28개 Action
+단계, Task Context Agent Live 3건, 테스트 Gmail 20건, 자동 테스트 136건을 통과했습니다.
+다른 표현의 동일 업무는 SQLite Task Context를 검색하고 최대 한 번 재검색하며, 그래도
+불확실하면 사용자에게 넘깁니다. Outlook·사내 인증·서버 배포와 사내 문서 RAG는 그 이후
+Post-MVP 범위입니다.”

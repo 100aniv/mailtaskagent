@@ -27,6 +27,10 @@ class Settings:
     database_path: Path
     confidence_threshold: float
     schema_retries: int = 1
+    task_context_rag_enabled: bool = False
+    task_context_rag_top_k: int = 5
+    task_context_rag_confidence_threshold: float = 0.75
+    task_context_rag_max_retries: int = 1
 
     @property
     def llm_mode(self) -> str:
@@ -38,6 +42,9 @@ def load_settings(env_file: Path | None = None) -> Settings:
     api_key = os.getenv("COMPANY_LLM_API_KEY", "").strip()
     raw_db_path = Path(os.getenv("DATABASE_PATH", "data/mailtaskagent.db"))
     database_path = raw_db_path if raw_db_path.is_absolute() else PROJECT_ROOT / raw_db_path
+    rag_max_retries = int(os.getenv("TASK_CONTEXT_RAG_MAX_RETRIES", "1"))
+    if rag_max_retries != 1:
+        raise ValueError("TASK_CONTEXT_RAG_MAX_RETRIES must be exactly 1")
     return Settings(
         api_url=os.getenv("COMPANY_LLM_API_URL", "https://skax.ai-talentlab.com").rstrip("/"),
         api_key=api_key,
@@ -48,4 +55,14 @@ def load_settings(env_file: Path | None = None) -> Settings:
         database_path=database_path,
         confidence_threshold=float(os.getenv("AGENT_CONFIDENCE_THRESHOLD", "0.75")),
         schema_retries=max(0, int(os.getenv("COMPANY_LLM_SCHEMA_RETRIES", "1"))),
+        task_context_rag_enabled=_as_bool(
+            os.getenv("TASK_CONTEXT_RAG_ENABLED"), default=True
+        ),
+        task_context_rag_top_k=max(
+            1, min(10, int(os.getenv("TASK_CONTEXT_RAG_TOP_K", "5")))
+        ),
+        task_context_rag_confidence_threshold=float(
+            os.getenv("TASK_CONTEXT_RAG_CONFIDENCE_THRESHOLD", "0.75")
+        ),
+        task_context_rag_max_retries=rag_max_retries,
     )

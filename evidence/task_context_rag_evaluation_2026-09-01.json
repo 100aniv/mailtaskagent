@@ -1,0 +1,85 @@
+{
+  "evidence_type": "task_context_rag_evaluation",
+  "generated_at": "2026-09-02T16:30:39+09:00",
+  "baseline_commit": "2e1cb8836531ce1598a3d6dd5f60f2cd35304117",
+  "implementation_branch": "codex/task-context-rag-agent-loop",
+  "data_policy": "synthetic_and_deidentified_only",
+  "secrets_recorded": false,
+  "configuration": {
+    "model": "gpt-4.1-mini",
+    "retrieval_source": "SQLite tasks, mails, mail_task_links, histories",
+    "top_k": 5,
+    "mail_limit_per_task": 3,
+    "history_limit_per_task": 5,
+    "confidence_threshold": 0.75,
+    "max_query_rewrite_retries": 1,
+    "vector_database_used": false,
+    "external_embedding_used": false
+  },
+  "automated_test_result": {
+    "command": ".venv/Scripts/python.exe -m pytest -q -p no:cacheprovider",
+    "baseline_passed": 122,
+    "current_passed": 136,
+    "new_test_count": 14,
+    "failed": 0,
+    "duration_seconds": 19.7
+  },
+  "verified_contracts": [
+    "single exact conversation task bypasses RAG and TaskContextAgent",
+    "different conversation and wording can select a retrieved task context",
+    "low-confidence decision rewrites the query and retries exactly once",
+    "ambiguity after retry fails closed to ASK_USER",
+    "task IDs outside retrieved candidates are rejected",
+    "Task Context API or schema failure does not change a task",
+    "recent user decisions are included in bounded task memory",
+    "retrieved task status, recent mail count, history count, and user-decision count are recorded as safe observation evidence",
+    "completion, cancellation, and due-date reduction retain user approval gates",
+    "post-action stored state is observed and recorded",
+    "technical trace UI renders without a Streamlit exception",
+    "legacy 15-case demo result remains unchanged"
+  ],
+  "baseline_comparison": {
+    "case": "different conversation, different requester, and no lexical token overlap",
+    "legacy_result": "ASK_USER with no candidate",
+    "agentic_rag_result": "UPDATE_TASK for the selected retrieved candidate",
+    "interpretation": "The test proves the routing and guard contract, not production mailbox accuracy."
+  },
+  "company_llm_live_checks": {
+    "model": "gpt-4.1-mini",
+    "case_count": 3,
+    "passed_count": 3,
+    "results": [
+      {
+        "case_id": "LIVE-RAG-01",
+        "expected": "SAME_TASK and UPDATE_TASK",
+        "actual_relation": "SAME_TASK",
+        "actual_recommended_action": "UPDATE_TASK",
+        "confidence": 0.9,
+        "passed": true
+      },
+      {
+        "case_id": "LIVE-RAG-02",
+        "expected": "AMBIGUOUS, ASK_USER, and a rewritten query",
+        "actual_relation": "AMBIGUOUS",
+        "actual_recommended_action": "ASK_USER",
+        "confidence": 0.6,
+        "rewritten_query_present": true,
+        "passed": true
+      },
+      {
+        "case_id": "LIVE-RAG-03",
+        "expected": "AMBIGUOUS and ASK_USER after the retry limit",
+        "actual_relation": "AMBIGUOUS",
+        "actual_recommended_action": "ASK_USER",
+        "confidence": 0.58,
+        "rewritten_query_after_application_guard": null,
+        "passed": true
+      }
+    ]
+  },
+  "limitations": [
+    "Live checks use three synthetic cases and do not represent real mailbox-wide accuracy.",
+    "The trace stores concise decision evidence and does not expose private chain-of-thought.",
+    "Knowledge-document RAG, vector search, and company Outlook integration remain outside this MVP."
+  ]
+}

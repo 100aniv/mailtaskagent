@@ -173,10 +173,13 @@ Task 변경을 재실행하지 않았고, 정상 실행의 Slack 상태는 `NOT_
    Scheduler 중복 실행은 위 단일 실행 잠금으로 차단하고, Dashboard의 Task 수정과 짧게 겹치는
    쓰기는 SQLite가 대기 후 순차 반영한다.
 
-2026-09-01 운영 DB 복구 후 위 동시 실행 방어를 적용했다. 전체 pytest `122 passed`, Health
+2026-09-01 운영 DB 복구 후 위 동시 실행 방어를 적용했다. 당시 전체 pytest `122 passed`, Health
 Check `READY`, 실제 Gmail 재조회 가져옴 26·신규 0·중복 26·실패 0, SQLite `quick_check=ok`와
 WAL 적용을 확인한 뒤 1분 Scheduler를 재등록했다. 당시 손상 파일은 원인 분석을 위해 별도
 보존하고 정상 백업을 새로 생성했으며, 확인되지 않은 단일 원인을 단정하지 않는다.
+
+2026-09-02 Task Context RAG·최대 1회 ReAct 재판단·Agent Trace를 추가한 뒤 기존 운영 방어를
+포함한 전체 회귀는 `136 passed`다.
 
 2026-08-28 현재 로컬 파일럿에는 `MailTaskAgent-GmailSync`가 1분 주기로 등록되어 있다.
 수동 실행 결과 `LastTaskResult=0`과 다음 실행 예약을 확인했으며, 최신 실행은 제한 Gmail

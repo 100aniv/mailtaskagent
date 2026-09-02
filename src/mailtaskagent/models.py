@@ -49,6 +49,12 @@ class MailIntent(StrEnum):
     UNCERTAIN = "UNCERTAIN"
 
 
+class TaskRelation(StrEnum):
+    SAME_TASK = "SAME_TASK"
+    NEW_TASK = "NEW_TASK"
+    AMBIGUOUS = "AMBIGUOUS"
+
+
 class MailInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -116,6 +122,25 @@ class ActionProposal(BaseModel):
     needs_user_confirmation: bool = False
 
 
+class TaskContextDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    relation: TaskRelation
+    selected_task_id: str | None = None
+    recommended_action: AgentAction
+    confidence: float = Field(ge=0, le=1)
+    reason: str = Field(min_length=1)
+    rewritten_query: str | None = None
+
+    @model_validator(mode="after")
+    def validate_relation_contract(self) -> "TaskContextDecision":
+        if self.relation == TaskRelation.SAME_TASK and not self.selected_task_id:
+            raise ValueError("SAME_TASK requires selected_task_id")
+        if self.rewritten_query is not None:
+            self.rewritten_query = self.rewritten_query.strip() or None
+        return self
+
+
 class WorkflowResult(BaseModel):
     case_id: str
     mail: MailInput
@@ -124,6 +149,11 @@ class WorkflowResult(BaseModel):
     thread_history: list[dict[str, Any]] = Field(default_factory=list)
     candidate_tasks: list[TaskCandidate] = Field(default_factory=list)
     current_task_context: dict[str, Any] | None = None
+    retrieval_query: str | None = None
+    retrieved_task_contexts: list[dict[str, Any]] = Field(default_factory=list)
+    task_context_decision: TaskContextDecision | None = None
+    rag_retry_count: int = 0
+    match_route: str = "LEGACY"
     validation_result: dict[str, Any] = Field(default_factory=dict)
     task: dict[str, Any] | None = None
     before: dict[str, Any] | None = None

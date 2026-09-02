@@ -24,14 +24,14 @@
 
 * **동작 원리:** 한 건의 Mail을 처리하는 동안 동일 Thread의 선행 Mail, Mail 분석 결과, 후보 Task, 선택 Task의 최근 History, Action 제안, Validation과 실행 결과를 Pydantic 객체로 유지합니다. 처리가 끝나면 Task 현재 상태, 원본 Mail ID, 변경 전·후 값, 판단 근거, 신뢰도, 사용자 결정을 SQLite에 저장하고 다음 Mail 처리 시 필요한 Context만 다시 조회합니다. 동일 `mail_id`는 기존 결과를 반환하여 LLM과 DB 변경을 재실행하지 않습니다.
 
-* **주요 기술:** SQLite, Pydantic State Model, `conversation_id` Metadata 우선 검색, 설명 가능한 Token 기반 후보 점수. 현재 시연 기준선에는 RAG·Embedding·Vector DB를 사용하지 않았습니다. 멘토 피드백에 따라 최종 MVP에는 SQLite Task·Mail·History를 검색 Source로 쓰는 경량 Task Context Agentic RAG를 추가할 예정이며, 사내 문서검색 RAG·Embedding·Vector DB는 Post-MVP로 유지합니다.
+* **주요 기술:** SQLite, Pydantic State Model, `conversation_id` Metadata 우선 검색, 설명 가능한 Token 기반 후보 점수, SQLite Task·Mail·History를 Source로 쓰는 경량 Task Context Agentic RAG와 최대 1회 Query Rewrite입니다. 사내 문서검색 RAG·Embedding·Vector DB는 Post-MVP로 유지합니다.
 
-* **최종 MVP 잔여 구현:** 동일 Thread로 확정할 수 없는 경우 top-k Task Context를 검색하고,
+* **최종 MVP Agentic 보강:** 동일 Thread로 확정할 수 없는 경우 top-k Task Context를 검색하고,
   별도 Task Context Agent가 `SAME_TASK`, `NEW_TASK`, `AMBIGUOUS` 관계와 7개 Action 중 제안값을
   구조화합니다. 첫 판단이 모호하거나 저신뢰면 Query를 최대 1회 재작성·재검색하고, 재판단도
   불확실하거나 API·Schema 오류가 나면 `ASK_USER`로 Fail-closed합니다. Python M-03과 기존
-  완료·취소·기한 단축 승인 Gate는 그대로 최종 Guard로 유지합니다. 이 항목은 아직 코드·테스트
-  결과가 없으므로 아래 PoC 검증 수치에 포함하지 않습니다.
+  완료·취소·기한 단축 승인 Gate는 그대로 최종 Guard로 유지합니다. Agent 실행 과정은
+  `processing_events`와 Streamlit의 Agentic Workflow Trace에서 확인할 수 있습니다.
 
 ### 주요 문제 해결 및 기술 리서치
 
@@ -72,4 +72,4 @@
 
 `TASK-001` 한 건만 유지되며 기한은 `2026-08-24`로 변경됩니다. Agent Action, 판단 근거, 원본 Mail ID, 변경 전·후 값과 처리 시각은 Dashboard의 Task History와 운영 로그에서 확인할 수 있습니다. 복수 후보·모호한 기한·완료·취소 Case는 자동 변경하지 않고 사용자 확인으로 전환됩니다.
 
-최종 회귀 검증은 `pytest 122 passed`이며, 회사 LLM Live 15/15 실행 단위·28/28 Action 단계, 별도 테스트 Gmail 비식별 합성 Mail 20/20 수용시험, Windows Scheduler 반복 실행 성공(`LastTaskResult=0`)과 SQLite `quick_check=ok`를 확인했습니다.
+최종 회귀 검증은 `pytest 136 passed`이며, 회사 LLM Mail 분석 Live 15/15 실행 단위·28/28 Action 단계, Task Context Agent Live 합성 검증 3/3, 별도 테스트 Gmail 비식별 합성 Mail 20/20 수용시험, Windows Scheduler 반복 실행 성공(`LastTaskResult=0`)과 SQLite `quick_check=ok`를 확인했습니다.

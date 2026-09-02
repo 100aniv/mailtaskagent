@@ -339,14 +339,15 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 | SSO·권한관리 | 설계 Gate만 완료 | 회사 IdP·App Registration·역할 정책 필요 |
 | Slack 사내 알림 | Payload·Dry-run·실패 시 전송 계약 구현 | 실제 Webhook·채널 승인 후 Live 수신 확인 필요 |
 | 중앙 Logging·Monitoring | 로컬 Event·sync_runs·Health까지 구현 | 회사 Monitoring 수집 규격·Endpoint 필요 |
-| 사내 지식 RAG/Vector DB | 적용하지 않음 | 실제 정책 문서 Corpus와 필요성 없음. SQLite Task Context RAG는 최종 MVP 잔여 범위 |
+| 사내 지식 RAG/Vector DB | 적용하지 않음 | 실제 정책 문서 Corpus와 필요성 없음. SQLite Task Context RAG는 최종 MVP에 별도로 구현·검증 완료 |
 | 자동 회신·발송·삭제 | 적용하지 않음 | 현재 안전 범위 밖 |
 | Outlook Live | 사용자 요청에 따라 제외 | Graph 합성 Adapter Contract만 별도 보존 |
 
-2026-08-29 최신 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
+2026-08-29 RAG 적용 전 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
 Slack 최소 알림·Dry-run, 6개 역할 기반 운영 UI, Agent 기본 실행·일시정지 계약과 Task 연결
 Thread의 양방향 후속 Mail 추적·Task 타임라인과 저장 DB 우선 화면 시작을 포함해 pytest
-`122 passed`다. 로컬 SQLite 무결성 오류가 발생하면 자동 처리를 중지하고 백업 복구 절차를
+`122 passed`였다. 2026-09-02 Task Context RAG·ReAct·Agent Trace 회귀까지 포함한 현재 결과는
+`136 passed`다. 로컬 SQLite 무결성 오류가 발생하면 자동 처리를 중지하고 백업 복구 절차를
 안내하는 Fail-closed UI도 포함한다. 별도 송신
 계정 기반 Gmail 실메일 수용시험은 `20/20 PASSED`다.
 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로 등록했고 수동 실행 결과

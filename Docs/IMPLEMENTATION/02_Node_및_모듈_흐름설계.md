@@ -4,20 +4,24 @@
 
 ```text
 START
-  -> M-01 load/normalize/check duplicate/analyze
-  -> M-02 exact thread or retrieve ranked task contexts
-  -> M-03 Task Context relation judgment when exact thread is unavailable
+  -> Observe Input: M-01 load/normalize/check duplicate/analyze
+  -> Reason/Plan: exact thread 확인 또는 Task Context 검색 경로 선택
+  -> Act/Tool: M-02 exact thread or retrieve ranked task contexts
+  -> Observe Context: 후보 Task·최근 Mail·History·사용자 결정 확인
+  -> Reason: M-03 Task Context relation judgment when exact thread is unavailable
      -> low confidence/ambiguous: rewrite query and retrieve exactly once
+     -> Observe Retry Result: 재검색 후보로 다시 판단
      -> still uncertain/error: ASK_USER fail-closed
-  -> M-03 Python policy decides exactly one final Action
-  -> Action Validation
+  -> Act: M-03 Python policy decides exactly one final Action
+  -> Guard: Action Validation
      -> IGNORE: M-04 처리 이력 -> M-05 결과
      -> ASK_USER/중요 변경: M-05 사용자 확인
         -> 승인·수정: M-04 적용 및 이력
         -> 거절·무시: M-04 결정 이력만 저장
      -> 유효 Action: M-04 Transaction 적용 및 이력
      -> 검증 실패: DB 변경 중단 -> 오류 기록/제한 재시도/사용자 확인
-  -> M-05 Dashboard 갱신
+  -> Observe Result: 저장 Task를 다시 조회하고 History/Event 기록
+  -> Final Output: M-05 Dashboard와 Agentic Workflow Trace 갱신
 END
 ```
 
@@ -44,9 +48,11 @@ END
 
 한 Mail 처리가 끝나면 단기 State는 종료한다. Mail, Task, Link, History, 사용자 결정은 SQLite에 장기 저장하고 다음 처리 때 필요한 범위만 다시 조회한다.
 
-최종 MVP의 Task Context RAG 구현 시 `retrieval_query`, `retrieved_task_contexts`,
-`task_context_decision`, `retry_count`를 State에 추가한다. 현재 시연 기준선에는 아직 없는
-계획 필드이며 코드와 테스트 완료 후 구현 증적으로 전환한다.
+Task Context RAG State에는 `retrieval_query`, `retrieved_task_contexts`,
+`task_context_decision`, `rag_retry_count`, `match_route`를 사용한다. 2026-09-02 이
+Schema와 저장 인자, Workflow 전체 분기와 테스트를 완료했다.
+`rag_retry_count`는 0 또는 1만 허용하고, `match_route`는 기존 Metadata 경로와 RAG 경로,
+Fail-closed 경로를 실행 증적에서 구분하기 위한 값으로 사용한다.
 
 ## 3. M-01 Mail Input & Analyzer
 
@@ -102,7 +108,11 @@ Metadata로 관계가 명확하면 Rule 결과를 우선한다. 현재 기준선
 
 - `search_candidate_tasks(conversation_id, subject, sender, request_summary, open_only, limit)`
 - `get_task_context(task_id, history_limit)`
-- 최종 MVP 추가 예정: `retrieve_task_contexts(query, requester, top_k)`
+- 구현 완료: `retrieve_task_contexts(query, requester, top_k, conversation_id, mail_limit, history_limit, body_limit)`
+
+기본 제한값은 top-k 5, 후보당 최근 Mail 최대 3건, History 최대 5건이다. top-k는 1~10으로
+제한하며 Mail 본문은 후보 판단에 필요한 길이만 잘라 전달한다. 검색 점수는 Token 일치,
+요청자 일치, Thread 일치와 최근성을 조합한 설명 가능한 순위 점수이고 LLM 신뢰도가 아니다.
 
 ### 출력
 
@@ -112,7 +122,7 @@ Token 비율과 실제 일치 항목을 함께 표시한다. 후보가 복수이
 M-03이 `ASK_USER`를 선택한다. 현재 점수는 설명 가능한 1차 Rule 점수이며 LLM 확률값이
 아니다.
 
-최종 MVP의 Retrieval은 최고 동점만이 아니라 top-k 순위 전체와 점수·근거를 반환한다.
+구현된 Retrieval은 최고 동점만이 아니라 top-k 순위 전체와 점수·근거를 반환한다.
 
 ## 5. M-03 Agent Action Decision
 
@@ -165,6 +175,23 @@ Validation은 독립된 Guard이며 LLM 판단을 그대로 실행하지 않는�
 Task Context RAG의 재검색 횟수도 최대 1회로 고정한다. 완료·취소·기한 단축과 복수 후보의
 기존 사용자 승인 Gate는 RAG 판단으로 우회할 수 없다.
 
+### 2026-09-02 구현 결과와 설정 계약
+
+1. 기존 동일 Thread 결정 경로와 기존 15개 Business Case를 회귀 기준선으로 고정한다.
+2. `TaskRelation`과 `TaskContextDecision`의 Pydantic 검증을 단위 테스트로 고정한다.
+3. M-02 Retrieval의 활성 Task 제한, top-k 정렬, Mail/History 개수와 본문 길이 제한을 검증한다.
+4. 회사 LLM용 Task Context Agent와 결정론적 Mock을 같은 출력 계약으로 구성한다.
+5. Workflow에서 동일 Thread 단일 후보는 기존 경로를 유지하고, 확정 불가 Case에만 RAG를 호출한다.
+6. 첫 판단이 저신뢰 또는 `AMBIGUOUS`이고 유효한 `rewritten_query`가 있을 때만 1회 재시도한다.
+7. 두 판단 결과를 Python M-03과 Validation에 전달해 최종 7 Action 중 하나를 결정한다.
+8. 처리 결과에는 Query, 제한 후보, 판단, 재시도 수와 Route를 남기되 Secret과 전체 Mailbox는 남기지 않는다.
+9. RAG 전용 테스트와 전체 pytest 136개를 통과하고 새 Evidence를 생성했다.
+
+환경설정은 `TASK_CONTEXT_RAG_ENABLED`, `TASK_CONTEXT_RAG_TOP_K`,
+`TASK_CONTEXT_RAG_CONFIDENCE_THRESHOLD`, `TASK_CONTEXT_RAG_MAX_RETRIES`를 사용한다. 기본 계획값은
+각각 `true`, `5`, `0.75`, `1`이며 최대 재시도는 설정으로 늘리지 않고 정확히 1로 고정한다.
+기능을 끄면 검증된 기존 Metadata·Token 경로로 돌아가야 한다.
+
 ## 7. M-04 Task State & History Manager
 
 ### 데이터 단위
@@ -183,7 +210,7 @@ Task Context RAG의 재검색 횟수도 최대 1회로 고정한다. 완료·취
 - `IGNORE`, 거절, 오류도 Task 변경 없이 처리 이력은 남긴다.
 - 사용자 확정값은 최신 확정 상태로 보존하고 Agent가 임의 덮어쓰지 않는다.
 - Processing Event는 Task Transaction과 분리해 기록하여 실패 시에도 중단 단계와 오류를 확인할 수 있게 한다. Secret과 인증 정보는 저장 전에 제거한다.
-- 최종 MVP에서는 `RAG_RETRIEVAL`, `RAG_DECISION`, `QUERY_REWRITE`,
+- `RAG_RETRIEVAL`, `RAG_DECISION`, `QUERY_REWRITE`,
   `RAG_RETRIEVAL_RETRY`, `RAG_REDECISION`, `RAG_FALLBACK` 또는 `ASK_USER` Event에
   Query, 후보 ID·점수·근거, 선택 ID, 신뢰도, Action, Retry 수와 판단 근거만 기록한다.
 

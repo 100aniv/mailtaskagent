@@ -422,7 +422,7 @@ def _apply_styles() -> None:
         <style>
         html, body, [class*="css"] {font-family: "Noto Sans KR", "Malgun Gothic", sans-serif;}
         .stApp {background: #f8fafc; color: #172033;}
-        .block-container {padding-top: 1.35rem; padding-bottom: 3rem; max-width: 1320px;}
+        .block-container {padding-top: 4.25rem; padding-bottom: 3rem; max-width: 1320px;}
         [data-testid="stSidebar"] {background: #17223b; border-right: 0;}
         [data-testid="stSidebar"] h1,
         [data-testid="stSidebar"] h2,
@@ -618,6 +618,7 @@ def _operation_health_snapshot(storage, *, gmail_connected: bool) -> dict:
     }
 
 
+@st.fragment(run_every="10s")
 def _render_operation_status_bar(storage, *, gmail_connected: bool) -> None:
     health = _operation_health_snapshot(storage, gmail_connected=gmail_connected)
     st.markdown(
@@ -649,12 +650,12 @@ def _render_summary_cards(values: list[tuple[str, str, str]]) -> None:
 def _render_work_summary(priority_by_task: dict, active_tasks: list[dict], review_count: int) -> None:
     values = [
         (
-            "긴급 업무",
+            "즉시 처리",
             f"{sum(item.level == PriorityLevel.P1 for item in priority_by_task.values())}건",
             "red",
         ),
         (
-            "우선 업무",
+            "우선 처리",
             f"{sum(item.level == PriorityLevel.P2 for item in priority_by_task.values())}건",
             "orange",
         ),
@@ -744,7 +745,14 @@ def _render_product_dashboard(
             )
 
         st.markdown("### 우선순위 업무")
-        st.caption("기한과 중요도를 함께 반영해 먼저 처리할 업무부터 정렬했습니다.")
+        st.caption(
+            "🔴 즉시 처리(P1) · 🟠 우선 처리(P2) · "
+            "🟡 회신 대기(업무 상태) · 🟣 검토 요청(사용자 결정 대기)"
+        )
+        st.caption(
+            "목록은 기한·회신 대기의 긴급도와 VIP·고객사·키워드·사용자 지정 중요도를 "
+            "함께 반영해 정렬합니다."
+        )
         if not prioritized:
             st.info("진행 중인 업무가 없습니다. 새 업무 메일이 도착하면 자동으로 여기에 추가됩니다.")
         for task in prioritized[:5]:
@@ -1360,6 +1368,118 @@ def _render_review_queue(storage, settings, mail_by_id) -> None:
             st.error(f"사용자 결정 반영 실패: {type(exc).__name__}")
 
 
+def _agentic_trace_phase(step: str) -> tuple[str, str]:
+    if step in {"MAIL_INPUT", "SCHEMA_VALIDATION", "M-01 LLM_ANALYSIS"}:
+        return "Observe Input / Analyze", "👁️"
+    if step == "M-02 CONTEXT_ROUTE":
+        return "Reason / Plan", "🧠"
+    if step in {
+        "M-02 TASK_MATCHING",
+        "M-02 RAG_RETRIEVAL",
+        "M-02 RAG_RETRIEVAL_RETRY",
+    }:
+        return "Act / Retrieve", "🔍"
+    if step in {"M-02 CONTEXT_OBSERVATION", "M-02 CONTEXT_REOBSERVATION"}:
+        return "Observe Context", "👀"
+    if step in {"M-03 RAG_DECISION", "M-03 RAG_REDECISION"}:
+        return "Re-evaluate / Decide", "🧠"
+    if step == "M-03 QUERY_REWRITE":
+        return "Reason / Re-plan", "🔁"
+    if step in {"M-03 ACTION_DECISION", "ACTION_VALIDATION"}:
+        return "Python Guard", "🛡️"
+    if step == "M-04 DB_TRANSACTION":
+        return "Act / Execute", "🛠️"
+    if step in {"ASK_USER", "RAG_FALLBACK"}:
+        return "Guard / Handoff", "🙋"
+    if step == "M-04 EXECUTION_OBSERVATION":
+        return "Observe Result", "🔎"
+    if step in {"PROCESS_COMPLETED", "FINAL_OUTPUT"}:
+        return "Final Output", "✅"
+    return "Workflow Event", "•"
+
+
+def _render_agentic_trace(events: list[dict], mail_ids: list[str]) -> None:
+    st.markdown("### Agentic Workflow Trace")
+    st.caption(
+        "Agent가 입력을 관찰하고 Context를 검색한 뒤 판단·행동·결과 관찰·최종 출력을 "
+        "수행한 과정을 보여줍니다. 원시 사고과정 대신 검증 가능한 근거만 표시합니다."
+    )
+    ordered_mail_ids = list(
+        dict.fromkeys(event["mail_id"] for event in sorted(events, key=lambda item: item["event_id"], reverse=True))
+    )
+    for mail_id in mail_ids:
+        if mail_id not in ordered_mail_ids:
+            ordered_mail_ids.append(mail_id)
+    trace_mail_id = st.selectbox(
+        "Trace를 확인할 Mail",
+        ordered_mail_ids,
+        key="agentic_trace_mail_id",
+    )
+    trace_events = sorted(
+        [event for event in events if event["mail_id"] == trace_mail_id],
+        key=lambda item: item["event_id"],
+    )
+    if not trace_events:
+        st.info("선택한 Mail의 Agent 실행 기록이 없습니다.")
+        return
+
+    for event in trace_events:
+        phase, icon = _agentic_trace_phase(event["step"])
+        details = _parse_json(event["details_json"])
+        with st.container(border=True):
+            phase_col, step_col, result_col = st.columns([1.3, 2.4, 0.9])
+            phase_col.markdown(f"**{icon} {phase}**")
+            step_col.markdown(f"**{event['step']}**")
+            result_col.markdown(
+                "🟢 성공"
+                if event["status"] == "SUCCESS"
+                else "🟡 대기"
+                if event["status"] in {"WAITING", "STARTED"}
+                else "🔴 실패"
+            )
+            st.write(event["message"])
+            if isinstance(details, dict):
+                summary_parts = []
+                for key, label in (
+                    ("route", "경로"),
+                    ("relation", "관계"),
+                    ("action", "Action"),
+                    ("selected_task_id", "선택 Task"),
+                    ("confidence", "신뢰도"),
+                    ("retry_count", "재시도"),
+                ):
+                    value = details.get(key)
+                    if value is not None:
+                        summary_parts.append(f"**{label}** {value}")
+                if summary_parts:
+                    st.caption(" · ".join(summary_parts))
+                retrieval_results = details.get("retrieval_results")
+                if isinstance(retrieval_results, list) and retrieval_results:
+                    st.dataframe(
+                        pd.DataFrame(retrieval_results),
+                        width="stretch",
+                        hide_index=True,
+                    )
+                observed_contexts = details.get("observed_contexts")
+                if isinstance(observed_contexts, list) and observed_contexts:
+                    st.dataframe(
+                        pd.DataFrame(observed_contexts),
+                        width="stretch",
+                        hide_index=True,
+                    )
+                decision_reason = details.get("reason") or details.get("decision_reason")
+                if decision_reason:
+                    st.caption(f"판단 근거: {decision_reason}")
+            st.caption(
+                f"{event['created_at']}"
+                + (
+                    f" · {int(event['duration_ms'])} ms"
+                    if event["duration_ms"] is not None
+                    else ""
+                )
+            )
+
+
 def _render_event_log(storage, mail_ids: list[str]) -> None:
     st.subheader("Agent 실행 로그")
     st.caption("M-01~M-05 처리 단계, 성공·실패, 소요 시간과 정제된 상세 정보를 표시합니다.")
@@ -1367,6 +1487,10 @@ def _render_event_log(storage, mail_ids: list[str]) -> None:
     if not events:
         st.info("아직 실행 로그가 없습니다.")
         return
+
+    _render_agentic_trace(events, mail_ids)
+    st.divider()
+    st.markdown("### 전체 기술 로그")
 
     known_mail_ids = sorted({*mail_ids, *(event["mail_id"] for event in events)})
     filter_col1, filter_col2, filter_col3 = st.columns(3)
@@ -1691,100 +1815,16 @@ def _render_tasks_and_histories(storage, *, show_history: bool = True) -> None:
             )
 
 
-def _render_operational_task_list(storage) -> None:
-    tasks = storage.list_tasks()
-    if not tasks:
-        st.info("아직 등록된 업무가 없습니다. 메일에서 업무가 확인되면 자동으로 추가됩니다.")
-        return
+def _clear_selected_operational_task() -> None:
+    st.session_state.pop("selected_operational_task_id", None)
 
-    priority_rules = storage.list_priority_rules()
-    priority_settings = storage.get_priority_settings()
-    priority_by_task = {
-        task["task_id"]: calculate_task_priority(task, priority_rules, priority_settings)
-        for task in tasks
-    }
-    search_col, status_col = st.columns([1.4, 1])
-    search_text = search_col.text_input(
-        "업무 검색",
-        placeholder="제목, 설명 또는 요청자",
-        key="operational_task_search",
-    ).strip().casefold()
-    selected_status = status_col.selectbox(
-        "상태",
-        ["ACTIVE", "ALL", *STATUS_LABELS],
-        format_func=lambda status: {
-            "ACTIVE": "진행 중인 업무",
-            "ALL": "모든 업무",
-        }.get(status, STATUS_LABELS.get(status, status)),
-        key="operational_task_status_filter",
-    )
-    filtered_tasks = [
-        task
-        for task in tasks
-        if (
-            selected_status == "ALL"
-            or selected_status == "ACTIVE"
-            and task["status"] in {"TODO", "IN_PROGRESS", "WAITING_REPLY"}
-            or task["status"] == selected_status
-        )
-        and (
-            not search_text
-            or search_text
-            in " ".join(
-                filter(
-                    None,
-                    [task.get("title"), task.get("description"), task.get("requester")],
-                )
-            ).casefold()
-        )
-    ]
-    filtered_tasks = sorted(
-        filtered_tasks,
-        key=lambda task: _task_priority(task, priority_by_task[task["task_id"]].level),
-    )
 
-    st.caption(f"검색 결과 {len(filtered_tasks)}건")
-    if not filtered_tasks:
-        st.info("선택한 조건에 맞는 업무가 없습니다.")
-    for task in filtered_tasks:
-        priority = priority_by_task[task["task_id"]]
-        with st.container(border=True):
-            icon_col, content_col, action_col = st.columns([0.4, 5.1, 1.4])
-            icon_col.markdown(f"### {priority.emoji}")
-            content_col.markdown(f"**{task['title']}**")
-            content_col.caption(
-                f"{priority.label} · {STATUS_LABELS.get(task['status'], task['status'])} · "
-                f"기한 {task.get('due_date') or '없음'} · {task.get('requester') or '요청자 없음'}"
-            )
-            if task.get("description"):
-                content_col.caption(task["description"])
-            if action_col.button(
-                "상세 보기",
-                key=f"open_task_{task['task_id']}",
-                width="stretch",
-            ):
-                st.session_state["selected_operational_task_id"] = task["task_id"]
-                st.rerun()
-            if task["status"] not in {"COMPLETED", "CANCELLED"} and action_col.button(
-                "완료 처리",
-                key=f"complete_task_list_{task['task_id']}",
-                width="stretch",
-            ):
-                try:
-                    _complete_task_from_dashboard(storage, task)
-                except ValueError as exc:
-                    st.error(f"완료할 수 없습니다: {exc}")
-
-    selected_task_id = st.session_state.get("selected_operational_task_id")
-    selected_task = next(
-        (task for task in tasks if task["task_id"] == selected_task_id),
-        None,
-    )
-    if selected_task is None:
-        return
-
-    st.divider()
-    st.markdown("### 업무 상세")
+@st.dialog(
+    "업무 상세",
+    width="large",
+    on_dismiss=_clear_selected_operational_task,
+)
+def _render_operational_task_detail(storage, selected_task: dict) -> None:
     st.caption("업무 상태·기한·중요도를 직접 수정하면 변경 기록이 자동으로 남습니다.")
     timeline_rows = _task_mail_timeline_rows(storage, selected_task)
     st.markdown("#### 메일 진행 타임라인")
@@ -1886,9 +1926,104 @@ def _render_operational_task_list(storage) -> None:
             if edited_importance != selected_task.get("importance_override"):
                 storage.set_task_importance(selected_task["task_id"], edited_importance)
             st.session_state["task_edit_flash"] = f"{result['title']} 변경을 저장했습니다."
+            st.session_state.pop("selected_operational_task_id", None)
             st.rerun()
         except ValueError as exc:
             st.error(f"변경할 수 없는 상태 또는 입력입니다: {exc}")
+
+
+def _render_operational_task_list(storage) -> None:
+    tasks = storage.list_tasks()
+    if not tasks:
+        st.info("아직 등록된 업무가 없습니다. 메일에서 업무가 확인되면 자동으로 추가됩니다.")
+        return
+
+    priority_rules = storage.list_priority_rules()
+    priority_settings = storage.get_priority_settings()
+    priority_by_task = {
+        task["task_id"]: calculate_task_priority(task, priority_rules, priority_settings)
+        for task in tasks
+    }
+    search_col, status_col = st.columns([1.4, 1])
+    search_text = search_col.text_input(
+        "업무 검색",
+        placeholder="제목, 설명 또는 요청자",
+        key="operational_task_search",
+    ).strip().casefold()
+    selected_status = status_col.selectbox(
+        "상태",
+        ["ACTIVE", "ALL", *STATUS_LABELS],
+        format_func=lambda status: {
+            "ACTIVE": "진행 중인 업무",
+            "ALL": "모든 업무",
+        }.get(status, STATUS_LABELS.get(status, status)),
+        key="operational_task_status_filter",
+    )
+    filtered_tasks = [
+        task
+        for task in tasks
+        if (
+            selected_status == "ALL"
+            or selected_status == "ACTIVE"
+            and task["status"] in {"TODO", "IN_PROGRESS", "WAITING_REPLY"}
+            or task["status"] == selected_status
+        )
+        and (
+            not search_text
+            or search_text
+            in " ".join(
+                filter(
+                    None,
+                    [task.get("title"), task.get("description"), task.get("requester")],
+                )
+            ).casefold()
+        )
+    ]
+    filtered_tasks = sorted(
+        filtered_tasks,
+        key=lambda task: _task_priority(task, priority_by_task[task["task_id"]].level),
+    )
+
+    st.caption(f"검색 결과 {len(filtered_tasks)}건")
+    if not filtered_tasks:
+        st.info("선택한 조건에 맞는 업무가 없습니다.")
+    for task in filtered_tasks:
+        priority = priority_by_task[task["task_id"]]
+        with st.container(border=True):
+            icon_col, content_col, action_col = st.columns([0.4, 5.1, 1.4])
+            icon_col.markdown(f"### {priority.emoji}")
+            content_col.markdown(f"**{task['title']}**")
+            content_col.caption(
+                f"{priority.label} · {STATUS_LABELS.get(task['status'], task['status'])} · "
+                f"기한 {task.get('due_date') or '없음'} · {task.get('requester') or '요청자 없음'}"
+            )
+            if task.get("description"):
+                content_col.caption(task["description"])
+            if action_col.button(
+                "상세 보기",
+                key=f"open_task_{task['task_id']}",
+                width="stretch",
+            ):
+                st.session_state["selected_operational_task_id"] = task["task_id"]
+                st.rerun()
+            if task["status"] not in {"COMPLETED", "CANCELLED"} and action_col.button(
+                "완료 처리",
+                key=f"complete_task_list_{task['task_id']}",
+                width="stretch",
+            ):
+                try:
+                    _complete_task_from_dashboard(storage, task)
+                except ValueError as exc:
+                    st.error(f"완료할 수 없습니다: {exc}")
+
+    selected_task_id = st.session_state.get("selected_operational_task_id")
+    selected_task = next(
+        (task for task in tasks if task["task_id"] == selected_task_id),
+        None,
+    )
+    if selected_task is None:
+        return
+    _render_operational_task_detail(storage, selected_task)
 
 
 def _render_quality_evaluation(settings) -> None:
@@ -2641,7 +2776,7 @@ def _render_operation_settings(storage, gmail_summary: dict, mails) -> None:
 
 def _render_automation_center(storage, mails) -> None:
     st.subheader("자동화 설정")
-    st.caption("중요 메일을 먼저 보여주고 광고·반복 메일은 제외하도록 내 업무 기준을 설정합니다.")
+    st.caption("업무 우선순위를 정하고 광고·반복 메일을 제외하는 개인 기준을 설정합니다.")
     settings_flash = st.session_state.pop("operation_settings_flash", None)
     if settings_flash:
         st.success(settings_flash)
@@ -2660,7 +2795,7 @@ def _render_automation_center(storage, mails) -> None:
     summary_3.metric("광고·반복 메일 제외", f"{active_filters}개")
 
     priority_tab, filter_tab, auto_tab = st.tabs(
-        ["⭐ 중요도 기준", "🚫 광고·반복 메일 제외", "⚙️ 실행 주기"]
+        ["⭐ 우선순위 기준", "🚫 광고·반복 메일 제외", "⚙️ 실행 주기"]
     )
     with auto_tab:
         st.markdown("### Agent 실행 주기")
@@ -2693,8 +2828,13 @@ def _render_automation_center(storage, mails) -> None:
                 st.error(f"실행 주기를 저장할 수 없습니다: {exc}")
 
     with priority_tab:
-        st.markdown("### 중요도 계산 기준")
-        st.write("기한과 회신 대기 시간에 더해 VIP 발신자, 고객사 도메인, 중요 키워드를 반영합니다.")
+        st.markdown("### 우선순위 계산 기준")
+        st.write(
+            "우선순위는 긴급도(기한·회신 대기)와 중요도(VIP 발신자·고객사 도메인·"
+            "중요 키워드·사용자 직접 지정)를 함께 반영해 P1~P4로 계산합니다."
+        )
+        st.markdown("#### 기한·회신 대기 시간 기준")
+        st.caption("아래 3개는 사용자가 일수로 조정할 수 있는 긴급도 경계값입니다.")
         settings = storage.get_priority_settings()
         with st.form("priority_threshold_form_v2"):
             soon_col, later_col, waiting_col = st.columns(3)
@@ -2735,12 +2875,15 @@ def _render_automation_center(storage, mails) -> None:
                         "waiting_attention_days": waiting_attention_days,
                     }
                 )
-                st.success("중요도 시간 기준을 저장했습니다.")
+                st.success("우선순위 시간 기준을 저장했습니다.")
             except ValueError as exc:
                 st.error(f"기준을 저장할 수 없습니다: {exc}")
 
-        st.markdown("#### VIP·고객사·중요 키워드")
-        st.caption("이 기준은 우선순위만 높입니다. 완료·취소·기한을 임의로 확정하지 않습니다.")
+        st.markdown("#### VIP·고객사·중요 키워드 기준")
+        st.caption(
+            "발신자·도메인·키워드 규칙과 업무별 사용자 직접 지정 중요도도 계산에 포함됩니다. "
+            "이 기준만으로 완료·취소·기한을 임의로 확정하지는 않습니다."
+        )
         with st.form("priority_rule_form_v2", clear_on_submit=True):
             name = st.text_input("표시 이름", placeholder="예: ABC 고객사 또는 김부장님")
             rule_type = st.selectbox(
