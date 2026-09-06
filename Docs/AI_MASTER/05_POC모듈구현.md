@@ -73,4 +73,4 @@
 
 `TASK-001` 한 건만 유지되며 기한은 `2026-08-24`로 변경됩니다. Agent Action, 판단 근거, 원본 Mail ID, 변경 전·후 값과 처리 시각은 Dashboard의 Task History와 운영 로그에서 확인할 수 있습니다. 복수 후보·모호한 기한·완료·취소 Case는 자동 변경하지 않고 사용자 확인으로 전환됩니다.
 
-최종 회귀 검증은 `pytest 149 passed`이며, 회사 LLM Mail 분석 Live 15/15 실행 단위·28/28 Action 단계, Task Context Agent Live 합성 검증 3/3, Agent Action Proposal·Python Safety Guard 신규 회귀 13건, 별도 테스트 Gmail 비식별 합성 Mail 20/20 수용시험, Windows Scheduler 반복 실행 성공(`LastTaskResult=0`)과 SQLite `quick_check=ok`를 확인했습니다.
+최종 회귀 검증은 `pytest 158 passed`이며, 회사 LLM Mail 분석 Live 15/15 실행 단위·28/28 Action 단계, Task Context Agent Live 합성 검증 3/3, Agent Action Proposal·Python Safety Guard 신규 회귀 13건, 별도 테스트 Gmail 비식별 합성 Mail 20/20 수용시험, Windows Scheduler 반복 실행 성공(`LastTaskResult=0`)과 SQLite `quick_check=ok`를 확인했습니다. 검증된 확장인 Mail-to-Action Draft는 Reply Planning Live 3/3, 사용자 입력 기반 Draft 생성 1/1과 실제 Streamlit 화면 흐름을 통과했습니다. 회신 초안은 SQLite에 저장하지만 Gmail 발송 권한과 전송 기능은 포함하지 않습니다.

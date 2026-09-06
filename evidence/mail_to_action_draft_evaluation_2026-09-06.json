@@ -1,0 +1,72 @@
+{
+  "evaluated_at": "2026-09-06T11:30:00+09:00",
+  "baseline_commit": "62516d9fe509636596d6d0dc61303c521bcd3de5",
+  "branch": "codex/mail-to-action-draft",
+  "scope": {
+    "feature": "Mail-to-Action Draft",
+    "reply_actions": [
+      "NO_REPLY",
+      "SIMPLE_ACK",
+      "DATE_REPLY",
+      "VALUE_REPLY",
+      "APPROVE_REPLY",
+      "DRAFT_REPLY",
+      "ASK_USER"
+    ],
+    "mail_send_enabled": false,
+    "gmail_scope": "read-only",
+    "task_actions_changed": false,
+    "task_statuses_changed": false
+  },
+  "automated_tests": {
+    "command": ".venv/Scripts/python.exe -m pytest -q -p no:cacheprovider",
+    "previous_passed": 149,
+    "current_passed": 158,
+    "failed": 0
+  },
+  "legacy_regression": {
+    "scenario_cases": "15/15",
+    "classification_accuracy": 1.0,
+    "field_accuracy": 1.0,
+    "task_link_accuracy": 1.0,
+    "action_accuracy": 1.0
+  },
+  "current_company_llm_core_regression": {
+    "evidence": "evidence/live_evaluation_2026-09-06.json",
+    "scenario_cases": "15/15",
+    "action_steps": "28/28",
+    "mail_classification": "15/15",
+    "field_extraction": "26/26",
+    "task_linking": "8/8",
+    "duration_ms": 61647
+  },
+  "company_llm_live": {
+    "reply_planning": [
+      {"case_id": "REPLY-LIVE-01", "expected": "DATE_REPLY", "actual": "DATE_REPLY", "confidence": 0.90, "passed": true},
+      {"case_id": "REPLY-LIVE-02", "expected": "SIMPLE_ACK", "actual": "SIMPLE_ACK", "confidence": 0.95, "passed": true},
+      {"case_id": "REPLY-LIVE-03", "expected": "ASK_USER", "actual": "ASK_USER", "confidence": 0.90, "passed": true}
+    ],
+    "planning_passed": "3/3",
+    "date_input_draft_generation": "1/1"
+  },
+  "ui_smoke": {
+    "mode": "Streamlit operation mode with company LLM",
+    "flow": "task detail -> plan reply -> DATE_REPLY 95% -> user date input -> draft saved",
+    "mail_send_button_present": false,
+    "passed": true
+  },
+  "operations": {
+    "gmail_oauth_reauthorized": true,
+    "gmail_oauth_ready": true,
+    "scheduler_task": "MailTaskAgent-GmailSync",
+    "scheduler_interval": "1 minute",
+    "last_task_result": 0,
+    "database_quick_check": "ok",
+    "database_integrity_check": "ok"
+  },
+  "limitations": [
+    "Live checks use synthetic or test-account data and do not prove arbitrary production-mailbox accuracy.",
+    "The feature creates and stores drafts only; it cannot send email.",
+    "Outlook, company authentication, server deployment, and production governance remain Post-MVP."
+  ]
+}

@@ -30,7 +30,7 @@ class _ConfiguredGmailSource:
 
     def load(self):
         gmail_settings = load_gmail_source_settings()
-        service = build_gmail_service(gmail_settings)
+        service = build_gmail_service(gmail_settings, allow_interactive_auth=False)
         tracked_conversation_ids = [
             task["conversation_id"] for task in self.storage.list_tasks()
         ]
@@ -122,11 +122,20 @@ def _run_health() -> int:
     gmail_settings = load_gmail_source_settings()
     slack_settings = load_slack_notification_settings()
     latest_runs = storage.list_sync_runs(source="GMAIL", limit=1)
+    gmail_oauth_ready = False
+    gmail_oauth_error_type = None
+    if gmail_settings.credentials_path.exists() and gmail_settings.token_path.exists():
+        try:
+            build_gmail_service(gmail_settings, allow_interactive_auth=False)
+            gmail_oauth_ready = True
+        except Exception as exc:
+            gmail_oauth_error_type = type(exc).__name__
     checks = {
         "database_ready": settings.database_path.exists(),
         "llm_ready": settings.use_mock or bool(settings.api_key),
         "gmail_credentials_ready": gmail_settings.credentials_path.exists(),
         "gmail_token_ready": gmail_settings.token_path.exists(),
+        "gmail_oauth_ready": gmail_oauth_ready,
         "slack_notification_ready": (
             not slack_settings.enabled or slack_settings.configured
         ),
@@ -137,6 +146,7 @@ def _run_health() -> int:
             "status": status,
             "checks": checks,
             "last_sync_status": latest_runs[0]["status"] if latest_runs else None,
+            "gmail_oauth_error_type": gmail_oauth_error_type,
             "checked_at": datetime.now(UTC).isoformat(),
         }
     )

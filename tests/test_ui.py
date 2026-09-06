@@ -278,8 +278,24 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
     app = detail_button.click().run(timeout=60)
     assert not app.exception
     assert any("메일 진행 타임라인" in item.value for item in app.markdown)
+    assert any("AI 회신 준비" in item.value for item in app.markdown)
+    assert any(
+        button.label == "최신 수신 메일의 회신 방식 판단" for button in app.button
+    )
+    assert not any("전송" in button.label for button in app.button)
     assert any("업무 변경 기록" in item.value for item in app.markdown)
     assert any(button.label == "변경 내용 저장" for button in app.button)
+
+    reply_button = next(
+        button
+        for button in app.button
+        if button.label == "최신 수신 메일의 회신 방식 판단"
+    )
+    app = reply_button.click().run(timeout=60)
+    assert not app.exception
+    rendered_reply = "\n".join(item.value for item in app.markdown)
+    assert any(label in rendered_reply for label in ui_module.REPLY_ACTION_LABELS.values())
+    assert not any("전송" in button.label for button in app.button)
 
     app = _select_radio(app, "주 메뉴", ui_module.HOME_PAGE)
 

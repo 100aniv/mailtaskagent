@@ -77,8 +77,14 @@ def load_gmail_source_settings() -> GmailSourceSettings:
     )
 
 
-def build_gmail_service(settings: GmailSourceSettings) -> Any:
+def build_gmail_service(
+    settings: GmailSourceSettings,
+    *,
+    allow_interactive_auth: bool = True,
+    force_reauthorization: bool = False,
+) -> Any:
     try:
+        from google.auth.exceptions import RefreshError
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
@@ -94,14 +100,21 @@ def build_gmail_service(settings: GmailSourceSettings) -> Any:
         )
 
     credentials = None
-    if settings.token_path.exists():
+    if settings.token_path.exists() and not force_reauthorization:
         credentials = Credentials.from_authorized_user_file(
             str(settings.token_path), [GMAIL_READONLY_SCOPE]
         )
     if not credentials or not credentials.valid:
         if credentials and credentials.expired and credentials.refresh_token:
-            credentials.refresh(Request())
-        else:
+            try:
+                credentials.refresh(Request())
+            except RefreshError:
+                if not allow_interactive_auth:
+                    raise
+                credentials = None
+        if not credentials or not credentials.valid:
+            if not allow_interactive_auth:
+                raise RuntimeError("Gmail user reauthorization is required")
             flow = InstalledAppFlow.from_client_secrets_file(
                 str(settings.credentials_path), [GMAIL_READONLY_SCOPE]
             )

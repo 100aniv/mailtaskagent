@@ -356,7 +356,8 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 | Slack 사내 알림 | Payload·Dry-run·실패 시 전송 계약 구현 | 실제 Webhook·채널 승인 후 Live 수신 확인 필요 |
 | 중앙 Logging·Monitoring | 로컬 Event·sync_runs·Health까지 구현 | 회사 Monitoring 수집 규격·Endpoint 필요 |
 | 사내 지식 RAG/Vector DB | 적용하지 않음 | 실제 정책 문서 Corpus와 필요성 없음. SQLite Task Context RAG는 최종 MVP에 별도로 구현·검증 완료 |
-| 자동 회신·발송·삭제 | 적용하지 않음 | 현재 안전 범위 밖 |
+| Mail-to-Action Draft | 구현·자동/Live/UI 테스트 완료 | 회신 방식 판단·필요 입력·초안 저장만 제공, 실제 발송 없음 |
+| 자동 회신·발송·삭제 | 적용하지 않음 | Gmail Send 권한·수신자 검증·사용자 승인 발송은 현재 안전 범위 밖 |
 | Outlook Live | 사용자 요청에 따라 제외 | Graph 합성 Adapter Contract만 별도 보존 |
 
 2026-08-29 RAG 적용 전 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
@@ -372,3 +373,8 @@ Task 연결 Thread 추적을 적용한 Live `SYNC-0BA30F517ECC`도 가져옴 22�
 실패 0으로 완료됐으며, 실제 OUTBOUND 회신이 포함된 Task 타임라인을 브라우저에서 확인했다.
 초기 PowerShell 실행 시 나타난 콘솔 창은 예약 작업을 `.venv\Scripts\pythonw.exe` 직접 실행으로
 교체해 제거했으며, 교체 후에도 `LastTaskResult=0`과 다음 1분 실행 예약을 확인했다.
+
+2026-09-06에는 Mail-to-Action Draft를 추가해 Task의 최신 수신 Mail·현재 상태·최근 History를
+기반으로 7개 Reply Action 중 하나를 판단하고 필요한 사용자 입력을 받아 초안만 저장하도록
+구현했다. 전체 pytest는 `158 passed`, 회사 LLM Reply Planning은 `3/3`, Draft 생성은 `1/1`,
+실제 Streamlit 화면 흐름도 통과했다. Gmail Scope는 Read-only를 유지하며 발송은 수행하지 않는다.

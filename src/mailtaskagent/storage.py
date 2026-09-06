@@ -15,6 +15,7 @@ from mailtaskagent.models import (
     GuardedActionResult,
     MailAnalysis,
     MailInput,
+    ReplyAction,
     ReviewDecision,
     TaskCandidate,
     TaskContextDecision,
@@ -140,6 +141,23 @@ CREATE TABLE IF NOT EXISTS sync_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_sync_runs_source_started
 ON sync_runs(source, started_at DESC);
+CREATE TABLE IF NOT EXISTS reply_drafts (
+    reply_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    source_mail_id TEXT NOT NULL,
+    reply_action TEXT NOT NULL,
+    status TEXT NOT NULL,
+    question TEXT,
+    user_input TEXT,
+    draft_body TEXT,
+    reason TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    user_edited INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reply_drafts_task
+ON reply_drafts(task_id, reply_id DESC);
 """
 
 
@@ -236,6 +254,7 @@ class SQLiteStorage:
     def reset(self) -> None:
         self.initialize()
         with self.connect() as connection:
+            connection.execute("DELETE FROM reply_drafts")
             connection.execute("DELETE FROM sync_runs")
             connection.execute("DELETE FROM processing_events")
             connection.execute("DELETE FROM processing_results")
@@ -1693,3 +1712,133 @@ class SQLiteStorage:
                 "SELECT * FROM histories ORDER BY history_id DESC"
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def create_reply_plan(
+        self,
+        *,
+        task_id: str,
+        source_mail_id: str,
+        reply_action: str,
+        question: str | None,
+        draft_body: str | None,
+        reason: str,
+        confidence: float,
+    ) -> dict:
+        validated_action = ReplyAction(reply_action).value
+        clean_reason = reason.strip()
+        clean_draft = draft_body.strip() if draft_body else None
+        clean_question = question.strip() if question else None
+        if not clean_reason:
+            raise ValueError("Reply plan reason is required")
+        if not 0 <= confidence <= 1:
+            raise ValueError("Reply plan confidence must be between 0 and 1")
+        status = (
+            "DRAFTED"
+            if clean_draft
+            else "NO_REPLY"
+            if validated_action == ReplyAction.NO_REPLY.value
+            else "ASK_USER"
+            if validated_action == ReplyAction.ASK_USER.value
+            else "NEEDS_INPUT"
+        )
+        now = _now()
+        with self.connect() as connection:
+            if self._fetch_task(connection, task_id) is None:
+                raise ValueError(f"Task not found: {task_id}")
+            mail_exists = connection.execute(
+                "SELECT 1 FROM mails WHERE mail_id = ?", (source_mail_id,)
+            ).fetchone()
+            if not mail_exists:
+                raise ValueError(f"Mail not found: {source_mail_id}")
+            cursor = connection.execute(
+                """
+                INSERT INTO reply_drafts(
+                    task_id, source_mail_id, reply_action, status, question,
+                    user_input, draft_body, reason, confidence, user_edited,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, ?)
+                """,
+                (
+                    task_id,
+                    source_mail_id,
+                    validated_action,
+                    status,
+                    clean_question,
+                    clean_draft,
+                    clean_reason,
+                    confidence,
+                    now,
+                    now,
+                ),
+            )
+            connection.commit()
+            row = connection.execute(
+                "SELECT * FROM reply_drafts WHERE reply_id = ?",
+                (cursor.lastrowid,),
+            ).fetchone()
+        result = dict(row)
+        result["user_edited"] = bool(result["user_edited"])
+        return result
+
+    def get_reply_draft(self, reply_id: int) -> dict | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM reply_drafts WHERE reply_id = ?", (reply_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        result["user_edited"] = bool(result["user_edited"])
+        return result
+
+    def update_reply_draft(
+        self,
+        reply_id: int,
+        *,
+        draft_body: str,
+        user_input: str | None = None,
+        user_edited: bool = False,
+    ) -> dict:
+        clean_body = draft_body.strip()
+        clean_input = user_input.strip() if user_input else None
+        if not clean_body:
+            raise ValueError("Reply draft body is required")
+        if len(clean_body) > 4000:
+            raise ValueError("Reply draft body must be 4,000 characters or fewer")
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE reply_drafts
+                SET status = 'DRAFTED', user_input = ?, draft_body = ?,
+                    user_edited = ?, updated_at = ?
+                WHERE reply_id = ?
+                """,
+                (clean_input, clean_body, int(user_edited), _now(), reply_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(f"Reply draft not found: {reply_id}")
+            connection.commit()
+            row = connection.execute(
+                "SELECT * FROM reply_drafts WHERE reply_id = ?", (reply_id,)
+            ).fetchone()
+        result = dict(row)
+        result["user_edited"] = bool(result["user_edited"])
+        return result
+
+    def list_reply_drafts(self, task_id: str, *, limit: int = 10) -> list[dict]:
+        if not 1 <= limit <= 100:
+            raise ValueError("Reply draft limit must be between 1 and 100")
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM reply_drafts
+                WHERE task_id = ?
+                ORDER BY reply_id DESC
+                LIMIT ?
+                """,
+                (task_id, limit),
+            ).fetchall()
+        results = [dict(row) for row in rows]
+        for result in results:
+            result["user_edited"] = bool(result["user_edited"])
+        return results

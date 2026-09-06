@@ -22,10 +22,21 @@ def main() -> int:
         action="store_true",
         help="Run fetched test mail through the existing Agent Core and SQLite.",
     )
+    parser.add_argument(
+        "--reauthorize",
+        action="store_true",
+        help="Open an explicit Gmail read-only consent flow and replace the token only after success.",
+    )
     args = parser.parse_args()
 
     gmail_settings = load_gmail_source_settings()
-    source = GmailReadOnlySource(build_gmail_service(gmail_settings), gmail_settings)
+    source = GmailReadOnlySource(
+        build_gmail_service(
+            gmail_settings,
+            force_reauthorization=args.reauthorize,
+        ),
+        gmail_settings,
+    )
     mails = source.load()
     print(
         f"Gmail read-only source: {len(mails)} mail(s), "

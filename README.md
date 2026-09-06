@@ -4,10 +4,11 @@
 메일 기반 개인 업무관리 Agent다. 합성 Mail 기반 3단계 Core E2E를 완성하고 회사 LLM API
 Live로 상태 흐름과 세부 KPI를 검증했으며, 읽기 전용 Gmail 개인 파일럿까지 확장한 상태다.
 
-> **2026-09-02 상태:** Core E2E에 SQLite 기반 경량 Task Context Agentic RAG, 최대 1회
+> **2026-09-06 상태:** Core E2E에 SQLite 기반 경량 Task Context Agentic RAG, 최대 1회
 > Query Rewrite·재판단, Agent Action Proposal, Python Safety Guard, 실행 결과 재조회와 안전한
-> Agent Trace를 결합했다. 전체 pytest `149 passed`와 Task Context Agent 회사 LLM Live 합성
-> 검증 `3/3`을 통과했다.
+> Agent Trace를 결합했다. 이어서 실제 발송 없이 필요한 회신 방식·사용자 입력·초안을 만드는
+> Mail-to-Action Draft를 추가했다. 전체 pytest `158 passed`, Task Context Agent 회사 LLM
+> Live 합성 검증 `3/3`, Reply Planning Live `3/3`과 Draft 생성 `1/1`을 통과했다.
 > Outlook·사내 인증·서버와 사내 문서 RAG는 그 이후 Post-MVP다.
 
 ## 현재 구현 범위
@@ -24,6 +25,9 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 읽기 전용 Gmail 개�
   최대 1회 Query Rewrite·재검색, 실패 시 `ASK_USER` Fail-closed
 - Task Context Agent가 선택한 Action을 실행 Payload로 구성하고 승인·이관하는 Python Safety
   Guard, DB 반영 결과 재조회와 검증 가능한 Agent Trace
+- Task에 연결된 최신 수신 Mail·현재 Task·최근 History를 보고 `NO_REPLY`, `SIMPLE_ACK`,
+  `DATE_REPLY`, `VALUE_REPLY`, `APPROVE_REPLY`, `DRAFT_REPLY`, `ASK_USER` 중 회신 방식을
+  고르는 Mail-to-Action Draft. 필요한 사용자 입력을 받은 뒤 초안을 저장하며 실제 발송은 하지 않음
 - Pydantic 구조화 결과 검증
 - 잘못된 LLM 구조화 출력 1회 재시도
 - SQLite Task/History/중복 처리
@@ -55,7 +59,7 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 읽기 전용 Gmail 개�
   저장 DB 우선 화면 시작·삭제 Thread 장애 격리와 Gmail 실메일 20건 자동 평가를 포함한
   로컬 SQLite 무결성 오류 시 자동 처리 중지·복구 안내와 업무별 변경 이력 UI까지 포함한
   SQLite WAL·동시 동기화 단일 실행 잠금, Task Context RAG·ReAct·Agent Action Guard·Trace까지
-  포함한 전체 pytest 149건
+  Mail-to-Action Draft까지 포함한 전체 pytest 158건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀
@@ -157,7 +161,7 @@ Windows 예약 작업은 `.\scripts\manage_scheduler.ps1`로 관리한다. 현�
 .venv\Scripts\python.exe -m mailtaskagent.evaluation_cli --mode LIVE
 ```
 
-최신 Live 증적은 `evidence/live_evaluation_2026-08-27.json`이며 Prompt 보강 전 결과는
+최신 Live 증적은 `evidence/live_evaluation_2026-09-06.json`이며 Prompt 보강 전 결과는
 `evidence/live_evaluation_2026-08-27_before_prompt.json`에 분리해 보존한다. 시간 기대효과는
 [Microsoft Work Trend Index](https://www.microsoft.com/en-us/worklab/work-trend-index/will-ai-fix-work)와
 [McKinsey Global Institute](https://www.mckinsey.com/mgi/media-center/social-media-productivity-payoff)의
@@ -207,6 +211,9 @@ Google 공식 Python Quickstart 방식으로 Gmail API와 Desktop OAuth Client�
 
 # 확인한 합성 Gmail을 기존 Agent Core로 처리
 .venv\Scripts\python.exe -m mailtaskagent.gmail_cli --process
+
+# Refresh Token 폐기·만료 시 브라우저에서 읽기 전용 권한 재승인
+.venv\Scripts\python.exe -m mailtaskagent.gmail_cli --reauthorize
 ```
 
 기본 쿼리 `label:MailTaskAgent-Demo`, 최대 25건이며 빈 쿼리와 100건 초과 입력은 차단한다.

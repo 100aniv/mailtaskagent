@@ -31,6 +31,7 @@ class Settings:
     task_context_rag_top_k: int = 5
     task_context_rag_confidence_threshold: float = 0.75
     task_context_rag_max_retries: int = 1
+    mail_to_action_draft_enabled: bool = True
 
     @property
     def llm_mode(self) -> str:
@@ -65,4 +66,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
             os.getenv("TASK_CONTEXT_RAG_CONFIDENCE_THRESHOLD", "0.75")
         ),
         task_context_rag_max_retries=rag_max_retries,
+        mail_to_action_draft_enabled=_as_bool(
+            os.getenv("MAIL_TO_ACTION_DRAFT_ENABLED"), default=True
+        ),
     )

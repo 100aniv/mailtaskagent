@@ -80,6 +80,14 @@ Exit Code는 `0=SUCCESS`, `1=PARTIAL`, `2=FAILED`다. Timeout, Connection, Rate 
 JSON으로 반환한다. `READY`는 Exit Code 0, 준비가 부족한 `DEGRADED`는 Exit Code 1,
 실행 자체가 실패한 경우는 Exit Code 2다. Key·Token 값과 경로 내용은 출력하지 않는다.
 
+Health Check는 Credentials·Token 파일 존재 여부뿐 아니라 Gmail API Client를 비대화식으로
+생성해 Refresh Token 유효성도 확인한다. 인증이 폐기되거나 만료되면 Scheduler는 브라우저를
+열지 않고 실패로 기록한다. 사용자가 아래 명령을 한 번 실행해 읽기 전용 권한을 다시 승인한다.
+
+```powershell
+.venv\Scripts\python.exe -m mailtaskagent.gmail_cli --reauthorize
+```
+
 2026-08-28 로컬 파일럿에서 Health Check `READY`와 제한 Gmail Label Live 동기화
 성공 2건을 확인했다. 같은 Source를 즉시 재실행했을 때 신규 0건·중복 2건으로 집계되어
 LLM과 Task 변경이 재실행되지 않았다.
@@ -231,3 +239,4 @@ Agent Trace를 추가한 뒤 기존 운영 방어를 포함한 전체 회귀는 
 - 사내 알림 채널은 Slack으로 한정하며 Mail 원문·Task 제목·사용자 정보는 보내지 않는다.
 - SSO·다중 사용자·사내 RDBMS·TLS·중앙 로그는 회사 표준이 결정된 후 Adapter로 연결한다.
 - 자동 회신·발송·삭제·이동은 현재 제공하지 않는다.
+- 업무 상세의 Mail-to-Action 기능은 회신 방식 판단과 초안 저장까지만 제공한다. 메일 전송은 하지 않는다.

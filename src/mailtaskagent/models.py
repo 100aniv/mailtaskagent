@@ -60,6 +60,16 @@ class GuardVerdict(StrEnum):
     ESCALATED = "ESCALATED"
 
 
+class ReplyAction(StrEnum):
+    NO_REPLY = "NO_REPLY"
+    SIMPLE_ACK = "SIMPLE_ACK"
+    DATE_REPLY = "DATE_REPLY"
+    VALUE_REPLY = "VALUE_REPLY"
+    APPROVE_REPLY = "APPROVE_REPLY"
+    DRAFT_REPLY = "DRAFT_REPLY"
+    ASK_USER = "ASK_USER"
+
+
 class MailInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -153,6 +163,49 @@ class GuardedActionResult(BaseModel):
     agent_action: AgentAction
     final_proposal: ActionProposal
     reason: str = Field(min_length=1)
+
+
+class ReplyPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: ReplyAction
+    confidence: float = Field(ge=0, le=1)
+    reason: str = Field(min_length=1)
+    question: str | None = None
+    draft_body: str | None = Field(default=None, max_length=4000)
+
+    @model_validator(mode="after")
+    def validate_reply_contract(self) -> "ReplyPlan":
+        self.question = self.question.strip() if self.question else None
+        self.draft_body = self.draft_body.strip() if self.draft_body else None
+        needs_input = {
+            ReplyAction.DATE_REPLY,
+            ReplyAction.VALUE_REPLY,
+            ReplyAction.APPROVE_REPLY,
+        }
+        if self.action in needs_input and not self.question:
+            raise ValueError(f"{self.action.value} requires a user question")
+        if self.action in {ReplyAction.SIMPLE_ACK, ReplyAction.DRAFT_REPLY} and not self.draft_body:
+            raise ValueError(f"{self.action.value} requires draft_body")
+        if self.action in {ReplyAction.NO_REPLY, ReplyAction.ASK_USER} and self.draft_body:
+            raise ValueError(f"{self.action.value} must not create a draft")
+        return self
+
+
+class ReplyDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: ReplyAction
+    body: str = Field(min_length=1, max_length=4000)
+    user_input: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def normalize_reply_draft(self) -> "ReplyDraft":
+        self.body = self.body.strip()
+        self.user_input = self.user_input.strip() if self.user_input else None
+        if not self.body:
+            raise ValueError("Reply draft body must not be blank")
+        return self
 
 
 class WorkflowResult(BaseModel):

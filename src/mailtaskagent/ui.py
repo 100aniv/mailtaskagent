@@ -28,7 +28,13 @@ from mailtaskagent.manual_benchmark import (
     load_manual_benchmark_cases,
     save_manual_benchmark_evidence,
 )
-from mailtaskagent.models import AgentAction, MailDirection, MailInput, ReviewDecision
+from mailtaskagent.models import (
+    AgentAction,
+    MailDirection,
+    MailInput,
+    ReplyAction,
+    ReviewDecision,
+)
 from mailtaskagent.operations import MailSyncService
 from mailtaskagent.priority import (
     PRIORITY_PRESENTATION,
@@ -39,6 +45,8 @@ from mailtaskagent.priority import (
 from mailtaskagent.slack_notifications import load_slack_notification_settings
 from mailtaskagent.storage import SQLiteStorage
 from mailtaskagent.workflow import MailTaskWorkflow, load_mails
+from mailtaskagent.reply_assistant import build_reply_assistant
+from mailtaskagent.reply_service import MailToActionDraftService
 
 
 ACTION_LABELS = {
@@ -69,6 +77,16 @@ INTENT_LABELS = {
     "CANCELLATION": "취소 관련",
     "NON_TASK": "업무 아님·공지",
     "UNCERTAIN": "사용자 확인 필요",
+}
+
+REPLY_ACTION_LABELS = {
+    ReplyAction.NO_REPLY.value: "회신 불필요",
+    ReplyAction.SIMPLE_ACK.value: "간단 확인 회신",
+    ReplyAction.DATE_REPLY.value: "날짜 입력 회신",
+    ReplyAction.VALUE_REPLY.value: "값 입력 회신",
+    ReplyAction.APPROVE_REPLY.value: "승인·거절 회신",
+    ReplyAction.DRAFT_REPLY.value: "일반 회신 초안",
+    ReplyAction.ASK_USER.value: "사용자 판단 필요",
 }
 
 
@@ -1586,7 +1604,7 @@ def _render_event_log(storage, mail_ids: list[str]) -> None:
     st.caption("API Key, Authorization Header, Token과 Secret 값은 저장 전에 제거됩니다.")
 
 
-def _render_tasks_and_histories(storage, *, show_history: bool = True) -> None:
+def _render_tasks_and_histories(storage, settings=None, *, show_history: bool = True) -> None:
     st.subheader("내 업무")
     with st.expander("새 업무 직접 추가"):
         with st.form("manual_task_create_form"):
@@ -1630,7 +1648,7 @@ def _render_tasks_and_histories(storage, *, show_history: bool = True) -> None:
                 st.error(f"업무를 추가할 수 없습니다: {exc}")
 
     if not show_history:
-        _render_operational_task_list(storage)
+        _render_operational_task_list(storage, settings)
         return
 
     task_col, history_col = st.columns([1, 1.35])
@@ -1824,12 +1842,107 @@ def _clear_selected_operational_task() -> None:
     st.session_state.pop("selected_operational_task_id", None)
 
 
+def _render_reply_draft_assistant(storage, settings, selected_task: dict) -> None:
+    st.markdown("#### AI 회신 준비")
+    st.caption(
+        "Agent가 필요한 회신 방식을 고르고 초안만 만듭니다. Gmail 발송 권한은 없으며 "
+        "이 화면의 어떤 버튼도 메일을 전송하지 않습니다."
+    )
+    if settings is None or not settings.mail_to_action_draft_enabled:
+        st.info("Mail-to-Action Draft 기능이 비활성화되어 있습니다.")
+        return
+
+    service = MailToActionDraftService(
+        storage,
+        build_reply_assistant(settings),
+        confidence_threshold=settings.confidence_threshold,
+    )
+    task_id = selected_task["task_id"]
+    if st.button(
+        "최신 수신 메일의 회신 방식 판단",
+        key=f"prepare_reply_{task_id}",
+        type="primary",
+    ):
+        try:
+            with st.spinner("현재 Mail·Task·History를 보고 회신 방식을 판단하고 있습니다..."):
+                record = service.prepare(task_id)
+            st.session_state[f"reply_id_{task_id}"] = record["reply_id"]
+            st.rerun()
+        except ValueError as exc:
+            st.warning(str(exc))
+
+    drafts = storage.list_reply_drafts(task_id)
+    selected_reply_id = st.session_state.get(f"reply_id_{task_id}")
+    record = next(
+        (item for item in drafts if item["reply_id"] == selected_reply_id),
+        drafts[0] if drafts else None,
+    )
+    if record is None:
+        st.info("연결된 최신 수신 메일을 기준으로 회신 방식을 먼저 판단해 보세요.")
+        return
+
+    action = ReplyAction(record["reply_action"])
+    label_col, confidence_col, source_col = st.columns([2, 1, 2])
+    label_col.markdown(f"**{REPLY_ACTION_LABELS[action.value]}**")
+    confidence_col.metric("신뢰도", f"{record['confidence']:.0%}")
+    source_col.caption(f"기준 Mail · {record['source_mail_id']}")
+    st.info(f"판단 근거 · {record['reason']}")
+
+    if record["status"] == "NO_REPLY":
+        st.success("현재 Context에서는 별도 회신이 필요하지 않다고 판단했습니다.")
+        return
+    if record["status"] == "ASK_USER":
+        st.warning(record.get("question") or "사용자가 직접 회신 방향을 결정해야 합니다.")
+        return
+
+    if record["status"] == "NEEDS_INPUT":
+        st.write(record["question"])
+        with st.form(f"reply_input_form_{record['reply_id']}"):
+            if action == ReplyAction.DATE_REPLY:
+                input_value = st.date_input("회신할 날짜", value=date.today()).isoformat()
+            elif action == ReplyAction.APPROVE_REPLY:
+                input_value = st.radio("결정", ["승인", "거절"], horizontal=True)
+            else:
+                input_value = st.text_input(
+                    "회신에 넣을 값",
+                    placeholder="Agent가 임의로 만들면 안 되는 값을 입력하세요.",
+                )
+            compose_clicked = st.form_submit_button("입력값으로 초안 만들기", type="primary")
+        if compose_clicked:
+            try:
+                with st.spinner("사용자 입력을 반영해 회신 초안을 만들고 있습니다..."):
+                    service.compose(record["reply_id"], input_value)
+                st.session_state[f"reply_id_{task_id}"] = record["reply_id"]
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+        return
+
+    with st.form(f"reply_edit_form_{record['reply_id']}"):
+        edited_body = st.text_area(
+            "회신 초안",
+            value=record.get("draft_body") or "",
+            height=180,
+        )
+        save_clicked = st.form_submit_button("수정한 초안 저장")
+    if save_clicked:
+        try:
+            service.save_user_edit(record["reply_id"], edited_body)
+            st.success("초안을 저장했습니다. 메일은 발송되지 않았습니다.")
+        except ValueError as exc:
+            st.error(str(exc))
+    st.caption(
+        "상태 · 초안 저장됨"
+        + (" · 사용자가 수정함" if record.get("user_edited") else " · Agent 생성본")
+    )
+
+
 @st.dialog(
     "업무 상세",
     width="large",
     on_dismiss=_clear_selected_operational_task,
 )
-def _render_operational_task_detail(storage, selected_task: dict) -> None:
+def _render_operational_task_detail(storage, settings, selected_task: dict) -> None:
     st.caption("업무 상태·기한·중요도를 직접 수정하면 변경 기록이 자동으로 남습니다.")
     timeline_rows = _task_mail_timeline_rows(storage, selected_task)
     st.markdown("#### 메일 진행 타임라인")
@@ -1854,6 +1967,7 @@ def _render_operational_task_detail(storage, selected_task: dict) -> None:
                     result_col.caption(
                         f"상태 · {STATUS_LABELS.get(row['status'], row['status'])}"
                     )
+    _render_reply_draft_assistant(storage, settings, selected_task)
     st.markdown("#### 업무 변경 기록")
     st.caption(
         "Agent의 자동 판단과 사용자 결정으로 이 업무가 어떻게 바뀌었는지 최신순으로 보여줍니다."
@@ -1937,7 +2051,7 @@ def _render_operational_task_detail(storage, selected_task: dict) -> None:
             st.error(f"변경할 수 없는 상태 또는 입력입니다: {exc}")
 
 
-def _render_operational_task_list(storage) -> None:
+def _render_operational_task_list(storage, settings) -> None:
     tasks = storage.list_tasks()
     if not tasks:
         st.info("아직 등록된 업무가 없습니다. 메일에서 업무가 확인되면 자동으로 추가됩니다.")
@@ -2028,7 +2142,7 @@ def _render_operational_task_list(storage) -> None:
     )
     if selected_task is None:
         return
-    _render_operational_task_detail(storage, selected_task)
+    _render_operational_task_detail(storage, settings, selected_task)
 
 
 def _render_quality_evaluation(settings) -> None:
@@ -3408,7 +3522,7 @@ def main() -> None:
         return
     if operation_page == TASKS_PAGE:
         st.caption("메일에서 만들어진 업무와 직접 등록한 업무를 한곳에서 관리하고 완료 처리합니다.")
-        _render_tasks_and_histories(storage, show_history=False)
+        _render_tasks_and_histories(storage, settings, show_history=False)
         return
     if operation_page == REVIEW_PAGE:
         st.subheader("검토 요청")
