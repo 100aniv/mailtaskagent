@@ -470,6 +470,21 @@ Task Context Agent는 Action을 선택하지만 직접 실행하거나 DB를 수
 제안한 Action을 실행 가능한 Payload로 만들고 후보 범위·관계·Intent·상태 전이·위험 변경을
 검증한다. 안전하지 않으면 다른 자동 Action으로 몰래 바꾸지 않고 `ASK_USER`로 보낸다.
 
+### 화면의 신뢰도는 무엇인가
+
+신뢰도는 단계마다 의미가 다르므로 하나의 점수처럼 합쳐 읽으면 안 된다.
+
+| 화면 표시 | 의미 |
+|---|---|
+| `M-01 Mail 분석 신뢰도` | 현재 Mail의 Intent·요청사항·기한을 얼마나 확실하게 구조화했는가 |
+| `Task Context Agent 신뢰도` | 검색된 Task·최근 Mail·History를 보고 같은 업무와 다음 Action을 얼마나 확실하게 골랐는가 |
+| `Reply Agent 신뢰도` | 어떤 회신 방식과 Draft가 필요한지를 얼마나 확실하게 판단했는가 |
+
+화면의 `90% (0.90) · 기준 75% 통과`는 LLM이 반환한 구조화 신뢰도와 자동 처리 기준을 함께
+표시한 것이다. 신뢰도가 높아도 완료·취소·기한 단축 같은 위험 Action은 Python Guard와 사용자
+승인 정책이 우선한다. 반대로 동일 `conversation_id`로 Task가 확정되면 Task Context Agent를
+호출하지 않으며, 이는 Agentic AI가 부족해서가 아니라 확정 Metadata를 우선하는 안전·비용 정책이다.
+
 예를 들면 다음과 같다.
 
 - `NEW_TASK`이고 후보가 없으면 `CREATE_TASK`

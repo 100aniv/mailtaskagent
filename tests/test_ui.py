@@ -267,6 +267,16 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
         button for button in app.button if button.label.startswith("미처리 메일 전체 분류")
     )
     app = batch_button.click().run(timeout=120)
+    app = _select_radio(app, "운영 화면", "시스템 로그")
+    assert not app.exception
+    trace_text = "\n".join(
+        [*(item.value for item in app.markdown), *(item.value for item in app.caption)]
+    )
+    assert "이번 판단 한눈에 보기" in trace_text
+    assert "1 · LLM Mail 분석" in trace_text
+    assert "2 · Task Context 선택" in trace_text
+    assert "3 · Agent Action 제안" in trace_text
+    assert "4 · Python Guard / 실행" in trace_text
     app = _select_radio(app, "주 메뉴", ui_module.TASKS_PAGE)
 
     assert not app.exception

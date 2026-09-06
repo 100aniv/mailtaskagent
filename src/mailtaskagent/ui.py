@@ -1435,15 +1435,30 @@ def _agentic_trace_phase(step: str) -> tuple[str, str]:
     return "Workflow Event", "•"
 
 
-def _render_agentic_trace(events: list[dict], mail_ids: list[str]) -> None:
+def _render_agentic_trace(
+    events: list[dict],
+    mail_ids: list[str],
+    *,
+    confidence_threshold: float = 0.75,
+) -> None:
     st.markdown("### Agentic Workflow Trace")
     st.caption(
         "Agent가 입력을 관찰하고 Context를 검색한 뒤 판단·행동·결과 관찰·최종 출력을 "
         "수행한 과정을 보여줍니다. 원시 사고과정 대신 검증 가능한 근거만 표시합니다."
     )
-    ordered_mail_ids = list(
-        dict.fromkeys(event["mail_id"] for event in sorted(events, key=lambda item: item["event_id"], reverse=True))
+    latest_first_mail_ids = list(
+        dict.fromkeys(
+            event["mail_id"]
+            for event in sorted(events, key=lambda item: item["event_id"], reverse=True)
+        )
     )
+    analyzed_mail_ids = {
+        event["mail_id"] for event in events if event["step"] == "M-01 LLM_ANALYSIS"
+    }
+    ordered_mail_ids = [
+        *[mail_id for mail_id in latest_first_mail_ids if mail_id in analyzed_mail_ids],
+        *[mail_id for mail_id in latest_first_mail_ids if mail_id not in analyzed_mail_ids],
+    ]
     for mail_id in mail_ids:
         if mail_id not in ordered_mail_ids:
             ordered_mail_ids.append(mail_id)
@@ -1452,13 +1467,120 @@ def _render_agentic_trace(events: list[dict], mail_ids: list[str]) -> None:
         ordered_mail_ids,
         key="agentic_trace_mail_id",
     )
+    direct_trace_events = [event for event in events if event["mail_id"] == trace_mail_id]
+    related_send_case_ids = {
+        event["case_id"]
+        for event in direct_trace_events
+        if str(event.get("case_id") or "").startswith("GMAIL-SEND-")
+    }
     trace_events = sorted(
-        [event for event in events if event["mail_id"] == trace_mail_id],
+        [
+            event
+            for event in events
+            if event["mail_id"] == trace_mail_id
+            or event["case_id"] in related_send_case_ids
+        ],
         key=lambda item: item["event_id"],
     )
     if not trace_events:
         st.info("선택한 Mail의 Agent 실행 기록이 없습니다.")
         return
+
+    def latest_details(*steps: str) -> dict:
+        for item in reversed(trace_events):
+            if item["step"] in steps:
+                parsed = _parse_json(item["details_json"])
+                return parsed if isinstance(parsed, dict) else {}
+        return {}
+
+    analysis_details = latest_details("M-01 LLM_ANALYSIS")
+    route_details = latest_details(
+        "M-02 CONTEXT_ROUTE",
+        "M-02 RAG_RETRIEVAL_RETRY",
+        "M-02 RAG_RETRIEVAL",
+    )
+    proposal_details = latest_details("M-03 AGENT_ACTION_PROPOSAL")
+    guard_details = latest_details("M-03 PYTHON_GUARD", "M-03 ACTION_DECISION")
+    final_details = latest_details("FINAL_OUTPUT", "M-04 EXECUTION_OBSERVATION")
+    reply_details = latest_details("REPLY_ACTION_DECISION")
+    route = route_details.get("route") or guard_details.get("match_route") or "-"
+    route_label = {
+        "THREAD_EXACT": "동일 Thread 확정",
+        "STRUCTURED_RAG": "SQLite RAG 검색",
+        "LEGACY": "기존 결정 경로",
+    }.get(route, route)
+    relation = proposal_details.get("relation")
+    relation_label = {
+        "SAME_TASK": "기존 업무",
+        "NEW_TASK": "신규 업무",
+        "AMBIGUOUS": "모호함",
+    }.get(relation, relation or "-")
+    proposed_action = proposal_details.get("action") or guard_details.get("agent_action")
+    final_action = (
+        final_details.get("final_action")
+        or guard_details.get("action")
+        or guard_details.get("final_action")
+        or "-"
+    )
+    proposal_confidence = proposal_details.get("confidence")
+
+    st.markdown("#### 이번 판단 한눈에 보기")
+    st.caption(
+        "원시 사고과정이 아니라 LLM이 반환한 구조화 결과, 검색 근거와 Python 검증 결과를 연결해 보여줍니다."
+    )
+    overview_columns = st.columns(4)
+    with overview_columns[0].container(border=True):
+        st.caption("1 · LLM Mail 분석")
+        st.markdown(f"**{analysis_details.get('intent') or '-'}**")
+        analysis_confidence = analysis_details.get("confidence")
+        if isinstance(analysis_confidence, (int, float)):
+            st.caption(f"신뢰도 {analysis_confidence:.0%} ({analysis_confidence:.2f})")
+        st.caption(str(analysis_details.get("request_summary") or "분석 기록 없음")[:180])
+    with overview_columns[1].container(border=True):
+        st.caption("2 · Task Context 선택")
+        st.markdown(f"**{route_label}**")
+        if route == "THREAD_EXACT":
+            st.caption("확정 가능한 Thread ID가 있어 Task Context LLM 호출을 생략했습니다.")
+        elif route == "STRUCTURED_RAG":
+            candidate_count = len(route_details.get("candidate_task_ids") or [])
+            st.caption(f"관련 Task 후보 {candidate_count}개와 최근 Mail·History를 검색했습니다.")
+        else:
+            st.caption("현재 Mail과 기존 후보를 기준으로 결정 경로를 선택했습니다.")
+    with overview_columns[2].container(border=True):
+        st.caption("3 · Agent Action 제안")
+        if proposal_details:
+            action_label = ACTION_LABELS.get(proposed_action, proposed_action or "-")
+            st.markdown(f"**{relation_label} · {action_label}**")
+            if isinstance(proposal_confidence, (int, float)):
+                passed = proposal_confidence >= confidence_threshold
+                st.caption(
+                    f"신뢰도 {proposal_confidence:.0%} ({proposal_confidence:.2f}) · "
+                    f"기준 {confidence_threshold:.0%} {'통과' if passed else '미달'}"
+                )
+            st.caption(str(proposal_details.get("reason") or "-")[:180])
+        elif route == "THREAD_EXACT":
+            st.markdown("**Task Context Agent 생략**")
+            st.caption("확정 Metadata가 있어 불필요한 LLM 호출을 하지 않았습니다.")
+        else:
+            st.markdown("**제안 기록 없음**")
+    with overview_columns[3].container(border=True):
+        st.caption("4 · Python Guard / 실행")
+        verdict = guard_details.get("verdict") or guard_details.get("guard_verdict") or "검증 완료"
+        st.markdown(f"**{verdict} → {ACTION_LABELS.get(final_action, final_action)}**")
+        st.caption(str(guard_details.get("reason") or "상태 전이와 Payload 정책을 확인했습니다.")[:180])
+
+    if reply_details:
+        reply_confidence = reply_details.get("confidence")
+        reply_action = reply_details.get("reply_action")
+        confidence_text = (
+            f" · 신뢰도 {reply_confidence:.0%} ({reply_confidence:.2f})"
+            if isinstance(reply_confidence, (int, float))
+            else ""
+        )
+        st.info(
+            f"Reply Agent 판단 · {REPLY_ACTION_LABELS.get(reply_action, reply_action)}"
+            f"{confidence_text} · {reply_details.get('reason') or '-'}"
+        )
 
     for event in trace_events:
         phase, icon = _agentic_trace_phase(event["step"])
@@ -1469,9 +1591,9 @@ def _render_agentic_trace(events: list[dict], mail_ids: list[str]) -> None:
             step_col.markdown(f"**{event['step']}**")
             result_col.markdown(
                 "🟢 성공"
-                if event["status"] == "SUCCESS"
-                else "🟡 대기"
-                if event["status"] in {"WAITING", "STARTED"}
+                if event["status"] in {"SUCCESS", "ACCEPTED"}
+                else "🟡 확인"
+                if event["status"] in {"WAITING", "STARTED", "ESCALATED", "FALLBACK"}
                 else "🔴 실패"
             )
             st.write(event["message"])
@@ -1490,13 +1612,29 @@ def _render_agentic_trace(events: list[dict], mail_ids: list[str]) -> None:
                 ):
                     value = details.get(key)
                     if value is not None:
+                        if key == "confidence" and isinstance(value, (int, float)):
+                            value = f"{value:.0%} ({value:.2f})"
+                        elif key in {"agent_action", "action", "final_action"}:
+                            value = ACTION_LABELS.get(value, value)
                         summary_parts.append(f"**{label}** {value}")
                 if summary_parts:
                     st.caption(" · ".join(summary_parts))
                 retrieval_results = details.get("retrieval_results")
                 if isinstance(retrieval_results, list) and retrieval_results:
+                    retrieval_rows = [
+                        {
+                            "후보 Task": item.get("task_id"),
+                            "검색 점수": (
+                                f"{item.get('score'):.2f}"
+                                if isinstance(item.get("score"), (int, float))
+                                else item.get("score")
+                            ),
+                            "검색 근거": item.get("reason"),
+                        }
+                        for item in retrieval_results
+                    ]
                     st.dataframe(
-                        pd.DataFrame(retrieval_results),
+                        pd.DataFrame(retrieval_rows),
                         width="stretch",
                         hide_index=True,
                     )
@@ -1520,7 +1658,7 @@ def _render_agentic_trace(events: list[dict], mail_ids: list[str]) -> None:
             )
 
 
-def _render_event_log(storage, mail_ids: list[str]) -> None:
+def _render_event_log(storage, mail_ids: list[str], *, confidence_threshold: float = 0.75) -> None:
     st.subheader("Agent 실행 로그")
     st.caption("M-01~M-05 처리 단계, 성공·실패, 소요 시간과 정제된 상세 정보를 표시합니다.")
     events = storage.list_events()
@@ -1528,7 +1666,11 @@ def _render_event_log(storage, mail_ids: list[str]) -> None:
         st.info("아직 실행 로그가 없습니다.")
         return
 
-    _render_agentic_trace(events, mail_ids)
+    _render_agentic_trace(
+        events,
+        mail_ids,
+        confidence_threshold=confidence_threshold,
+    )
     st.divider()
     st.markdown("### 전체 기술 로그")
 
@@ -1907,9 +2049,14 @@ def _render_reply_draft_assistant(storage, settings, selected_task: dict) -> Non
     action = ReplyAction(record["reply_action"])
     label_col, confidence_col, source_col = st.columns([2, 1, 2])
     label_col.markdown(f"**{REPLY_ACTION_LABELS[action.value]}**")
-    confidence_col.metric("신뢰도", f"{record['confidence']:.0%}")
+    confidence_col.metric("Reply Agent 신뢰도", f"{record['confidence']:.0%}")
     source_col.caption(f"기준 Mail · {record['source_mail_id']}")
     st.info(f"판단 근거 · {record['reason']}")
+    st.caption(
+        f"구조화 신뢰도 {record['confidence']:.2f} · 자동 초안 기준 "
+        f"{settings.confidence_threshold:.2f} "
+        f"{'통과' if record['confidence'] >= settings.confidence_threshold else '미달'}"
+    )
 
     if record["status"] == "NO_REPLY":
         st.success("현재 Context에서는 별도 회신이 필요하지 않다고 판단했습니다.")
@@ -3352,7 +3499,11 @@ def _render_operations_monitoring(storage, settings, mails, selected_source: str
     if monitoring_view == "시스템 로그":
         st.markdown("### 시스템 로그")
         st.caption("분석·후보 검색·판단·검증·DB 반영 단계와 오류를 확인합니다.")
-        _render_event_log(storage, [mail.mail_id for mail in mails])
+        _render_event_log(
+            storage,
+            [mail.mail_id for mail in mails],
+            confidence_threshold=settings.task_context_rag_confidence_threshold,
+        )
         return
 
     sync_runs = storage.list_sync_runs(source="GMAIL", limit=10)
@@ -3621,7 +3772,11 @@ def main() -> None:
             st.write("Agent가 확신하지 못한 경우에는 DB 변경을 멈추고 사람의 결정을 기다립니다.")
             _render_review_queue(storage, settings, mail_by_id)
         with tabs[3]:
-            _render_event_log(storage, [mail.mail_id for mail in mails])
+            _render_event_log(
+                storage,
+                [mail.mail_id for mail in mails],
+                confidence_threshold=settings.task_context_rag_confidence_threshold,
+            )
         with tabs[4]:
             _render_quality_evaluation(settings)
         with tabs[5]:
