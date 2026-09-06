@@ -27,7 +27,8 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 읽기 전용 Gmail 개�
   Guard, DB 반영 결과 재조회와 검증 가능한 Agent Trace
 - Task에 연결된 최신 수신 Mail·현재 Task·최근 History를 보고 `NO_REPLY`, `SIMPLE_ACK`,
   `DATE_REPLY`, `VALUE_REPLY`, `APPROVE_REPLY`, `DRAFT_REPLY`, `ASK_USER` 중 회신 방식을
-  고르는 Mail-to-Action Draft. 필요한 사용자 입력을 받은 뒤 초안을 저장하며 실제 발송은 하지 않음
+  고르는 Mail-to-Action Draft. 필요한 사용자 입력을 받은 뒤 초안을 저장하며 Context 관찰,
+  판단, 입력 확인, Draft 생성·수정 결과를 Processing Event에 남긴다. 실제 발송은 하지 않음
 - Pydantic 구조화 결과 검증
 - 잘못된 LLM 구조화 출력 1회 재시도
 - SQLite Task/History/중복 처리

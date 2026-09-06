@@ -55,6 +55,19 @@
     "mail_send_button_present": false,
     "passed": true
   },
+  "reply_trace": {
+    "steps": [
+      "REPLY_CONTEXT_OBSERVATION",
+      "REPLY_ACTION_DECISION",
+      "REPLY_PLAN_STORED",
+      "REPLY_USER_INPUT",
+      "REPLY_DRAFT_GENERATION",
+      "REPLY_USER_EDIT"
+    ],
+    "raw_user_input_logged": false,
+    "draft_body_logged": false,
+    "failure_error_type_only": true
+  },
   "operations": {
     "gmail_oauth_reauthorized": true,
     "gmail_oauth_ready": true,

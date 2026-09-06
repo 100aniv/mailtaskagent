@@ -82,6 +82,16 @@ def test_date_reply_requires_user_input_and_persists_draft(tmp_path) -> None:
     assert draft["status"] == "DRAFTED"
     assert "2026-09-10" in draft["draft_body"]
     assert "전송" not in draft["status"]
+    events = storage.list_events(mail_id="REPLY-MAIL-001")
+    steps = {event["step"] for event in events}
+    assert {
+        "REPLY_CONTEXT_OBSERVATION",
+        "REPLY_ACTION_DECISION",
+        "REPLY_PLAN_STORED",
+        "REPLY_USER_INPUT",
+        "REPLY_DRAFT_GENERATION",
+    } <= steps
+    assert "2026-09-10" not in json.dumps(events, ensure_ascii=False)
 
 
 def test_simple_ack_is_created_without_sending(tmp_path) -> None:
@@ -174,6 +184,13 @@ def test_reply_compose_failure_keeps_plan_and_task_unchanged(tmp_path) -> None:
 
     assert storage.get_reply_draft(plan["reply_id"])["status"] == "NEEDS_INPUT"
     assert storage.get_task(task["task_id"])["status"] == "TODO"
+    failed_event = next(
+        event
+        for event in storage.list_events(mail_id="REPLY-MAIL-001")
+        if event["step"] == "REPLY_DRAFT_GENERATION"
+    )
+    assert failed_event["status"] == "FAILED"
+    assert "sensitive provider detail" not in failed_event["details_json"]
 
 
 def test_azure_reply_assistant_uses_structured_untrusted_context(tmp_path) -> None:

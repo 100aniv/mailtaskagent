@@ -1415,6 +1415,12 @@ def _agentic_trace_phase(step: str) -> tuple[str, str]:
         return "Observe Result", "🔎"
     if step in {"PROCESS_COMPLETED", "FINAL_OUTPUT"}:
         return "Final Output", "✅"
+    if step == "REPLY_CONTEXT_OBSERVATION":
+        return "Reply Context", "📨"
+    if step in {"REPLY_ACTION_DECISION", "REPLY_PLAN_STORED"}:
+        return "Reply Plan", "💬"
+    if step in {"REPLY_USER_INPUT", "REPLY_DRAFT_GENERATION", "REPLY_USER_EDIT"}:
+        return "Reply Draft", "✍️"
     return "Workflow Event", "•"
 
 

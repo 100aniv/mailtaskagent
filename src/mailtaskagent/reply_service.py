@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import uuid4
 
 from mailtaskagent.models import (
     MailDirection,
@@ -55,6 +56,27 @@ class MailToActionDraftService:
         self.assistant = assistant
         self.confidence_threshold = confidence_threshold
 
+    def _event(
+        self,
+        *,
+        case_id: str,
+        mail_id: str,
+        step: str,
+        status: str,
+        message: str,
+        details: dict | None = None,
+        level: str = "INFO",
+    ) -> None:
+        self.storage.append_event(
+            case_id=case_id,
+            mail_id=mail_id,
+            step=step,
+            status=status,
+            message=message,
+            details=details,
+            level=level,
+        )
+
     def _task_context_and_mail(self, task_id: str, source_mail_id: str | None = None):
         context = self.storage.get_task_context(task_id, history_limit=5)
         if context is None:
@@ -75,9 +97,34 @@ class MailToActionDraftService:
 
     def prepare(self, task_id: str) -> dict:
         context, mail = self._task_context_and_mail(task_id)
+        case_id = f"REPLY-{uuid4().hex[:10].upper()}"
+        self._event(
+            case_id=case_id,
+            mail_id=mail.mail_id,
+            step="REPLY_CONTEXT_OBSERVATION",
+            status="SUCCESS",
+            message="회신 판단용 Mail·Task·History Context 조회 완료",
+            details={
+                "task_id": task_id,
+                "task_status": context["task"]["status"],
+                "history_count": len(context.get("recent_histories") or []),
+                "linked_mail_count": len(context.get("linked_mails") or []),
+            },
+        )
+        decision_event_recorded = False
         try:
             plan = self.assistant.plan(mail, context)
-        except Exception:
+        except Exception as exc:
+            self._event(
+                case_id=case_id,
+                mail_id=mail.mail_id,
+                step="REPLY_ACTION_DECISION",
+                status="FALLBACK",
+                message="Reply Agent 실패로 사용자 확인 전환",
+                details={"error_type": type(exc).__name__},
+                level="WARNING",
+            )
+            decision_event_recorded = True
             plan = ReplyPlan(
                 action=ReplyAction.ASK_USER,
                 confidence=0,
@@ -85,13 +132,42 @@ class MailToActionDraftService:
                 question="메일 내용을 확인하고 직접 회신 방향을 결정해 주세요.",
             )
         if plan.confidence < self.confidence_threshold and plan.action != ReplyAction.ASK_USER:
+            self._event(
+                case_id=case_id,
+                mail_id=mail.mail_id,
+                step="REPLY_ACTION_DECISION",
+                status="ESCALATED",
+                message="Reply Agent 신뢰도 기준 미달로 사용자 확인 전환",
+                details={
+                    "proposed_action": plan.action.value,
+                    "confidence": plan.confidence,
+                    "threshold": self.confidence_threshold,
+                },
+                level="WARNING",
+            )
+            decision_event_recorded = True
             plan = ReplyPlan(
                 action=ReplyAction.ASK_USER,
                 confidence=plan.confidence,
                 reason=f"Reply Agent 신뢰도 기준 미달: {plan.reason}",
                 question="메일 내용을 확인하고 직접 회신 방향을 결정해 주세요.",
             )
-        return self.storage.create_reply_plan(
+        if not decision_event_recorded:
+            self._event(
+                case_id=case_id,
+                mail_id=mail.mail_id,
+                step="REPLY_ACTION_DECISION",
+                status="SUCCESS" if plan.action != ReplyAction.ASK_USER else "ESCALATED",
+                message="Reply Agent 회신 방식 판단 완료",
+                details={
+                    "reply_action": plan.action.value,
+                    "confidence": plan.confidence,
+                    "reason": plan.reason,
+                    "requires_user_input": plan.action in INPUT_REQUIRED_ACTIONS,
+                },
+                level="INFO" if plan.action != ReplyAction.ASK_USER else "WARNING",
+            )
+        record = self.storage.create_reply_plan(
             task_id=task_id,
             source_mail_id=mail.mail_id,
             reply_action=plan.action.value,
@@ -100,6 +176,19 @@ class MailToActionDraftService:
             reason=plan.reason,
             confidence=plan.confidence,
         )
+        self._event(
+            case_id=case_id,
+            mail_id=mail.mail_id,
+            step="REPLY_PLAN_STORED",
+            status="SUCCESS",
+            message="회신 판단 결과 저장 완료",
+            details={
+                "reply_id": record["reply_id"],
+                "reply_action": record["reply_action"],
+                "draft_status": record["status"],
+            },
+        )
+        return record
 
     def compose(self, reply_id: int, user_input: str) -> dict:
         record = self.storage.get_reply_draft(reply_id)
@@ -111,6 +200,19 @@ class MailToActionDraftService:
         context, mail = self._task_context_and_mail(
             record["task_id"], record["source_mail_id"]
         )
+        case_id = f"REPLY-{reply_id}"
+        self._event(
+            case_id=case_id,
+            mail_id=mail.mail_id,
+            step="REPLY_USER_INPUT",
+            status="SUCCESS",
+            message="회신 초안에 필요한 사용자 입력 확인 완료",
+            details={
+                "reply_id": reply_id,
+                "reply_action": action.value,
+                "input_present": bool(user_input.strip()),
+            },
+        )
         plan = ReplyPlan(
             action=action,
             confidence=record["confidence"],
@@ -120,16 +222,39 @@ class MailToActionDraftService:
         try:
             draft = self.assistant.compose(mail, context, plan, user_input)
         except Exception as exc:
+            self._event(
+                case_id=case_id,
+                mail_id=mail.mail_id,
+                step="REPLY_DRAFT_GENERATION",
+                status="FAILED",
+                message="Reply Agent 초안 생성 실패; 기존 Task와 회신 Plan 유지",
+                details={"reply_id": reply_id, "error_type": type(exc).__name__},
+                level="ERROR",
+            )
             raise ValueError(
                 "Reply Agent 호출 또는 Schema 검증 실패로 초안 생성을 중지했습니다."
             ) from exc
         if draft.action != action:
             raise ValueError("Reply Agent changed the approved reply action")
-        return self.storage.update_reply_draft(
+        updated = self.storage.update_reply_draft(
             reply_id,
             draft_body=draft.body,
             user_input=draft.user_input,
         )
+        self._event(
+            case_id=case_id,
+            mail_id=mail.mail_id,
+            step="REPLY_DRAFT_GENERATION",
+            status="SUCCESS",
+            message="사용자 입력 기반 회신 초안 생성·저장 완료",
+            details={
+                "reply_id": reply_id,
+                "reply_action": action.value,
+                "draft_status": updated["status"],
+                "mail_sent": False,
+            },
+        )
+        return updated
 
     def save_user_edit(self, reply_id: int, draft_body: str) -> dict:
         record = self.storage.get_reply_draft(reply_id)
@@ -137,9 +262,22 @@ class MailToActionDraftService:
             raise ValueError(f"Reply draft not found: {reply_id}")
         if record["status"] != "DRAFTED":
             raise ValueError("Only a generated draft can be edited")
-        return self.storage.update_reply_draft(
+        updated = self.storage.update_reply_draft(
             reply_id,
             draft_body=draft_body,
             user_input=record.get("user_input"),
             user_edited=True,
         )
+        self._event(
+            case_id=f"REPLY-{reply_id}",
+            mail_id=record["source_mail_id"],
+            step="REPLY_USER_EDIT",
+            status="SUCCESS",
+            message="사용자 수정 회신 초안 저장 완료",
+            details={
+                "reply_id": reply_id,
+                "reply_action": record["reply_action"],
+                "mail_sent": False,
+            },
+        )
+        return updated
