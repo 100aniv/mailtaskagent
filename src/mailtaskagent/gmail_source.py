@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import re
 from collections.abc import Iterable
@@ -17,6 +18,7 @@ from mailtaskagent.models import MailDirection, MailInput
 
 
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 DEFAULT_GMAIL_QUERY = "label:MailTaskAgent-Demo"
 GMAIL_CONVERSATION_PREFIX = "GMAIL-THREAD-"
 MAX_TRACKED_GMAIL_THREADS = 100
@@ -82,6 +84,7 @@ def build_gmail_service(
     *,
     allow_interactive_auth: bool = True,
     force_reauthorization: bool = False,
+    include_send_scope: bool = False,
 ) -> Any:
     try:
         from google.auth.exceptions import RefreshError
@@ -99,11 +102,29 @@ def build_gmail_service(
             f"Gmail OAuth desktop credentials were not found: {settings.credentials_path}"
         )
 
+    scopes = [GMAIL_READONLY_SCOPE]
+    if include_send_scope:
+        scopes.append(GMAIL_SEND_SCOPE)
     credentials = None
     if settings.token_path.exists() and not force_reauthorization:
-        credentials = Credentials.from_authorized_user_file(
-            str(settings.token_path), [GMAIL_READONLY_SCOPE]
-        )
+        if include_send_scope:
+            try:
+                token_payload = json.loads(
+                    settings.token_path.read_text(encoding="utf-8")
+                )
+                granted_scopes = set(token_payload.get("scopes") or [])
+            except (OSError, ValueError, TypeError):
+                granted_scopes = set()
+            if not set(scopes).issubset(granted_scopes):
+                if not allow_interactive_auth:
+                    raise RuntimeError("Gmail send authorization is required")
+                force_reauthorization = True
+        if force_reauthorization:
+            credentials = None
+        else:
+            credentials = Credentials.from_authorized_user_file(
+                str(settings.token_path), scopes
+            )
     if not credentials or not credentials.valid:
         if credentials and credentials.expired and credentials.refresh_token:
             try:
@@ -116,7 +137,7 @@ def build_gmail_service(
             if not allow_interactive_auth:
                 raise RuntimeError("Gmail user reauthorization is required")
             flow = InstalledAppFlow.from_client_secrets_file(
-                str(settings.credentials_path), [GMAIL_READONLY_SCOPE]
+                str(settings.credentials_path), scopes
             )
             credentials = flow.run_local_server(port=0)
         settings.token_path.parent.mkdir(parents=True, exist_ok=True)

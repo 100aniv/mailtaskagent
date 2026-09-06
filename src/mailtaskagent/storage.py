@@ -15,6 +15,7 @@ from mailtaskagent.models import (
     GuardedActionResult,
     MailAnalysis,
     MailInput,
+    MailIntent,
     ReplyAction,
     ReviewDecision,
     TaskCandidate,
@@ -158,6 +159,22 @@ CREATE TABLE IF NOT EXISTS reply_drafts (
 );
 CREATE INDEX IF NOT EXISTS idx_reply_drafts_task
 ON reply_drafts(task_id, reply_id DESC);
+CREATE TABLE IF NOT EXISTS reply_sends (
+    send_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reply_id INTEGER NOT NULL UNIQUE,
+    task_id TEXT NOT NULL,
+    source_mail_id TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    gmail_thread_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL,
+    gmail_message_id TEXT,
+    error_type TEXT,
+    created_at TEXT NOT NULL,
+    sent_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_reply_sends_task
+ON reply_sends(task_id, send_id DESC);
 """
 
 
@@ -254,6 +271,7 @@ class SQLiteStorage:
     def reset(self) -> None:
         self.initialize()
         with self.connect() as connection:
+            connection.execute("DELETE FROM reply_sends")
             connection.execute("DELETE FROM reply_drafts")
             connection.execute("DELETE FROM sync_runs")
             connection.execute("DELETE FROM processing_events")
@@ -1842,3 +1860,236 @@ class SQLiteStorage:
         for result in results:
             result["user_edited"] = bool(result["user_edited"])
         return results
+
+    def get_reply_send(self, reply_id: int) -> dict | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM reply_sends WHERE reply_id = ?", (reply_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def reserve_reply_send(
+        self,
+        *,
+        reply_id: int,
+        recipient: str,
+        gmail_thread_id: str,
+        idempotency_key: str,
+    ) -> dict:
+        clean_recipient = recipient.strip()
+        if not clean_recipient:
+            raise ValueError("Reply recipient is required")
+        if not gmail_thread_id.strip() or not idempotency_key.strip():
+            raise ValueError("Gmail thread and idempotency key are required")
+        now = _now()
+        with self.connect() as connection:
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                draft = connection.execute(
+                    "SELECT * FROM reply_drafts WHERE reply_id = ?", (reply_id,)
+                ).fetchone()
+                if draft is None:
+                    raise ValueError(f"Reply draft not found: {reply_id}")
+                if draft["status"] != "DRAFTED" or not str(
+                    draft["draft_body"] or ""
+                ).strip():
+                    raise ValueError("Only a completed draft can be sent")
+                existing = connection.execute(
+                    "SELECT * FROM reply_sends WHERE reply_id = ?", (reply_id,)
+                ).fetchone()
+                if existing is not None:
+                    raise ValueError("This reply draft already has a send attempt")
+                cursor = connection.execute(
+                    """
+                    INSERT INTO reply_sends(
+                        reply_id, task_id, source_mail_id, recipient,
+                        gmail_thread_id, idempotency_key, status, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?)
+                    """,
+                    (
+                        reply_id,
+                        draft["task_id"],
+                        draft["source_mail_id"],
+                        clean_recipient,
+                        gmail_thread_id.strip(),
+                        idempotency_key.strip(),
+                        now,
+                    ),
+                )
+                connection.commit()
+                row = connection.execute(
+                    "SELECT * FROM reply_sends WHERE send_id = ?",
+                    (cursor.lastrowid,),
+                ).fetchone()
+                return dict(row)
+            except Exception:
+                connection.rollback()
+                raise
+
+    def fail_reply_send(self, send_id: int, *, error_type: str) -> dict:
+        clean_error = re.sub(r"[^A-Za-z0-9_.-]", "", error_type)[:120] or "UnknownError"
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE reply_sends
+                SET status = 'FAILED', error_type = ?
+                WHERE send_id = ? AND status = 'PENDING'
+                """,
+                (clean_error, send_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Reply send is not pending")
+            connection.commit()
+            row = connection.execute(
+                "SELECT * FROM reply_sends WHERE send_id = ?", (send_id,)
+            ).fetchone()
+        return dict(row)
+
+    def complete_reply_send(self, send_id: int, outbound_mail: MailInput) -> dict:
+        if outbound_mail.direction.value != "OUTBOUND":
+            raise ValueError("A completed reply send requires an OUTBOUND Mail")
+        now = _now()
+        with self.connect() as connection:
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                send = connection.execute(
+                    "SELECT * FROM reply_sends WHERE send_id = ?", (send_id,)
+                ).fetchone()
+                if send is None or send["status"] != "PENDING":
+                    raise ValueError("Reply send is not pending")
+                draft = connection.execute(
+                    "SELECT * FROM reply_drafts WHERE reply_id = ?",
+                    (send["reply_id"],),
+                ).fetchone()
+                if draft is None:
+                    raise ValueError("Reply draft not found")
+                before = self._fetch_task(connection, send["task_id"])
+                if before is None:
+                    raise ValueError(f"Task not found: {send['task_id']}")
+                if outbound_mail.conversation_id != before["conversation_id"]:
+                    raise ValueError("Sent Gmail thread does not match the Task")
+                validate_status_transition(
+                    before["status"], TaskStatus.WAITING_REPLY
+                )
+                if connection.execute(
+                    "SELECT 1 FROM processing_results WHERE mail_id = ?",
+                    (outbound_mail.mail_id,),
+                ).fetchone():
+                    raise ValueError("Sent Gmail message was already recorded")
+
+                self._insert_mail(connection, outbound_mail, now)
+                connection.execute(
+                    """
+                    UPDATE tasks
+                    SET status = ?, waiting_since = ?, updated_at = ?
+                    WHERE task_id = ?
+                    """,
+                    (
+                        TaskStatus.WAITING_REPLY.value,
+                        outbound_mail.occurred_at.isoformat(),
+                        now,
+                        send["task_id"],
+                    ),
+                )
+                after = self._fetch_task(connection, send["task_id"])
+                reason = "사용자가 AI 회신 초안을 확인하고 Gmail 발송을 명시적으로 승인"
+                self._insert_link(
+                    connection,
+                    outbound_mail.mail_id,
+                    send["task_id"],
+                    AgentAction.SET_WAITING.value,
+                    reason,
+                    1.0,
+                    now,
+                )
+                user_decision = {
+                    "decision": "APPROVE_GMAIL_SEND",
+                    "reply_id": send["reply_id"],
+                    "recipient": send["recipient"],
+                    "gmail_message_id": outbound_mail.mail_id,
+                }
+                connection.execute(
+                    """
+                    INSERT INTO histories(
+                        task_id, mail_id, action, before_json, after_json,
+                        reason, confidence, user_decision, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, 1.0, ?, ?)
+                    """,
+                    (
+                        send["task_id"],
+                        outbound_mail.mail_id,
+                        AgentAction.SET_WAITING.value,
+                        _json(before),
+                        _json(after),
+                        reason,
+                        _json(user_decision),
+                        now,
+                    ),
+                )
+                analysis = MailAnalysis(
+                    is_task_request=True,
+                    intent=MailIntent.WAITING,
+                    task_title=before["title"],
+                    request_summary="사용자가 승인한 Gmail 회신 발송",
+                    requester=send["recipient"],
+                    reply_required=False,
+                    reason=reason,
+                    confidence=1.0,
+                )
+                proposal = ActionProposal(
+                    action=AgentAction.SET_WAITING,
+                    target_task_id=send["task_id"],
+                    changes={
+                        "status": TaskStatus.WAITING_REPLY.value,
+                        "waiting_since": outbound_mail.occurred_at.isoformat(),
+                    },
+                    reason=reason,
+                    confidence=1.0,
+                )
+                result = {
+                    "case_id": f"GMAIL-SEND-{send_id}",
+                    "mail_id": outbound_mail.mail_id,
+                    "analysis": analysis.model_dump(mode="json"),
+                    "proposal": proposal.model_dump(mode="json"),
+                    "action": AgentAction.SET_WAITING.value,
+                    "task_id": send["task_id"],
+                    "task": after,
+                    "before": before,
+                    "after": after,
+                    "match_route": "GMAIL_APPROVED_SEND",
+                    "validation_result": {"user_approved": True},
+                }
+                connection.execute(
+                    """
+                    INSERT INTO processing_results(
+                        mail_id, action, task_id, result_json, processed_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        outbound_mail.mail_id,
+                        AgentAction.SET_WAITING.value,
+                        send["task_id"],
+                        _json(result),
+                        now,
+                    ),
+                )
+                connection.execute(
+                    """
+                    UPDATE reply_sends
+                    SET status = 'SENT', gmail_message_id = ?, sent_at = ?
+                    WHERE send_id = ?
+                    """,
+                    (outbound_mail.mail_id, outbound_mail.occurred_at.isoformat(), send_id),
+                )
+                connection.execute(
+                    "UPDATE reply_drafts SET status = 'SENT', updated_at = ? WHERE reply_id = ?",
+                    (now, send["reply_id"]),
+                )
+                connection.commit()
+                completed = connection.execute(
+                    "SELECT * FROM reply_sends WHERE send_id = ?", (send_id,)
+                ).fetchone()
+                return {"send": dict(completed), "task": after, "mail": outbound_mail}
+            except Exception:
+                connection.rollback()
+                raise

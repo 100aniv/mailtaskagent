@@ -89,14 +89,22 @@ Domain, Keyword, 날짜와 사용자 Preference는 RAG가 아니라 검증 가�
 1. **Mail-to-Action Draft:** Task Context를 바탕으로 `NO_REPLY`, `SIMPLE_ACK`, `DATE_REPLY`,
    `VALUE_REPLY`, `APPROVE_REPLY`, `DRAFT_REPLY`, `ASK_USER` 중 필요한 회신 방식을 판단하고,
    날짜·값·승인·일반 Draft 입력 화면을 제공한다. 이 단계에서는 실제 메일을 발송하지 않는다.
-2. **Gmail 사용자 승인 발송:** Gmail Send OAuth, 수신자·Reply-All·CC/BCC 검증, Thread·서명·
-   인용문 처리와 발송 History를 추가한다. 사용자가 명시적으로 전송을 승인한 경우에만 발송하고
-   성공 후 기존 `SET_WAITING` 상태 전이를 적용한다.
+2. **Gmail 사용자 승인 발송:** 테스트 Gmail의 Plain Text 단일 수신자 Reply, Send OAuth,
+   원본 발신자 잠금, 수신자 Allowlist, 중복 방지, 발송 History를 구현·검증했다. 사용자가
+   명시적으로 전송을 승인한 경우에만 발송하고 성공 후 기존 `SET_WAITING` 상태 전이를 적용한다.
+   Reply-All·CC/BCC·첨부파일·HTML·서명·예약 발송은 아직 범위 밖이다.
 3. **사내 Outlook 운영 전환:** Gmail 테스트 계정에서 전체 흐름을 검증한 뒤 Microsoft Graph
    Read·Send, 사내 인증·권한·서버·운영 DB·Event Subscription과 Slack 운영 알림을 연결한다.
 
 Mail-to-Action은 현재 고정된 7개 Task Lifecycle Action을 대체하지 않는다. Task 관리 계층과
 회신 수행 계층을 분리하고, 실제 발송은 항상 Human-in-the-loop와 Audit History를 통과해야 한다.
+
+2026-09-06 Gmail 사용자 승인 발송의 최초 구현 범위는 테스트 Gmail의 Plain Text 단일 수신자
+Reply로 축소한다. 수신자는 원본 수신 Mail의 발신자로 잠그고, 화면에서 주소·본문·Thread를
+보여준 뒤 승인 Checkbox와 전송 Button을 모두 통과해야 한다. 발송 성공 Message ID를 저장한
+후에만 Task를 `WAITING_REPLY`로 전환한다. 중복 전송 Key, 테스트 수신자 Allowlist, Feature
+Flag와 실패 시 Task 무변경을 필수 Gate로 둔다. Reply-All·CC/BCC·첨부파일·HTML·예약 발송은
+첫 버전의 완료조건이 아니다.
 
 ## 5. Outlook 및 Microsoft Graph
 
@@ -331,7 +339,7 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 
 - RAG/Vector DB 기반 사내 문서 검색
 - Multi-Agent
-- 자동 회신·발송
+- 사용자 승인 없는 자동 회신·발송
 - 조직 전체 Mailbox 처리
 - 첨부파일 정밀 분석
 
@@ -356,8 +364,9 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 | Slack 사내 알림 | Payload·Dry-run·실패 시 전송 계약 구현 | 실제 Webhook·채널 승인 후 Live 수신 확인 필요 |
 | 중앙 Logging·Monitoring | 로컬 Event·sync_runs·Health까지 구현 | 회사 Monitoring 수집 규격·Endpoint 필요 |
 | 사내 지식 RAG/Vector DB | 적용하지 않음 | 실제 정책 문서 Corpus와 필요성 없음. SQLite Task Context RAG는 최종 MVP에 별도로 구현·검증 완료 |
-| Mail-to-Action Draft | 구현·자동/Live/UI 테스트 완료 | 회신 방식 판단·필요 입력·초안 저장만 제공, 실제 발송 없음 |
-| 자동 회신·발송·삭제 | 적용하지 않음 | Gmail Send 권한·수신자 검증·사용자 승인 발송은 현재 안전 범위 밖 |
+| Mail-to-Action Draft | 구현·자동/Live/UI 테스트 완료 | 회신 방식 판단·필요 입력·초안 저장 |
+| Gmail 사용자 승인 발송 | 테스트 계정 구현·자동/Live/UI 테스트 완료 | 원본 발신자·Thread 잠금, Allowlist, Checkbox, Plain Text 단일 Reply, 성공 후 `SET_WAITING` |
+| 자동 회신·Reply-All·CC/BCC·첨부·삭제 | 적용하지 않음 | 사용자 승인 없는 전송과 확장 발송 기능은 안전 범위 밖 |
 | Outlook Live | 사용자 요청에 따라 제외 | Graph 합성 Adapter Contract만 별도 보존 |
 
 2026-08-29 RAG 적용 전 회귀는 Gmail API Message 형식의 전체 Business/Security Case,
@@ -377,4 +386,6 @@ Task 연결 Thread 추적을 적용한 Live `SYNC-0BA30F517ECC`도 가져옴 22�
 2026-09-06에는 Mail-to-Action Draft를 추가해 Task의 최신 수신 Mail·현재 상태·최근 History를
 기반으로 7개 Reply Action 중 하나를 판단하고 필요한 사용자 입력을 받아 초안만 저장하도록
 구현했다. 전체 pytest는 `158 passed`, 회사 LLM Reply Planning은 `3/3`, Draft 생성은 `1/1`,
-실제 Streamlit 화면 흐름도 통과했다. Gmail Scope는 Read-only를 유지하며 발송은 수행하지 않는다.
+실제 Streamlit 화면 흐름도 통과했다. 이어 별도 브랜치에서 테스트 Gmail 사용자 승인 발송을
+추가해 전체 pytest `168 passed`, OAuth Health `READY`, 회사 LLM 초안 기반 실제 발송 1건,
+동일 Thread `SENT`, Task `WAITING_REPLY`, Audit·Trace와 DB 무결성을 확인했다.

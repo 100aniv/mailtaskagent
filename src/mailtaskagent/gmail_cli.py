@@ -27,19 +27,26 @@ def main() -> int:
         action="store_true",
         help="Open an explicit Gmail read-only consent flow and replace the token only after success.",
     )
+    parser.add_argument(
+        "--authorize-send",
+        action="store_true",
+        help="Explicitly replace the token after consenting to Gmail read and send scopes.",
+    )
     args = parser.parse_args()
 
     gmail_settings = load_gmail_source_settings()
     source = GmailReadOnlySource(
         build_gmail_service(
             gmail_settings,
-            force_reauthorization=args.reauthorize,
+            force_reauthorization=args.reauthorize or args.authorize_send,
+            include_send_scope=args.authorize_send,
         ),
         gmail_settings,
     )
     mails = source.load()
+    access_label = "read + approved send" if args.authorize_send else "read-only"
     print(
-        f"Gmail read-only source: {len(mails)} mail(s), "
+        f"Gmail {access_label} source: {len(mails)} mail(s), "
         f"query={gmail_settings.query!r}"
     )
     if not args.process:

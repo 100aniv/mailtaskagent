@@ -82,10 +82,13 @@ JSON으로 반환한다. `READY`는 Exit Code 0, 준비가 부족한 `DEGRADED`�
 
 Health Check는 Credentials·Token 파일 존재 여부뿐 아니라 Gmail API Client를 비대화식으로
 생성해 Refresh Token 유효성도 확인한다. 인증이 폐기되거나 만료되면 Scheduler는 브라우저를
-열지 않고 실패로 기록한다. 사용자가 아래 명령을 한 번 실행해 읽기 전용 권한을 다시 승인한다.
+열지 않고 실패로 기록한다. 사용자가 아래 명령으로 필요한 권한을 다시 승인한다.
 
 ```powershell
 .venv\Scripts\python.exe -m mailtaskagent.gmail_cli --reauthorize
+
+# 테스트 Gmail의 사용자 승인 발송을 사용할 때만
+.venv\Scripts\python.exe -m mailtaskagent.gmail_cli --authorize-send
 ```
 
 2026-08-28 로컬 파일럿에서 Health Check `READY`와 제한 Gmail Label Live 동기화
@@ -229,7 +232,9 @@ Agent Trace를 추가한 뒤 기존 운영 방어를 포함한 전체 회귀는 
 
 ## 7. 보안·운영 Gate
 
-- Gmail은 제한 Label, 최대 건수, Read-only Scope를 유지한다.
+- Gmail 신규 입력은 제한 Label과 최대 건수를 유지한다. 승인 발송을 사용하지 않으면 Read-only다.
+- 승인 발송은 Feature Flag, 정확한 테스트 수신자 Allowlist, 원본 발신자·Thread 잠금,
+  사용자 Checkbox, 중복 방지 Key를 모두 통과한 Plain Text 단일 Reply로 제한한다.
 - Task 연결 Thread 조회는 Gmail `conversation_id`만 사용하고 최대 100개로 제한한다.
 - 사용자가 삭제한 연결 Thread의 404/410은 해당 Thread만 건너뛰며, 인증·권한·네트워크 오류는
   전체 실행 실패로 기록해 운영자가 확인할 수 있게 한다.
@@ -238,5 +243,6 @@ Agent Trace를 추가한 뒤 기존 운영 방어를 포함한 전체 회귀는 
 - 외부 알림을 연결하기 전 수신자·채널·전송 필드를 승인받는다.
 - 사내 알림 채널은 Slack으로 한정하며 Mail 원문·Task 제목·사용자 정보는 보내지 않는다.
 - SSO·다중 사용자·사내 RDBMS·TLS·중앙 로그는 회사 표준이 결정된 후 Adapter로 연결한다.
-- 자동 회신·발송·삭제·이동은 현재 제공하지 않는다.
-- 업무 상세의 Mail-to-Action 기능은 회신 방식 판단과 초안 저장까지만 제공한다. 메일 전송은 하지 않는다.
+- 사용자 승인 없는 자동 회신, Reply-All, CC/BCC, 첨부파일, HTML, 예약 발송, 삭제·이동은 제공하지 않는다.
+- Gmail API 결과가 불명확하면 자동 재발송하지 않고 보낸편지함 확인을 요구한다.
+- 발송 성공 Message ID를 확인한 뒤에만 OUTBOUND Mail·History를 저장하고 Task를 `WAITING_REPLY`로 전환한다.

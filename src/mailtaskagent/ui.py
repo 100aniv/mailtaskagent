@@ -16,6 +16,11 @@ from mailtaskagent.gmail_source import (
     build_gmail_service,
     load_gmail_source_settings,
 )
+from mailtaskagent.approved_send_service import GmailApprovedSendService
+from mailtaskagent.gmail_send import (
+    build_gmail_reply_sender,
+    load_gmail_approved_send_settings,
+)
 from mailtaskagent.gmail_pilot import evaluate_gmail_pilot, load_gmail_pilot_cases
 from mailtaskagent.llm_client import MockMailAnalyzer, build_analyzer
 from mailtaskagent.mail_filters import (
@@ -1421,6 +1426,12 @@ def _agentic_trace_phase(step: str) -> tuple[str, str]:
         return "Reply Plan", "💬"
     if step in {"REPLY_USER_INPUT", "REPLY_DRAFT_GENERATION", "REPLY_USER_EDIT"}:
         return "Reply Draft", "✍️"
+    if step == "GMAIL_SEND_GUARD":
+        return "Send Guard", "🔐"
+    if step == "GMAIL_SEND_EXECUTION":
+        return "Gmail Send", "📤"
+    if step == "GMAIL_SEND_OBSERVATION":
+        return "Send Result", "🔎"
     return "Workflow Event", "•"
 
 
@@ -1850,10 +1861,16 @@ def _clear_selected_operational_task() -> None:
 
 def _render_reply_draft_assistant(storage, settings, selected_task: dict) -> None:
     st.markdown("#### AI 회신 준비")
-    st.caption(
-        "Agent가 필요한 회신 방식을 고르고 초안만 만듭니다. Gmail 발송 권한은 없으며 "
-        "이 화면의 어떤 버튼도 메일을 전송하지 않습니다."
-    )
+    if settings is not None and settings.gmail_approved_send_enabled:
+        st.caption(
+            "Agent가 필요한 회신 방식을 고르고 초안을 만듭니다. 실제 발송은 허용된 "
+            "테스트 수신자와 원본 Thread를 잠근 뒤 사용자가 Checkbox로 승인한 경우에만 수행합니다."
+        )
+    else:
+        st.caption(
+            "Agent가 필요한 회신 방식을 고르고 초안만 만듭니다. Gmail 발송 기능이 "
+            "비활성화되어 있어 메일은 전송되지 않습니다."
+        )
     if settings is None or not settings.mail_to_action_draft_enabled:
         st.info("Mail-to-Action Draft 기능이 비활성화되어 있습니다.")
         return
@@ -1924,6 +1941,16 @@ def _render_reply_draft_assistant(storage, settings, selected_task: dict) -> Non
                 st.error(str(exc))
         return
 
+    send_record = storage.get_reply_send(record["reply_id"])
+    if record["status"] == "SENT":
+        st.success("Gmail 답장 발송이 확인되었습니다. 업무를 회신 대기 상태로 전환했습니다.")
+        if send_record:
+            st.caption(
+                f"발송 결과 · {send_record['gmail_message_id']} · "
+                f"받는 사람 {send_record['recipient']}"
+            )
+        return
+
     with st.form(f"reply_edit_form_{record['reply_id']}"):
         edited_body = st.text_area(
             "회신 초안",
@@ -1941,6 +1968,70 @@ def _render_reply_draft_assistant(storage, settings, selected_task: dict) -> Non
         "상태 · 초안 저장됨"
         + (" · 사용자가 수정함" if record.get("user_edited") else " · Agent 생성본")
     )
+
+    st.markdown("##### Gmail로 답장 보내기")
+    if send_record:
+        if send_record["status"] == "PENDING":
+            st.warning("발송 결과 확인이 끝나지 않았습니다. 중복 방지를 위해 다시 보낼 수 없습니다.")
+        else:
+            st.error(
+                "이 초안의 발송 결과를 확정하지 못했습니다. 자동 재발송하지 말고 Gmail "
+                "보낸편지함을 확인한 뒤 새 초안을 만드세요."
+            )
+        return
+    try:
+        approved_send_settings = load_gmail_approved_send_settings()
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    if not settings.gmail_approved_send_enabled or not approved_send_settings.enabled:
+        st.info(
+            "Gmail 발송 기능은 안전을 위해 꺼져 있습니다. 테스트 계정에서만 "
+            "GMAIL_APPROVED_SEND_ENABLED와 수신자 Allowlist를 설정해 사용합니다."
+        )
+        return
+    preview_service = GmailApprovedSendService(
+        storage, None, approved_send_settings
+    )
+    try:
+        send_preview = preview_service.preview(record["reply_id"])
+    except ValueError as exc:
+        st.warning(str(exc))
+        return
+    with st.container(border=True):
+        st.write(f"**받는 사람** · {send_preview['recipient']}")
+        st.write(f"**제목** · {send_preview['subject']}")
+        st.caption("원본 Gmail Thread에 Plain Text 답장으로 전송합니다. 수신자는 수정할 수 없습니다.")
+        with st.form(f"gmail_send_form_{record['reply_id']}"):
+            confirmed = st.checkbox(
+                "위 수신자와 저장된 회신 본문을 확인했으며 실제 Gmail 발송에 동의합니다."
+            )
+            send_clicked = st.form_submit_button(
+                "Gmail로 답장 보내기",
+                type="primary",
+            )
+        if send_clicked:
+            if not confirmed:
+                st.error("실제 발송 전 확인 Checkbox를 선택하세요.")
+                return
+            try:
+                with st.spinner("Gmail로 답장을 보내고 저장 결과를 확인하고 있습니다..."):
+                    sender = build_gmail_reply_sender()
+                    result = GmailApprovedSendService(
+                        storage, sender, approved_send_settings
+                    ).send(record["reply_id"], user_confirmed=True)
+                st.session_state[f"reply_id_{task_id}"] = record["reply_id"]
+                st.success(
+                    f"발송 완료 · 업무 상태 {TASK_STATUS_LABELS[result['task']['status']]}"
+                )
+                st.rerun()
+            except RuntimeError:
+                st.error(
+                    "Gmail Send 권한 승인이 필요합니다. 터미널에서 "
+                    "`python -m mailtaskagent.gmail_cli --authorize-send`를 먼저 실행하세요."
+                )
+            except ValueError as exc:
+                st.error(str(exc))
 
 
 @st.dialog(
@@ -2564,10 +2655,20 @@ def _render_operation_settings(storage, gmail_summary: dict, mails) -> None:
     with st.container(border=True):
         st.markdown("### 메일 연결")
         if gmail_summary["credentials_ready"] and gmail_summary["token_ready"]:
-            st.success("Gmail 읽기 전용 연결됨")
+            access_label = (
+                "읽기 + 사용자 승인 발송"
+                if settings.gmail_approved_send_enabled
+                else "읽기 전용"
+            )
+            st.success(f"Gmail {access_label} 연결됨")
             st.caption(
                 f"제한 Query · {gmail_summary['query']} · 최대 {gmail_summary['max_results']}건"
             )
+            if settings.gmail_approved_send_enabled:
+                st.caption(
+                    "실제 발송은 허용된 테스트 수신자·원본 Thread·사용자 Checkbox 승인을 "
+                    "모두 확인한 뒤 한 번만 수행합니다."
+                )
         else:
             st.warning("Gmail 사용자 승인이 필요합니다.")
         st.caption("Outlook / Microsoft Graph는 Gmail 실전 Workflow 검증 후 연결합니다.")
@@ -3161,7 +3262,7 @@ def _render_automation_center(storage, mails) -> None:
                 st.rerun()
 
 
-def _render_connection_and_data_settings(storage, gmail_summary: dict) -> None:
+def _render_connection_and_data_settings(storage, settings, gmail_summary: dict) -> None:
     st.subheader("설정")
     st.caption("메일 연결, 운영 알림과 데이터 백업을 관리합니다.")
     connection_tab, data_tab = st.tabs(["🔗 연결·알림", "🗄️ 데이터·복구"])
@@ -3171,8 +3272,18 @@ def _render_connection_and_data_settings(storage, gmail_summary: dict) -> None:
         with mail_col.container(border=True):
             st.markdown("### Gmail")
             if gmail_summary["credentials_ready"] and gmail_summary["token_ready"]:
-                st.success("읽기 전용 연결됨")
+                access_label = (
+                    "읽기 + 사용자 승인 발송"
+                    if settings.gmail_approved_send_enabled
+                    else "읽기 전용"
+                )
+                st.success(f"{access_label} 연결됨")
                 st.caption(f"제한 Query · {gmail_summary['query']}")
+                if settings.gmail_approved_send_enabled:
+                    st.caption(
+                        "발송은 원본 발신자·Thread·테스트 Allowlist와 사용자 Checkbox를 "
+                        "모두 확인한 Plain Text 답장만 허용합니다."
+                    )
             else:
                 st.warning("사용자 승인이 필요합니다.")
             st.caption("Outlook / Microsoft Graph는 Gmail Workflow 검증 이후 연결합니다.")
@@ -3542,4 +3653,4 @@ def main() -> None:
     if operation_page == MONITORING_PAGE:
         _render_operations_monitoring(storage, settings, mails, selected_source)
         return
-    _render_connection_and_data_settings(storage, gmail_summary)
+    _render_connection_and_data_settings(storage, settings, gmail_summary)

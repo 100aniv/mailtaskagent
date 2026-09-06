@@ -1,0 +1,85 @@
+{
+  "evaluated_at": "2026-09-06T13:10:00+09:00",
+  "baseline_commit": "fb037738eed6ded965f8c7e83426d85722ae183f",
+  "branch": "codex/gmail-approved-send",
+  "scope": {
+    "feature": "Gmail user-approved send",
+    "gmail_input": "restricted label plus linked task threads",
+    "send_format": "plain text single-recipient reply",
+    "recipient_policy": "original inbound sender locked and exact allowlist",
+    "user_confirmation_required": true,
+    "automatic_send": false,
+    "reply_all": false,
+    "cc_bcc": false,
+    "attachments": false,
+    "html": false,
+    "task_actions_changed": false,
+    "task_statuses_changed": false
+  },
+  "automated_tests": {
+    "command": ".venv/Scripts/python.exe -m pytest -q -p no:cacheprovider",
+    "previous_passed": 158,
+    "current_passed": 168,
+    "failed": 0,
+    "duration_seconds": 23.07
+  },
+  "safety_cases": {
+    "plain_text_thread_mime": "PASSED",
+    "exact_recipient_allowlist": "PASSED",
+    "explicit_user_confirmation": "PASSED",
+    "gmail_source_id_validation": "PASSED",
+    "task_status_transition_guard": "PASSED",
+    "api_failure_task_unchanged": "PASSED",
+    "automatic_retry_disabled": "PASSED",
+    "duplicate_click_blocked": "PASSED",
+    "sent_mail_and_waiting_state_observed": "PASSED"
+  },
+  "live_test": {
+    "mail_data": "synthetic content in dedicated test Gmail accounts",
+    "company_llm_reply_action": "SIMPLE_ACK",
+    "company_llm_confidence": 0.9,
+    "source_mail_id": "GMAIL-1a0550ece79bf9d0",
+    "recipient": "dealchecklab@gmail.com",
+    "gmail_message_id": "GMAIL-1a074e5afad9b445",
+    "gmail_thread_id": "1a054f53a4f8111f",
+    "gmail_label": "SENT",
+    "database_match_route": "GMAIL_APPROVED_SEND",
+    "database_action": "SET_WAITING",
+    "task_id": "TASK-008",
+    "task_status_after": "WAITING_REPLY",
+    "user_decision": "APPROVE_GMAIL_SEND",
+    "passed": true
+  },
+  "oauth_health": {
+    "status": "READY",
+    "gmail_read_oauth_ready": true,
+    "gmail_send_oauth_ready": true,
+    "secret_values_recorded": false
+  },
+  "ui_smoke": {
+    "streamlit_url": "http://localhost:8501/",
+    "home_recent_mail_shows_sent_reply": true,
+    "task_timeline_shows_sent_reply": true,
+    "reply_panel_shows_send_success": true,
+    "history_shows_user_approval": true,
+    "duplicate_send_button_after_success": false,
+    "passed": true
+  },
+  "database_integrity": {
+    "quick_check": "ok",
+    "integrity_check": "ok"
+  },
+  "trace_steps": [
+    "REPLY_CONTEXT_OBSERVATION",
+    "REPLY_ACTION_DECISION",
+    "REPLY_PLAN_STORED",
+    "GMAIL_SEND_GUARD",
+    "GMAIL_SEND_OBSERVATION"
+  ],
+  "limitations": [
+    "Only dedicated test Gmail accounts and an exact recipient allowlist are verified.",
+    "A provider timeout after submission is fail-closed and requires manual Sent-folder inspection; automatic retry is disabled.",
+    "Reply-All, CC/BCC, attachments, HTML, signatures, scheduling, and automatic sending are not implemented.",
+    "Outlook, company authentication, server deployment, and production governance remain future work."
+  ]
+}

@@ -2,12 +2,13 @@
 
 현재 Mail, 기존 Mail Context, 현재 Task State를 함께 보고 다음 Agent Action을 결정하는
 메일 기반 개인 업무관리 Agent다. 합성 Mail 기반 3단계 Core E2E를 완성하고 회사 LLM API
-Live로 상태 흐름과 세부 KPI를 검증했으며, 읽기 전용 Gmail 개인 파일럿까지 확장한 상태다.
+Live로 상태 흐름과 세부 KPI를 검증했으며, 제한 Gmail 개인 파일럿과 사용자 승인 발송까지 확장한 상태다.
 
 > **2026-09-06 상태:** Core E2E에 SQLite 기반 경량 Task Context Agentic RAG, 최대 1회
 > Query Rewrite·재판단, Agent Action Proposal, Python Safety Guard, 실행 결과 재조회와 안전한
-> Agent Trace를 결합했다. 이어서 실제 발송 없이 필요한 회신 방식·사용자 입력·초안을 만드는
-> Mail-to-Action Draft를 추가했다. 전체 pytest `158 passed`, Task Context Agent 회사 LLM
+> Agent Trace를 결합했다. 이어서 필요한 회신 방식·사용자 입력·초안을 만드는
+> Mail-to-Action Draft와 테스트 계정 대상 Gmail 사용자 승인 발송을 추가했다. 전체 pytest
+> `168 passed`, Task Context Agent 회사 LLM
 > Live 합성 검증 `3/3`, Reply Planning Live `3/3`과 Draft 생성 `1/1`을 통과했다.
 > Outlook·사내 인증·서버와 사내 문서 RAG는 그 이후 Post-MVP다.
 
@@ -28,7 +29,10 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 읽기 전용 Gmail 개�
 - Task에 연결된 최신 수신 Mail·현재 Task·최근 History를 보고 `NO_REPLY`, `SIMPLE_ACK`,
   `DATE_REPLY`, `VALUE_REPLY`, `APPROVE_REPLY`, `DRAFT_REPLY`, `ASK_USER` 중 회신 방식을
   고르는 Mail-to-Action Draft. 필요한 사용자 입력을 받은 뒤 초안을 저장하며 Context 관찰,
-  판단, 입력 확인, Draft 생성·수정 결과를 Processing Event에 남긴다. 실제 발송은 하지 않음
+  판단, 입력 확인, Draft 생성·수정 결과를 Processing Event에 남긴다.
+- 테스트 Gmail에서 원본 발신자·Thread와 수신자 Allowlist를 잠그고 사용자가 Checkbox로
+  명시 승인한 Plain Text 회신만 한 번 발송하는 Gmail Approved Send. 성공 Message ID를
+  확인한 뒤에만 Task를 `WAITING_REPLY`로 전환하고 History·Trace를 저장한다.
 - Pydantic 구조화 결과 검증
 - 잘못된 LLM 구조화 출력 1회 재시도
 - SQLite Task/History/중복 처리
@@ -60,10 +64,10 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 읽기 전용 Gmail 개�
   저장 DB 우선 화면 시작·삭제 Thread 장애 격리와 Gmail 실메일 20건 자동 평가를 포함한
   로컬 SQLite 무결성 오류 시 자동 처리 중지·복구 안내와 업무별 변경 이력 UI까지 포함한
   SQLite WAL·동시 동기화 단일 실행 잠금, Task Context RAG·ReAct·Agent Action Guard·Trace까지
-  Mail-to-Action Draft까지 포함한 전체 pytest 158건
+  Mail-to-Action Draft와 Gmail 사용자 승인 발송까지 포함한 전체 pytest 168건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
-- Core와 분리된 읽기 전용 테스트 Gmail Adapter Contract와 합성 Payload 회귀
+- Core와 분리된 제한 Gmail 읽기 Adapter 및 사용자 승인 발송 Adapter Contract와 합성 Payload 회귀
 - Outlook 전 전체 Business/Security Case의 Gmail API Message→Agent Core 수용시험
 - Secret·Mail 원문·Task 제목을 제외한 Slack Incoming Webhook 최소 알림과 Dry-run
 
@@ -215,6 +219,9 @@ Google 공식 Python Quickstart 방식으로 Gmail API와 Desktop OAuth Client�
 
 # Refresh Token 폐기·만료 시 브라우저에서 읽기 전용 권한 재승인
 .venv\Scripts\python.exe -m mailtaskagent.gmail_cli --reauthorize
+
+# 테스트 계정에서 읽기 + 사용자 승인 발송 권한 재승인
+.venv\Scripts\python.exe -m mailtaskagent.gmail_cli --authorize-send
 ```
 
 기본 쿼리 `label:MailTaskAgent-Demo`, 최대 25건이며 빈 쿼리와 100건 초과 입력은 차단한다.
@@ -223,9 +230,15 @@ Gmail 연결 후 Agent는 기본 1분 주기로 제한 Label을 확인하고, SQ
 상속 여부와 관계없이 Inbox·Sent 후속 Message를 함께 조회하므로 보낸 회신도 업무 상태에
 이어진다. 보낸편지함 전체는 분석하지 않는다. 사이드바에서 일시정지·재실행할 수 있다.
 화면이 열려 있을 때는 Streamlit Polling이 동작하고, 등록된 로컬 Scheduler는 화면이 닫혀도
-같은 1회 동기화 명령을 실행한다. Gmail 작성·발송·삭제 권한은 사용하지 않는다. 서버 상시
+같은 1회 동기화 명령을 실행한다. 기본값은 읽기 전용이다. 사용자 승인 발송을 시험할 때만
+`.env`의 `GMAIL_APPROVED_SEND_ENABLED=true`와 정확한 테스트 수신자
+`GMAIL_SEND_ALLOWED_RECIPIENTS`를 설정하고 `--authorize-send`로 Send Scope를 승인한다.
+업무 상세에서 Agent 초안·잠긴 원본 발신자·Thread를 확인하고 Checkbox를 선택한 경우에만
+Plain Text 답장 1건을 보낸다. 발송 성공 뒤 `SET_WAITING`과 History를 저장하며 중복 클릭과
+결과 불명확 실패는 자동 재발송하지 않는다. 삭제·이동·자동 발송 권한은 사용하지 않는다. 서버 상시
 실행과 Outlook/Microsoft Graph는 후속 사내 적용 단계다.
 실제 Gmail Live E2E 증적은 `evidence/gmail_live_e2e_2026-08-27.json`에 저장한다.
+사용자 승인 발송 증적은 `evidence/gmail_approved_send_evaluation_2026-09-06.json`에 저장한다.
 공식 참고 문서는 [Gmail API Python Quickstart](https://developers.google.com/workspace/gmail/api/quickstart/python)와
 [messages.list](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list)다.
 

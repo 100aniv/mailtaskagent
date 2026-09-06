@@ -252,6 +252,27 @@ def test_operations_cli_health_reports_readiness_without_secrets(
     assert "api_key" not in str(payload).casefold()
 
 
+def test_operations_cli_health_fails_closed_for_invalid_send_allowlist(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "health-send.db"))
+    monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+    monkeypatch.setenv("GMAIL_APPROVED_SEND_ENABLED", "true")
+    monkeypatch.setenv("GMAIL_SEND_ALLOWED_RECIPIENTS", "not-an-address")
+    monkeypatch.setenv(
+        "GMAIL_CREDENTIALS_PATH", str(tmp_path / "missing-credentials.json")
+    )
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(tmp_path / "missing-token.json"))
+
+    assert operations_main(["health"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["status"] == "DEGRADED"
+    assert payload["checks"]["gmail_send_oauth_ready"] is False
+    assert payload["gmail_send_oauth_error_type"] == "ValueError"
+    assert "not-an-address" not in str(payload)
+
+
 def test_operations_cli_slack_defaults_to_privacy_safe_dry_run(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

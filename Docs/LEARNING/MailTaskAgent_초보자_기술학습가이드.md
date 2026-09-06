@@ -972,7 +972,8 @@ Agent 제안 저장
 
 ### 16.1 Gmail 권한
 
-Gmail 연동은 `gmail.readonly`만 사용한다.
+Gmail 신규 입력과 자동 동기화의 기본 권한은 `gmail.readonly`다. 테스트 계정에서 사용자가
+승인한 답장 발송을 검증할 때만 `gmail.send`를 함께 승인하며 Feature Flag 기본값은 꺼짐이다.
 
 가능한 일:
 
@@ -980,12 +981,17 @@ Gmail 연동은 `gmail.readonly`만 사용한다.
 - 메일 본문 읽기
 - Thread 조회
 
-할 수 없는 일:
+읽기 전용 상태에서 할 수 없는 일:
 
 - 메일 발송
 - 메일 수정
 - 메일 삭제
 - Label 변경
+
+`gmail.send`를 켜도 MailTaskAgent가 임의로 발송하지 않는다. 업무 상세에서 회사 LLM 초안,
+원본 발신자와 Thread를 보여준 뒤 정확한 수신자 Allowlist와 사용자 승인 Checkbox를 모두
+통과한 Plain Text 답장만 한 번 보낸다. 성공 Message ID를 확인한 뒤에만 Task를
+`WAITING_REPLY`로 바꾸며, 결과가 불확실하면 자동 재발송하지 않는다.
 
 ### 16.2 새 업무 진입 경계
 
@@ -1287,7 +1293,7 @@ Gmail 범위에서 기대값이 일치했다는 의미다.
 ### 22.1 현재 시연 가능한 Core E2E
 
 - 회사 LLM API Live 연동
-- 합성 Mail과 Gmail 읽기 전용 입력
+- 합성 Mail과 제한 Gmail 입력
 - 수신·발신 공통 `MailInput`
 - M-01~M-05 Workflow
 - 7개 Action
@@ -1301,7 +1307,9 @@ Gmail 범위에서 기대값이 일치했다는 의미다.
 - Priority Rule과 Mail 제외 Rule
 - 운영 CLI, Health, Status, Backup
 - Slack 최소 알림 코드와 Dry-run
-- pytest 149건
+- Mail-to-Action 회신 방식 판단·사용자 입력·회사 LLM 초안
+- 테스트 Gmail 사용자 승인 발송과 성공 후 `WAITING_REPLY` 전환
+- pytest 168건
 
 ### 22.2 최종 MVP Agentic AI 보강 결과
 
@@ -1459,10 +1467,11 @@ http://localhost:8501
 
 현재 상태까지 포함하면 다음 문장을 덧붙인다.
 
-> 현재 회사 LLM, M-01~M-05, Gmail 읽기 전용 파일럿과 Structured Task Context RAG·최대 1회
+> 현재 회사 LLM, M-01~M-05, 제한 Gmail 파일럿과 Structured Task Context RAG·최대 1회
 > 재판단·Agent Action Proposal·Python Safety Guard·Agent Trace가 연결된 Core E2E를 검증했습니다.
-> 전체 pytest 149개와 Task Context Agent
-> 회사 LLM Live 합성 검증 3/3을 통과했고, Outlook과 사내 운영환경은 그 이후 Post-MVP입니다.
+> Mail-to-Action Draft와 테스트 Gmail 사용자 승인 발송까지 연결해 전체 pytest 168개,
+> Task Context Agent 회사 LLM Live 합성 검증 3/3, 실제 발송 1건과 동일 Thread·Task 상태·Audit을
+> 확인했고, Outlook과 사내 운영환경은 그 이후 과제입니다.
 
 ---
 
@@ -1513,6 +1522,8 @@ http://localhost:8501
 | `storage.py` | SQLite 검색·Transaction·History |
 | `priority.py` | P1~P4 중요도·긴급도 계산 |
 | `gmail_source.py` | Gmail Message → `MailInput` |
+| `gmail_send.py` | 잠긴 Gmail Thread에 Plain Text 답장 전송 Adapter |
+| `approved_send_service.py` | 사용자 승인·Allowlist·중복 방지와 발송 후 상태 관찰 |
 | `outlook_source.py` | 합성 Graph Message → `MailInput` Contract |
 | `operations.py` | Scheduler용 1회 동기화 Service |
 | `operations_cli.py` | Sync·Health·Status·Backup 명령 |

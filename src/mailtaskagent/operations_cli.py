@@ -12,6 +12,7 @@ from mailtaskagent.gmail_source import (
     build_gmail_service,
     load_gmail_source_settings,
 )
+from mailtaskagent.gmail_send import load_gmail_approved_send_settings
 from mailtaskagent.gmail_pilot import evaluate_gmail_pilot, load_gmail_pilot_cases
 from mailtaskagent.mail_filters import build_operational_analyzer
 from mailtaskagent.operations import MailSyncService, build_attention_snapshot
@@ -124,18 +125,47 @@ def _run_health() -> int:
     latest_runs = storage.list_sync_runs(source="GMAIL", limit=1)
     gmail_oauth_ready = False
     gmail_oauth_error_type = None
+    gmail_send_oauth_ready = True
+    gmail_send_oauth_error_type = None
     if gmail_settings.credentials_path.exists() and gmail_settings.token_path.exists():
         try:
             build_gmail_service(gmail_settings, allow_interactive_auth=False)
             gmail_oauth_ready = True
         except Exception as exc:
             gmail_oauth_error_type = type(exc).__name__
+    try:
+        approved_send_settings = load_gmail_approved_send_settings()
+    except ValueError as exc:
+        approved_send_settings = None
+        gmail_send_oauth_ready = False
+        gmail_send_oauth_error_type = type(exc).__name__
+    if settings.gmail_approved_send_enabled or (
+        approved_send_settings is not None and approved_send_settings.enabled
+    ):
+        gmail_send_oauth_ready = False
+        if (
+            approved_send_settings is not None
+            and approved_send_settings.enabled
+            and bool(approved_send_settings.allowed_recipients)
+            and gmail_settings.credentials_path.exists()
+            and gmail_settings.token_path.exists()
+        ):
+            try:
+                build_gmail_service(
+                    gmail_settings,
+                    allow_interactive_auth=False,
+                    include_send_scope=True,
+                )
+                gmail_send_oauth_ready = True
+            except Exception as exc:
+                gmail_send_oauth_error_type = type(exc).__name__
     checks = {
         "database_ready": settings.database_path.exists(),
         "llm_ready": settings.use_mock or bool(settings.api_key),
         "gmail_credentials_ready": gmail_settings.credentials_path.exists(),
         "gmail_token_ready": gmail_settings.token_path.exists(),
         "gmail_oauth_ready": gmail_oauth_ready,
+        "gmail_send_oauth_ready": gmail_send_oauth_ready,
         "slack_notification_ready": (
             not slack_settings.enabled or slack_settings.configured
         ),
@@ -147,6 +177,7 @@ def _run_health() -> int:
             "checks": checks,
             "last_sync_status": latest_runs[0]["status"] if latest_runs else None,
             "gmail_oauth_error_type": gmail_oauth_error_type,
+            "gmail_send_oauth_error_type": gmail_send_oauth_error_type,
             "checked_at": datetime.now(UTC).isoformat(),
         }
     )

@@ -32,6 +32,7 @@ class Settings:
     task_context_rag_confidence_threshold: float = 0.75
     task_context_rag_max_retries: int = 1
     mail_to_action_draft_enabled: bool = True
+    gmail_approved_send_enabled: bool = False
 
     @property
     def llm_mode(self) -> str:
@@ -68,5 +69,8 @@ def load_settings(env_file: Path | None = None) -> Settings:
         task_context_rag_max_retries=rag_max_retries,
         mail_to_action_draft_enabled=_as_bool(
             os.getenv("MAIL_TO_ACTION_DRAFT_ENABLED"), default=True
+        ),
+        gmail_approved_send_enabled=_as_bool(
+            os.getenv("GMAIL_APPROVED_SEND_ENABLED"), default=False
         ),
     )
