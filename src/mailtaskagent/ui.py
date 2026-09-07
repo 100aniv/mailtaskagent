@@ -3732,6 +3732,9 @@ def main() -> None:
                 storage.reset()
                 st.session_state.pop("last_result", None)
                 st.session_state.pop("demo_flash", None)
+                st.session_state["demo_reset_flash"] = (
+                    "데모 DB 초기화가 완료되었습니다. 실제 Gmail 업무 데이터에는 영향을 주지 않았습니다."
+                )
                 st.rerun()
         else:
             if st.button("MVP 시연·검증 화면", width="stretch"):
@@ -3753,6 +3756,9 @@ def main() -> None:
     task_edit_flash = st.session_state.pop("task_edit_flash", None)
     if task_edit_flash:
         st.success(task_edit_flash)
+    demo_reset_flash = st.session_state.pop("demo_reset_flash", None)
+    if demo_reset_flash:
+        st.success(demo_reset_flash)
 
     if demo_mode:
         tabs = st.tabs(

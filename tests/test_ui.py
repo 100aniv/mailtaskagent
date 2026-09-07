@@ -227,6 +227,15 @@ def test_product_dashboard_and_full_mock_mail_flow(tmp_path, monkeypatch) -> Non
         ("Agent 확인 필요", "0건"),
     ]
 
+    reset_button = next(button for button in app.button if button.label == "데모 DB 초기화")
+    app = reset_button.click().run(timeout=60)
+    assert not app.exception
+    assert any(
+        message.value
+        == "데모 DB 초기화가 완료되었습니다. 실제 Gmail 업무 데이터에는 영향을 주지 않았습니다."
+        for message in app.success
+    )
+
     full_run_button = next(
         button
         for button in app.button
