@@ -75,6 +75,9 @@ def test_create_then_update_vertical_slice(settings: Settings) -> None:
     assert [item["mail_id"] for item in processing_results] == ["MAIL-002", "MAIL-001"]
     assert processing_results[0]["result"]["proposal"]["action"] == "UPDATE_TASK"
     update_events = storage.list_events("MAIL-002")
+    assert next(event for event in update_events if event["step"] == "MAIL_INPUT")[
+        "message"
+    ] == "Mail 입력 수신"
     assert any(event["step"] == "M-02 TASK_MATCHING" for event in update_events)
     assert any(
         event["step"] == "M-04 DB_TRANSACTION" and event["status"] == "SUCCESS"

@@ -1435,6 +1435,12 @@ def _agentic_trace_phase(step: str) -> tuple[str, str]:
     return "Workflow Event", "•"
 
 
+def _event_display_message(event: dict) -> str:
+    if event.get("step") == "MAIL_INPUT":
+        return "Mail 입력 수신"
+    return str(event.get("message") or "-")
+
+
 def _render_agentic_trace(
     events: list[dict],
     mail_ids: list[str],
@@ -1596,7 +1602,7 @@ def _render_agentic_trace(
                 if event["status"] in {"WAITING", "STARTED", "ESCALATED", "FALLBACK"}
                 else "🔴 실패"
             )
-            st.write(event["message"])
+            st.write(_event_display_message(event))
             if isinstance(details, dict):
                 summary_parts = []
                 for key, label in (
@@ -1698,6 +1704,9 @@ def _render_event_log(storage, mail_ids: list[str], *, confidence_threshold: flo
     display["duration_ms"] = display["duration_ms"].apply(
         lambda value: "-" if pd.isna(value) else str(int(value))
     )
+    display["message"] = [
+        _event_display_message(event) for event in filtered
+    ]
     st.dataframe(
         display[
             [
@@ -1735,12 +1744,13 @@ def _render_event_log(storage, mail_ids: list[str], *, confidence_threshold: flo
                 else "-"
             ),
         )
+        selected_message = _event_display_message(selected_event)
         if selected_event["status"] == "SUCCESS":
-            st.success(selected_event["message"])
+            st.success(selected_message)
         elif selected_event["level"] == "ERROR":
-            st.error(selected_event["message"])
+            st.error(selected_message)
         else:
-            st.warning(selected_event["message"])
+            st.warning(selected_message)
         st.caption(
             f"Mail {selected_event['mail_id']} · Case {selected_event['case_id']} · "
             f"{selected_event['created_at']}"
@@ -1754,7 +1764,7 @@ def _render_event_log(storage, mail_ids: list[str], *, confidence_threshold: flo
         st.json(
             {
                 "case_id": selected_event["case_id"],
-                "message": selected_event["message"],
+                "message": selected_message,
                 "details": details,
                 "duration_ms": selected_event["duration_ms"],
                 "created_at": selected_event["created_at"],

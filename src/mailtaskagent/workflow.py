@@ -177,7 +177,7 @@ class MailTaskWorkflow:
             mail.mail_id,
             "MAIL_INPUT",
             "SUCCESS",
-            "합성 Mail 입력 수신",
+            "Mail 입력 수신",
             details={
                 "conversation_id": mail.conversation_id,
                 "direction": mail.direction.value,
