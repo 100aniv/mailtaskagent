@@ -5,7 +5,7 @@ import json
 import os
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from email.header import decode_header
 from email.utils import getaddresses, parseaddr
@@ -76,6 +76,17 @@ def load_gmail_source_settings() -> GmailSourceSettings:
         ),
         query=query,
         max_results=max_results,
+    )
+
+
+def load_gmail_send_source_settings() -> GmailSourceSettings:
+    """Use an independent OAuth token so read-only refreshes cannot drop send scope."""
+    settings = load_gmail_source_settings()
+    return replace(
+        settings,
+        token_path=_resolve_project_path(
+            os.getenv("GMAIL_SEND_TOKEN_PATH", ".secrets/gmail_send_token.json")
+        ),
     )
 
 

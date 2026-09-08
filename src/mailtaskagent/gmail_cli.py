@@ -6,6 +6,7 @@ from mailtaskagent.config import load_settings
 from mailtaskagent.gmail_source import (
     GmailReadOnlySource,
     build_gmail_service,
+    load_gmail_send_source_settings,
     load_gmail_source_settings,
 )
 from mailtaskagent.mail_filters import build_operational_analyzer
@@ -35,9 +36,12 @@ def main() -> int:
     args = parser.parse_args()
 
     gmail_settings = load_gmail_source_settings()
+    authorization_settings = (
+        load_gmail_send_source_settings() if args.authorize_send else gmail_settings
+    )
     source = GmailReadOnlySource(
         build_gmail_service(
-            gmail_settings,
+            authorization_settings,
             force_reauthorization=args.reauthorize or args.authorize_send,
             include_send_scope=args.authorize_send,
         ),

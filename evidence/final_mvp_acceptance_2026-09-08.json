@@ -1,0 +1,103 @@
+{
+  "evidence_type": "final_mvp_acceptance",
+  "generated_at": "2026-09-08T23:34:45+09:00",
+  "implementation_branch": "codex/gmail-approved-send",
+  "data_policy": "synthetic_and_deidentified_test_mail_only",
+  "secrets_recorded": false,
+  "final_mvp_scope": [
+    "M-01 through M-05 single Agent workflow",
+    "7 Task Actions and 5 Task Statuses",
+    "company LLM mail analysis",
+    "SQLite Task Context RAG",
+    "one-query-rewrite ReAct loop",
+    "Agent Action Proposal and Python Safety Guard",
+    "Human-in-the-loop and Agent Trace",
+    "Gmail inbound and outbound thread tracking",
+    "Mail-to-Action reply planning and draft generation",
+    "explicitly user-approved Gmail send to an allowlisted test recipient"
+  ],
+  "automated_tests": {
+    "command": ".venv/Scripts/python.exe -m pytest -q -p no:cacheprovider",
+    "passed": 170,
+    "failed": 0,
+    "duration_seconds": 22.57,
+    "new_final_guards": [
+      "separate read-only and read-plus-send OAuth token paths",
+      "explicit Korean this-week or next-week weekday normalization",
+      "safe UI status-label fallback after successful Gmail send"
+    ]
+  },
+  "company_llm_final_live": {
+    "initial_run_evidence": "evidence/final_live_evaluation_2026-09-08.json",
+    "initial_result": "14/15",
+    "initial_failure": "MAIL-002 DUE_DATE_CHANGE returned a null due_date and safely escalated to ASK_USER",
+    "remediation": "normalize only explicit non-approximate Korean this-week or next-week weekday expressions from occurred_at",
+    "final_run_evidence": "evidence/final_live_evaluation_2026-09-08_after_date_guard.json",
+    "passed": "15/15",
+    "action_steps": "28/28",
+    "classification_accuracy": 1.0,
+    "field_accuracy": 1.0,
+    "task_link_accuracy": 1.0,
+    "action_accuracy": 1.0,
+    "duration_ms": 93481
+  },
+  "agentic_evidence": {
+    "task_context_agent_live": "3/3",
+    "reply_planning_live": "3/3",
+    "user_input_draft_generation_live": "1/1",
+    "task_context_evidence": "evidence/task_context_rag_evaluation_2026-09-01.json",
+    "action_guard_evidence": "evidence/agent_action_guard_evaluation_2026-09-02.json",
+    "reply_draft_evidence": "evidence/mail_to_action_draft_evaluation_2026-09-06.json"
+  },
+  "gmail_final_verification": {
+    "oauth_health": "READY",
+    "read_token_scope": "gmail.readonly",
+    "send_token_scope": "gmail.readonly plus gmail.send",
+    "token_paths_separated": true,
+    "pilot_acceptance": "20/20",
+    "final_sync": {
+      "fetched": 28,
+      "new": 0,
+      "duplicates": 28,
+      "failed": 0
+    },
+    "initial_approved_send_evidence": "evidence/gmail_approved_send_evaluation_2026-09-06.json",
+    "final_reverification": {
+      "source_mail_id": "GMAIL-1a0550ece79bf9d0",
+      "gmail_message_id": "GMAIL-1a08161ebddcbe80",
+      "recipient": "dealchecklab@gmail.com",
+      "reply_agent_action": "DRAFT_REPLY",
+      "reply_agent_confidence": 0.9,
+      "task_id": "TASK-008",
+      "task_status_after": "WAITING_REPLY",
+      "user_decision": "APPROVE_GMAIL_SEND",
+      "thread_timeline_observed": true,
+      "history_observed": true,
+      "passed": true
+    }
+  },
+  "runtime_verification": {
+    "streamlit_url": "http://localhost:8501/",
+    "home_rendered": true,
+    "task_detail_rendered": true,
+    "reply_confidence_rendered": true,
+    "successful_send_ui_rendered_after_fix": true,
+    "database_quick_check": "ok",
+    "database_integrity_check": "ok",
+    "operations_health": "READY"
+  },
+  "document_verification": {
+    "ai_master_files": "01 through 07 synchronized",
+    "portal_template_heading_sequences": "matched",
+    "measured_and_unmeasured_kpis_separated": true,
+    "implementation_and_source_updated": true
+  },
+  "post_mvp_only": [
+    "Outlook and Microsoft Graph live integration",
+    "company authentication, server, production database, and governance",
+    "Reply-All, CC or BCC, attachments, HTML, signatures, and scheduled or automatic sending",
+    "company document or attachment RAG and Vector DB",
+    "multi-user production operation"
+  ],
+  "final_gate": "PASSED"
+}

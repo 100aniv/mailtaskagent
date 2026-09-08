@@ -187,7 +187,13 @@ Task Context RAG의 재검색 횟수도 최대 1회로 고정한다. 완료·취
 7. 두 판단 결과의 Agent Action Proposal을 Python M-03이 Payload로 구체화하고 후보 범위·관계·
    Intent·상태 전이·중요 변경을 검증한다. 통과하면 Proposal을 실행하고 실패하면 `ASK_USER`로 이관한다.
 8. 처리 결과에는 Query, 제한 후보, 판단, 재시도 수와 Route를 남기되 Secret과 전체 Mailbox는 남기지 않는다.
-9. RAG와 Agent Action Guard 전용 테스트를 포함한 전체 pytest 149개를 통과하고 새 Evidence를 생성했다.
+9. RAG와 Agent Action Guard 전용 테스트를 포함한 당시 pytest 149개를 통과하고 새 Evidence를 생성했다.
+
+최종 MVP는 위 Task Lifecycle Flow 뒤에 독립된 회신 수행 계층을 연결한다. Reply Agent가 최신
+수신 Mail·현재 Task·최근 History를 관찰해 7개 Reply Action 중 하나를 선택하고, 필요한 사용자
+입력을 받아 Draft를 생성한다. 실제 Gmail 발송은 기존 7개 Task Action을 변경하지 않으며,
+원본 Thread·단일 수신자·Allowlist·명시적 사용자 승인·중복 방지 Guard를 모두 통과한 경우에만
+실행한다. 성공 후 OUTBOUND Mail과 History를 저장하고 기존 `SET_WAITING`을 적용한다.
 
 환경설정은 `TASK_CONTEXT_RAG_ENABLED`, `TASK_CONTEXT_RAG_TOP_K`,
 `TASK_CONTEXT_RAG_CONFIDENCE_THRESHOLD`, `TASK_CONTEXT_RAG_MAX_RETRIES`를 사용한다. 기본 계획값은

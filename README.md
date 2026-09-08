@@ -4,11 +4,11 @@
 메일 기반 개인 업무관리 Agent다. 합성 Mail 기반 3단계 Core E2E를 완성하고 회사 LLM API
 Live로 상태 흐름과 세부 KPI를 검증했으며, 제한 Gmail 개인 파일럿과 사용자 승인 발송까지 확장한 상태다.
 
-> **2026-09-06 상태:** Core E2E에 SQLite 기반 경량 Task Context Agentic RAG, 최대 1회
+> **2026-09-08 상태:** Core E2E에 SQLite 기반 경량 Task Context Agentic RAG, 최대 1회
 > Query Rewrite·재판단, Agent Action Proposal, Python Safety Guard, 실행 결과 재조회와 안전한
 > Agent Trace를 결합했다. 이어서 필요한 회신 방식·사용자 입력·초안을 만드는
-> Mail-to-Action Draft와 테스트 계정 대상 Gmail 사용자 승인 발송을 추가했다. 전체 pytest
-> `168 passed`, Task Context Agent 회사 LLM
+> Mail-to-Action Draft와 테스트 계정 대상 Gmail 사용자 승인 발송을 추가했다. Read/Send OAuth
+> Token도 분리했고 명시적 상대 날짜 정규화를 보강했으며 전체 pytest `170 passed`, Task Context Agent 회사 LLM
 > Live 합성 검증 `3/3`, Reply Planning Live `3/3`과 Draft 생성 `1/1`을 통과했다.
 > Outlook·사내 인증·서버와 사내 문서 RAG는 그 이후 Post-MVP다.
 
@@ -64,7 +64,7 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 제한 Gmail 개인 파�
   저장 DB 우선 화면 시작·삭제 Thread 장애 격리와 Gmail 실메일 20건 자동 평가를 포함한
   로컬 SQLite 무결성 오류 시 자동 처리 중지·복구 안내와 업무별 변경 이력 UI까지 포함한
   SQLite WAL·동시 동기화 단일 실행 잠금, Task Context RAG·ReAct·Agent Action Guard·Trace까지
-  Mail-to-Action Draft와 Gmail 사용자 승인 발송까지 포함한 전체 pytest 168건
+  Mail-to-Action Draft와 Gmail 사용자 승인 발송까지 포함한 전체 pytest 170건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 제한 Gmail 읽기 Adapter 및 사용자 승인 발송 Adapter Contract와 합성 Payload 회귀
@@ -166,7 +166,8 @@ Windows 예약 작업은 `.\scripts\manage_scheduler.ps1`로 관리한다. 현�
 .venv\Scripts\python.exe -m mailtaskagent.evaluation_cli --mode LIVE
 ```
 
-최신 Live 증적은 `evidence/live_evaluation_2026-09-06.json`이며 Prompt 보강 전 결과는
+최신 Live 증적은 `evidence/final_live_evaluation_2026-09-08_after_date_guard.json`이며, 같은 날
+발견한 14/15 결과도 `evidence/final_live_evaluation_2026-09-08.json`에 보존한다. Prompt 보강 전 결과는
 `evidence/live_evaluation_2026-08-27_before_prompt.json`에 분리해 보존한다. 시간 기대효과는
 [Microsoft Work Trend Index](https://www.microsoft.com/en-us/worklab/work-trend-index/will-ai-fix-work)와
 [McKinsey Global Institute](https://www.mckinsey.com/mgi/media-center/social-media-productivity-payoff)의
@@ -208,7 +209,8 @@ Google 공식 Python Quickstart 방식으로 Gmail API와 Desktop OAuth Client�
 ```
 
 `.secrets/`는 Git에서 제외된다. 처음 실행할 때 브라우저에서 사용자가 직접 읽기 전용 권한을
-승인하면 `.secrets/gmail_token.json`이 생성된다.
+승인하면 `.secrets/gmail_token.json`이 생성된다. 사용자 승인 발송 권한은 별도의
+`.secrets/gmail_send_token.json`에 저장하여 Read-only 동기화가 Send Scope를 덮어쓰지 않게 한다.
 
 ```powershell
 # 제목·방향·시각만 확인하고 Agent는 실행하지 않음
@@ -239,6 +241,7 @@ Plain Text 답장 1건을 보낸다. 발송 성공 뒤 `SET_WAITING`과 History�
 실행과 Outlook/Microsoft Graph는 후속 사내 적용 단계다.
 실제 Gmail Live E2E 증적은 `evidence/gmail_live_e2e_2026-08-27.json`에 저장한다.
 사용자 승인 발송 증적은 `evidence/gmail_approved_send_evaluation_2026-09-06.json`에 저장한다.
+코드·Live·Gmail·DB·문서 최종 Gate는 `evidence/final_mvp_acceptance_2026-09-08.json`에 통합했다.
 공식 참고 문서는 [Gmail API Python Quickstart](https://developers.google.com/workspace/gmail/api/quickstart/python)와
 [messages.list](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list)다.
 

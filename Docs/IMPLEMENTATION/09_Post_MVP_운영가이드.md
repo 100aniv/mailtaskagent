@@ -233,6 +233,8 @@ Agent Trace를 추가한 뒤 기존 운영 방어를 포함한 전체 회귀는 
 ## 7. 보안·운영 Gate
 
 - Gmail 신규 입력은 제한 Label과 최대 건수를 유지한다. 승인 발송을 사용하지 않으면 Read-only다.
+- Read-only 동기화는 `GMAIL_TOKEN_PATH`, 사용자 승인 발송은 `GMAIL_SEND_TOKEN_PATH`를 사용해
+  OAuth Token을 분리한다. 어느 한 경로의 재인증이 다른 Scope를 덮어쓰지 않아야 한다.
 - 승인 발송은 Feature Flag, 정확한 테스트 수신자 Allowlist, 원본 발신자·Thread 잠금,
   사용자 Checkbox, 중복 방지 Key를 모두 통과한 Plain Text 단일 Reply로 제한한다.
 - Task 연결 Thread 조회는 Gmail `conversation_id`만 사용하고 최대 100개로 제한한다.

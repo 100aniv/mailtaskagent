@@ -84,11 +84,12 @@ Domain, Keyword, 날짜와 사용자 Preference는 RAG가 아니라 검증 가�
 
 ### Mail-to-Action 단계적 확장
 
-다음 기능은 AI Master 최종 MVP에 포함하지 않고 Post-MVP에서 순서대로 검증한다.
+아래 1~2단계는 구현·검증 완료 후 AI Master 최종 MVP 경계에 포함했다. 3단계의 Outlook·사내
+운영 전환과 발송 확장 기능은 Post-MVP로 유지한다.
 
 1. **Mail-to-Action Draft:** Task Context를 바탕으로 `NO_REPLY`, `SIMPLE_ACK`, `DATE_REPLY`,
    `VALUE_REPLY`, `APPROVE_REPLY`, `DRAFT_REPLY`, `ASK_USER` 중 필요한 회신 방식을 판단하고,
-   날짜·값·승인·일반 Draft 입력 화면을 제공한다. 이 단계에서는 실제 메일을 발송하지 않는다.
+   날짜·값·승인·일반 Draft 입력 화면을 제공한다. Draft 생성 자체는 메일을 발송하지 않는다.
 2. **Gmail 사용자 승인 발송:** 테스트 Gmail의 Plain Text 단일 수신자 Reply, Send OAuth,
    원본 발신자 잠금, 수신자 Allowlist, 중복 방지, 발송 History를 구현·검증했다. 사용자가
    명시적으로 전송을 승인한 경우에만 발송하고 성공 후 기존 `SET_WAITING` 상태 전이를 적용한다.
@@ -318,7 +319,8 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
   중요도 Override를 SQLite에 저장한다.
 - Gmail OAuth 연결 후 Agent가 기본 1분 주기로 제한된 Gmail Label을 읽고, 미처리 `mail_id`만
   기존 Agent Core로 처리하도록 변경했다. 사용자는 필요할 때만 사이드바에서 일시정지·재실행한다.
-  Gmail 작성·발송·삭제 권한은 추가하지 않았다.
+  동기화 Adapter는 Read-only Token을 유지한다. 발송은 분리된 Read+Send Token, Feature Flag,
+  원본 Thread·단일 수신자·Allowlist와 사용자 승인 Guard를 통과한 Draft에만 허용하며 삭제 권한은 없다.
 - 제한 Label은 새 업무 유입에만 사용하고, 이미 Task가 생성·연결된 Gmail Thread는 DB의
   `conversation_id`로 후속 Message를 조회하도록 보강했다. 따라서 같은 Thread에서 사용자가
   보낸 회신은 `OUTBOUND`, 상대가 보낸 후속 회신은 `INBOUND`로 계속 처리되며, 보낸편지함
@@ -352,7 +354,7 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 | 실제 업무 UI·Task 직접 관리 | 구현·자동 테스트 완료 | 홈/내 업무/검토 요청/자동화 설정/운영 상태/설정, 직접 생성·수정·완료, 업무별 Mail 타임라인·변경 이력, 저장 DB 우선 빠른 시작 |
 | Priority·고객사·Keyword Rule | 구현·자동 테스트 완료 | P1~P4, 근거, Override, 설정 저장 |
 | 광고·뉴스레터 제외 Rule | 구현·자동 테스트 완료 | 정확한 Email·Domain·제목, IGNORE 근거, 본문 제외 금지 |
-| Gmail 화면 자동 확인 | 구현·자동 테스트 완료 | 제한 Label 신규 유입 + Task 연결 Thread 양방향 추적, 신규 mail_id, 1~60분, Read-only |
+| Gmail 화면 자동 확인 | 구현·자동 테스트 완료 | 제한 Label 신규 유입 + Task 연결 Thread 양방향 추적, 신규 mail_id, 1~60분, Read-only 동기화 Token |
 | 무인 1회 Gmail 동기화 | 구현·자동 테스트 완료 | JSON·Exit Code·제한 재시도·sync_runs |
 | 기한·대기 점검 계약 | 구현·자동 테스트 완료 | `operations_cli status`, P1~P4·검토 대기 JSON |
 | Health Check | 구현·자동 테스트 완료 | DB·LLM·OAuth 준비 상태, Secret 미출력 |
@@ -373,7 +375,7 @@ Container를 구현 완료로 표시하지 않는다. 로컬 Windows Scheduler�
 Slack 최소 알림·Dry-run, 6개 역할 기반 운영 UI, Agent 기본 실행·일시정지 계약과 Task 연결
 Thread의 양방향 후속 Mail 추적·Task 타임라인과 저장 DB 우선 화면 시작을 포함해 pytest
 `122 passed`였다. 2026-09-02 Task Context RAG·ReAct·Agent Action Proposal·Python Safety Guard·
-Agent Trace 회귀까지 포함한 현재 결과는 `149 passed`다. 로컬 SQLite 무결성 오류가 발생하면 자동 처리를 중지하고 백업 복구 절차를
+Agent Trace 회귀까지 포함한 당시 결과는 `149 passed`다. 로컬 SQLite 무결성 오류가 발생하면 자동 처리를 중지하고 백업 복구 절차를
 안내하는 Fail-closed UI도 포함한다. 별도 송신
 계정 기반 Gmail 실메일 수용시험은 `20/20 PASSED`다.
 로컬 Windows 예약 작업 `MailTaskAgent-GmailSync`를 1분 주기로 등록했고 수동 실행 결과
@@ -387,5 +389,6 @@ Task 연결 Thread 추적을 적용한 Live `SYNC-0BA30F517ECC`도 가져옴 22�
 기반으로 7개 Reply Action 중 하나를 판단하고 필요한 사용자 입력을 받아 초안만 저장하도록
 구현했다. 전체 pytest는 `158 passed`, 회사 LLM Reply Planning은 `3/3`, Draft 생성은 `1/1`,
 실제 Streamlit 화면 흐름도 통과했다. 이어 별도 브랜치에서 테스트 Gmail 사용자 승인 발송을
-추가해 전체 pytest `168 passed`, OAuth Health `READY`, 회사 LLM 초안 기반 실제 발송 1건,
-동일 Thread `SENT`, Task `WAITING_REPLY`, Audit·Trace와 DB 무결성을 확인했다.
+추가해 당시 전체 pytest `168 passed`, OAuth Health `READY`, 회사 LLM 초안 기반 실제 발송 1건,
+동일 Thread `SENT`, Task `WAITING_REPLY`, Audit·Trace와 DB 무결성을 확인했다. 2026-09-08에는
+읽기/발송 OAuth Token 분리와 명시적 상대 날짜 정규화 회귀를 추가해 최종 `170 passed`와 두 OAuth 경로의 `READY`를 확인했다.

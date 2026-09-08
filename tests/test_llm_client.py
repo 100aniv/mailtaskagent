@@ -2,7 +2,10 @@ import json
 from types import SimpleNamespace
 
 from mailtaskagent.config import PROJECT_ROOT, Settings
-from mailtaskagent.llm_client import AzureMailAnalyzer
+from mailtaskagent.llm_client import (
+    AzureMailAnalyzer,
+    _infer_explicit_relative_weekday_due_date,
+)
 from mailtaskagent.models import MailIntent
 from mailtaskagent.workflow import load_mails
 
@@ -113,3 +116,11 @@ def test_live_analyzer_retries_schema_null_reason_with_contract_reminder(tmp_pat
     assert "이전 응답이 JSON/Pydantic Schema 검증에 실패" in calls[1]["messages"][-1][
         "content"
     ]
+
+
+def test_explicit_relative_weekday_is_normalized_but_approximate_date_is_not() -> None:
+    mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
+
+    assert _infer_explicit_relative_weekday_due_date(mails[0]).isoformat() == "2026-08-21"
+    assert _infer_explicit_relative_weekday_due_date(mails[1]).isoformat() == "2026-08-24"
+    assert _infer_explicit_relative_weekday_due_date(mails[14]) is None

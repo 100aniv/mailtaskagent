@@ -72,6 +72,13 @@ STATUS_LABELS = {
     "CANCELLED": "취소",
 }
 
+
+def _task_status_label(status: str) -> str:
+    """Return the user-facing Task status without assuming an exhaustive mapping."""
+
+    return STATUS_LABELS.get(status, status)
+
+
 INTENT_LABELS = {
     "NEW_TASK": "신규 업무 요청",
     "DUE_DATE_CHANGE": "기한 변경",
@@ -2179,7 +2186,7 @@ def _render_reply_draft_assistant(storage, settings, selected_task: dict) -> Non
                     ).send(record["reply_id"], user_confirmed=True)
                 st.session_state[f"reply_id_{task_id}"] = record["reply_id"]
                 st.success(
-                    f"발송 완료 · 업무 상태 {TASK_STATUS_LABELS[result['task']['status']]}"
+                    f"발송 완료 · 업무 상태 {_task_status_label(result['task']['status'])}"
                 )
                 st.rerun()
             except RuntimeError:

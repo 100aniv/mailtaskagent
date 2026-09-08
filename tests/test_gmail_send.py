@@ -16,6 +16,7 @@ from mailtaskagent.gmail_send import (
     load_gmail_approved_send_settings,
     source_gmail_ids,
 )
+from mailtaskagent.gmail_source import load_gmail_send_source_settings
 from mailtaskagent.llm_client import MockMailAnalyzer
 from mailtaskagent.models import (
     ActionProposal,
@@ -206,6 +207,20 @@ def test_send_settings_require_valid_exact_allowlist(monkeypatch) -> None:
     monkeypatch.setenv("GMAIL_SEND_ALLOWED_RECIPIENTS", "not-an-address")
     with pytest.raises(ValueError, match="invalid email"):
         load_gmail_approved_send_settings()
+
+
+def test_send_oauth_uses_token_separate_from_read_only_sync(
+    tmp_path, monkeypatch
+) -> None:
+    read_token = tmp_path / "gmail-read-token.json"
+    send_token = tmp_path / "gmail-send-token.json"
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(read_token))
+    monkeypatch.setenv("GMAIL_SEND_TOKEN_PATH", str(send_token))
+
+    settings = load_gmail_send_source_settings()
+
+    assert settings.token_path == send_token
+    assert settings.token_path != read_token
 
 
 def test_gmail_reply_subject_and_source_ids_are_fail_closed() -> None:

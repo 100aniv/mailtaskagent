@@ -10,6 +10,7 @@ from mailtaskagent.config import PROJECT_ROOT, load_settings
 from mailtaskagent.gmail_source import (
     GmailReadOnlySource,
     build_gmail_service,
+    load_gmail_send_source_settings,
     load_gmail_source_settings,
 )
 from mailtaskagent.gmail_send import load_gmail_approved_send_settings
@@ -121,6 +122,7 @@ def _run_health() -> int:
     storage = SQLiteStorage(settings.database_path)
     storage.initialize()
     gmail_settings = load_gmail_source_settings()
+    gmail_send_settings = load_gmail_send_source_settings()
     slack_settings = load_slack_notification_settings()
     latest_runs = storage.list_sync_runs(source="GMAIL", limit=1)
     gmail_oauth_ready = False
@@ -147,12 +149,12 @@ def _run_health() -> int:
             approved_send_settings is not None
             and approved_send_settings.enabled
             and bool(approved_send_settings.allowed_recipients)
-            and gmail_settings.credentials_path.exists()
-            and gmail_settings.token_path.exists()
+            and gmail_send_settings.credentials_path.exists()
+            and gmail_send_settings.token_path.exists()
         ):
             try:
                 build_gmail_service(
-                    gmail_settings,
+                    gmail_send_settings,
                     allow_interactive_auth=False,
                     include_send_scope=True,
                 )

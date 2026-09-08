@@ -1484,8 +1484,8 @@ http://localhost:8501
 
 > 현재 회사 LLM, M-01~M-05, 제한 Gmail 파일럿과 Structured Task Context RAG·최대 1회
 > 재판단·Agent Action Proposal·Python Safety Guard·Agent Trace가 연결된 Core E2E를 검증했습니다.
-> Mail-to-Action Draft와 테스트 Gmail 사용자 승인 발송까지 연결해 전체 pytest 168개,
-> Task Context Agent 회사 LLM Live 합성 검증 3/3, 실제 발송 1건과 동일 Thread·Task 상태·Audit을
+> Mail-to-Action Draft와 테스트 Gmail 사용자 승인 발송, Read/Send OAuth Token 분리와 명시적 상대 날짜 정규화까지 연결해 전체 pytest 170개,
+> Task Context Agent 회사 LLM Live 합성 검증 3/3, 최초·최종 재검증 실제 발송과 동일 Thread·Task 상태·Audit을
 > 확인했고, Outlook과 사내 운영환경은 그 이후 과제입니다.
 
 ---

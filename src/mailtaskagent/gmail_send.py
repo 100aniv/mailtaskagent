@@ -11,7 +11,7 @@ from mailtaskagent.gmail_source import (
     EMAIL_ADDRESS_PATTERN,
     GMAIL_CONVERSATION_PREFIX,
     build_gmail_service,
-    load_gmail_source_settings,
+    load_gmail_send_source_settings,
 )
 
 
@@ -67,7 +67,7 @@ def load_gmail_approved_send_settings() -> GmailApprovedSendSettings:
 
 
 def build_gmail_reply_sender() -> "GmailReplySender":
-    source_settings = load_gmail_source_settings()
+    source_settings = load_gmail_send_source_settings()
     service = build_gmail_service(
         source_settings,
         allow_interactive_auth=False,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date
+from datetime import date, timedelta
 from typing import Protocol
 
 from openai import AzureOpenAI
@@ -45,6 +45,49 @@ def _extract_json(text: str) -> dict:
     if fenced:
         cleaned = fenced.group(1)
     return json.loads(cleaned)
+
+
+_KOREAN_WEEKDAYS = {
+    "월요일": 0,
+    "화요일": 1,
+    "수요일": 2,
+    "목요일": 3,
+    "금요일": 4,
+    "토요일": 5,
+    "일요일": 6,
+}
+
+
+def _infer_explicit_relative_weekday_due_date(mail: MailInput) -> date | None:
+    """Resolve only an explicit, non-approximate Korean week/day expression."""
+
+    text = f"{mail.subject}\n{mail.body}"
+    if re.search(r"(?:이번\s*주|다음\s*주)\s*(?:중|무렵)", text) or re.search(
+        r"(?:월요일|화요일|수요일|목요일|금요일|토요일|일요일)\s*(?:쯤|경|전후|무렵)",
+        text,
+    ):
+        return None
+    match = re.search(
+        r"(?P<week>이번\s*주|다음\s*주)\s*(?P<weekday>월요일|화요일|수요일|목요일|금요일|토요일|일요일)",
+        text,
+    )
+    if match is None:
+        return None
+    occurred = mail.occurred_at.date()
+    week_start = occurred - timedelta(days=occurred.weekday())
+    week_offset = 7 if re.sub(r"\s+", "", match.group("week")) == "다음주" else 0
+    return week_start + timedelta(
+        days=week_offset + _KOREAN_WEEKDAYS[match.group("weekday")]
+    )
+
+
+def _normalize_explicit_due_date(mail: MailInput, analysis: MailAnalysis) -> MailAnalysis:
+    if analysis.due_date is not None or not analysis.is_task_request:
+        return analysis
+    inferred = _infer_explicit_relative_weekday_due_date(mail)
+    if inferred is None:
+        return analysis
+    return analysis.model_copy(update={"due_date": inferred})
 
 
 class AzureMailAnalyzer:
@@ -98,7 +141,8 @@ class AzureMailAnalyzer:
             try:
                 if not content:
                     raise ValueError("LLM returned an empty response")
-                return MailAnalysis.model_validate(_extract_json(content))
+                analysis = MailAnalysis.model_validate(_extract_json(content))
+                return _normalize_explicit_due_date(mail, analysis)
             except (json.JSONDecodeError, ValueError) as exc:
                 last_schema_error = exc
                 if attempt >= self.settings.schema_retries:

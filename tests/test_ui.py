@@ -37,6 +37,8 @@ def test_history_change_rows_show_only_business_field_changes() -> None:
 
 def test_display_value_localizes_status_and_boolean() -> None:
     assert ui_module._display_value("WAITING_REPLY", "status") == "회신 대기"
+    assert ui_module._task_status_label("WAITING_REPLY") == "회신 대기"
+    assert ui_module._task_status_label("FUTURE_STATUS") == "FUTURE_STATUS"
     assert ui_module._display_value(True, "reply_required") == "예"
     assert ui_module._display_value(None) == "-"
 

@@ -111,7 +111,7 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 | 기존 Task 연결 | 8/8 |
 | 테스트 Gmail 수용시험 | 20/20 |
 | Task Context Agent Live 합성 검증 | 3/3 |
-| 전체 자동 테스트 | 149 passed |
+| 전체 자동 테스트 | 170 passed |
 | Gmail 재조회 | 신규 처리 0, 중복 차단 20, 실패 0 |
 | Windows Scheduler | 반복 실행 성공, `LastTaskResult=0` |
 | SQLite 무결성 | `quick_check=ok` |
@@ -174,7 +174,7 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 6. Task 상세의 Mail 타임라인과 변경 전·후 History를 보여준다.
 7. 운영 상태의 Agentic Workflow Trace에서 RAG 검색, 후보 관찰, 판단, Query Rewrite,
    Agent Action Proposal, Python Safety Guard와 실행 결과 관찰을 보여준다.
-8. 마지막에 15/15, 28/28, Task Context Live 3/3, Gmail 20/20, pytest 149 passed와 측정 한계를 설명한다.
+8. 마지막에 15/15, 28/28, Task Context Live 3/3, Gmail 20/20, 사용자 승인 실제 발송 최초·최종 재검증, pytest 170 passed와 측정 한계를 설명한다.
 
 ## 12. 발표용 30초 결론
 
