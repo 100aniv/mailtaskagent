@@ -256,6 +256,15 @@ def test_product_dashboard_and_full_mock_mail_flow(tmp_path, monkeypatch) -> Non
     )
     assert any("Agentic Workflow Trace" in item.value for item in app.markdown)
     assert any(item.label == "Trace를 확인할 Mail" for item in app.selectbox)
+    quality_text = "\n".join(
+        [
+            *(item.value for item in app.markdown),
+            *(item.value for item in app.caption),
+            *(item.value for item in app.subheader),
+        ]
+    )
+    assert "Task Context Agent · RAG/ReAct Live 검증" in quality_text
+    assert any(metric.label == "동일 업무 판단 신뢰도" for metric in app.metric)
 
 
 def test_operation_mode_renders_explainable_priority_and_direct_completion(

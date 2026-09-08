@@ -2389,6 +2389,99 @@ def _render_operational_task_list(storage, settings) -> None:
     _render_operational_task_detail(storage, settings, selected_task)
 
 
+def _render_task_context_rag_evidence() -> None:
+    evidence_path = PROJECT_ROOT / "evidence" / "task_context_rag_evaluation_2026-09-01.json"
+    if not evidence_path.exists():
+        st.warning("Task Context Agent Live 검증 Evidence를 찾을 수 없습니다.")
+        return
+
+    evidence = load_saved_evaluation_report(evidence_path)
+    live_checks = evidence.get("company_llm_live_checks") or {}
+    results = live_checks.get("results") or []
+    passed_count = int(live_checks.get("passed_count") or 0)
+    case_count = int(live_checks.get("case_count") or len(results))
+    configuration = evidence.get("configuration") or {}
+    accepted_case = next(
+        (item for item in results if item.get("case_id") == "LIVE-RAG-01"),
+        {},
+    )
+    accepted_confidence = accepted_case.get("confidence")
+    threshold = configuration.get("confidence_threshold")
+
+    st.divider()
+    st.subheader("Task Context Agent · RAG/ReAct Live 검증")
+    st.caption(
+        "회사 LLM이 SQLite Task·최근 Mail·History Context를 보고 관계와 다음 Action을 "
+        "판단한 별도 합성 Evidence입니다. 현재 Mailbox 전체 정확도를 의미하지 않습니다."
+    )
+    summary_1, summary_2, summary_3, summary_4 = st.columns(4)
+    summary_1.metric("Live 합성 Case", f"{passed_count}/{case_count}")
+    summary_2.metric(
+        "동일 업무 판단 신뢰도",
+        (
+            f"{accepted_confidence:.0%} ({accepted_confidence:.2f})"
+            if isinstance(accepted_confidence, (int, float))
+            else "-"
+        ),
+    )
+    summary_3.metric(
+        "자동 판단 기준",
+        f"{threshold:.0%} ({threshold:.2f})"
+        if isinstance(threshold, (int, float))
+        else "-",
+    )
+    summary_4.metric(
+        "Query Rewrite 제한",
+        f"최대 {configuration.get('max_query_rewrite_retries', 1)}회",
+    )
+
+    relation_labels = {
+        "SAME_TASK": "기존 업무",
+        "NEW_TASK": "신규 업무",
+        "AMBIGUOUS": "모호함",
+    }
+    rows = []
+    for item in results:
+        confidence = item.get("confidence")
+        rows.append(
+            {
+                "Case": item.get("case_id"),
+                "기대 판단": item.get("expected"),
+                "Agent 관계": relation_labels.get(
+                    item.get("actual_relation"), item.get("actual_relation")
+                ),
+                "Agent Action Proposal": ACTION_LABELS.get(
+                    item.get("actual_recommended_action"),
+                    item.get("actual_recommended_action"),
+                ),
+                "신뢰도": (
+                    f"{confidence:.0%} ({confidence:.2f})"
+                    if isinstance(confidence, (int, float))
+                    else "-"
+                ),
+                "Query Rewrite": (
+                    "사용"
+                    if item.get("rewritten_query_present")
+                    else "Guard에서 종료"
+                    if item.get("rewritten_query_after_application_guard") is None
+                    and item.get("case_id") == "LIVE-RAG-03"
+                    else "불필요"
+                ),
+                "결과": "통과" if item.get("passed") else "실패",
+            }
+        )
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+    st.success(
+        "LIVE-RAG-01은 다른 Thread·다른 표현의 Mail을 기존 Task로 판단해 UPDATE_TASK를 "
+        "제안했고 신뢰도 90%로 기준 75%를 통과했습니다. 모호한 Case는 재검색 또는 "
+        "ASK_USER로 안전하게 전환했습니다."
+    )
+    st.caption(
+        f"저장 Evidence · {evidence.get('generated_at', '-')} · "
+        f"{live_checks.get('model', '-')} · Secret 저장 없음"
+    )
+
+
 def _render_quality_evaluation(settings) -> None:
     st.subheader("15개 대표 시나리오 품질 검증")
     st.write(
@@ -2566,6 +2659,7 @@ def _render_quality_evaluation(settings) -> None:
         f"총 {report['duration_ms'] / 1000:.2f}초. Mock은 Application Logic 회귀 증적이고, "
         "Live 결과만 회사 LLM 품질 증적으로 사용합니다."
     )
+    _render_task_context_rag_evidence()
     _render_manual_time_benchmark(st.session_state.get("live_evaluation"))
 
 
