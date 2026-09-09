@@ -876,6 +876,28 @@ def _apply_styles() -> None:
             font-weight: 600;
         }
 
+        /* Streamlit's stock accent is a red that fights the blue used for
+           buttons and links. These are the controls that still paint it. */
+        /* The tab indicator carries its colour as an inline style. */
+        [data-testid="stTab"] .react-aria-SelectionIndicator {
+            background-color: var(--mta-accent) !important;
+        }
+        [data-testid="stRadioOption"]:has(input:checked)
+            > div > div > div:first-child {
+            background: var(--mta-accent);
+        }
+        [data-testid="stMultiSelectTagsContainer"] > span > span {
+            background: var(--mta-accent);
+            border-radius: var(--mta-r-sm);
+        }
+        [data-testid="stCheckbox"] label[data-selected="true"] > div:not([data-testid]) {
+            background: var(--mta-accent);
+            border-color: var(--mta-accent);
+        }
+        [data-testid="stProgress"] div[role="progressbar"] > div {
+            background: var(--mta-accent);
+        }
+
         [data-testid="stExpander"] {
             border-color: var(--mta-line);
             border-radius: var(--mta-r-lg);
