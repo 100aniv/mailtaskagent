@@ -771,13 +771,12 @@ div[data-testid="stStatusWidget"]{border-radius:var(--ui-r-lg);}
    11 · TIMELINE
    ========================================================================== */
 .ui-tl{position:relative; margin:0; padding:0 0 0 26px; list-style:none;}
-.ui-tl::before{content:""; position:absolute; left:5px; top:10px; bottom:10px; width:2px; background:var(--ui-line);}
+.ui-tl::before{content:""; position:absolute; left:5px; top:8px; bottom:8px; width:2px; background:var(--ui-line-2); border-radius:1px;}
 .ui-tl__item{position:relative; padding:0 0 20px;}
 .ui-tl__item:last-child{padding-bottom:0;}
 .ui-tl__item::before{
   content:""; position:absolute; left:-26px; top:4px; width:12px; height:12px;
-  border-radius:50%; background:var(--ui-surface); border:2px solid var(--ui-line-2);
-  box-shadow:0 0 0 3px var(--ui-surface);
+  border-radius:50%; background:var(--ui-surface); border:3px solid var(--ui-line-2);
 }
 .ui-tl__item--in::before{border-color:var(--ui-accent);}
 .ui-tl__item--out::before{border-color:var(--ui-review);}

@@ -1171,9 +1171,21 @@ def _render_quick_demo(storage, settings, mail_by_id) -> None:
     columns = st.columns(len(DEMO_SCENARIOS))
     for column, (key, scenario) in zip(columns, DEMO_SCENARIOS.items()):
         with column:
-            st.markdown(f"#### {scenario['title']}")
-            st.write(scenario["description"])
-            st.caption(" → ".join(scenario["mail_ids"]))
+            st.markdown(
+                ui.card(
+                    f'<span class="ui-title ui-title--md">'
+                    f'{ui.esc(scenario["title"])}</span>'
+                    f'<div class="ui-row__desc" style="-webkit-line-clamp:4;margin-top:8px">'
+                    f'{ui.esc(scenario["description"])}</div>'
+                    f'<div class="ui-row__meta">'
+                    + ui.chips(
+                        [ui.chip("입력", mail_id, "neutral") for mail_id in scenario["mail_ids"]]
+                    )
+                    + "</div>",
+                    tone="accent",
+                ),
+                unsafe_allow_html=True,
+            )
             if st.button("이 시나리오 실행", key=f"demo_{key}", width="stretch"):
                 try:
                     _run_demo(storage, settings, mail_by_id, key)
