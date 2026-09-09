@@ -885,6 +885,12 @@ def _apply_styles() -> None:
             border-top-color: var(--mta-line);
             padding: var(--mta-5);
         }
+        [data-testid="stForm"] {
+            border: 1px solid var(--mta-line);
+            border-radius: var(--mta-r-lg);
+            padding: var(--mta-5);
+            background: var(--mta-surface);
+        }
         [data-testid="stDataFrame"] {
             border: 1px solid var(--mta-line);
             border-radius: var(--mta-r-md);
@@ -969,6 +975,23 @@ def _apply_styles() -> None:
         [data-testid="stSidebar"] {background: var(--mta-nav); border-right: 0;}
         [data-testid="stSidebar"] :is(h1, h2, h3, p, label) {color: var(--mta-text-inv);}
         [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {color: #9fb0d0;}
+        /* Alerts and expanders keep light surfaces, so the inverted sidebar
+           text colour must not reach inside them. */
+        [data-testid="stSidebar"] [data-testid="stAlertContainer"]
+            :is(h1, h2, h3, p, label, div) {color: inherit;}
+        [data-testid="stSidebar"] [data-testid="stExpander"] {
+            background: var(--mta-nav-raised);
+            border-color: var(--mta-nav-line);
+            color: var(--mta-text-inv);
+        }
+        [data-testid="stSidebar"] [data-testid="stExpanderDetails"] {
+            border-top-color: var(--mta-nav-line);
+            padding: var(--mta-4);
+        }
+        [data-testid="stSidebar"] [data-testid="stExpander"] summary,
+        [data-testid="stSidebar"] [data-testid="stExpander"] summary * {
+            color: var(--mta-text-inv);
+        }
         [data-testid="stSidebar"] hr {border-color: var(--mta-nav-line);}
         [data-testid="stSidebar"] [data-testid^="stBaseButton-"] {
             border-color: var(--mta-nav-line);
