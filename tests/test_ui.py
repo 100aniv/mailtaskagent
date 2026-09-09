@@ -161,6 +161,9 @@ def test_task_timeline_combines_inbound_and_outbound_lifecycle(tmp_path) -> None
         "WAITING_REPLY",
         "IN_PROGRESS",
     ]
+    assert rows[0]["sender"] == mails["MAIL-001"].sender
+    assert rows[0]["recipients"] == mails["MAIL-001"].recipients
+    assert rows[0]["body"] == mails["MAIL-001"].body
 
 def _start_mode(app: AppTest, button_label: str) -> AppTest:
     buttons = [item for item in app.button if item.label == button_label]

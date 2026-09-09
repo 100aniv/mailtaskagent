@@ -325,6 +325,9 @@ def _task_mail_timeline_rows(storage, task: dict, *, limit: int = 50) -> list[di
                 "occurred_at": mail["occurred_at"],
                 "direction": direction,
                 "direction_label": "받은 메일" if direction == "INBOUND" else "보낸 메일",
+                "sender": mail.get("sender") or "발신자 정보 없음",
+                "recipients": list(mail.get("recipients") or []),
+                "body": mail.get("body") or "본문 내용 없음",
                 "counterpart": counterpart,
                 "subject": mail["subject"],
                 "action": action,
@@ -2709,6 +2712,26 @@ def _render_task_timeline(rows: list[dict]) -> None:
             f'{ui.esc(row["counterpart"])}</div></li>'
         )
     st.markdown(f'<ul class="ui-tl">{"".join(items)}</ul>', unsafe_allow_html=True)
+    for row in rows:
+        recipients = ", ".join(row.get("recipients") or []) or "수신자 정보 없음"
+        with st.expander(
+            f"메일 내용 보기 · {row['direction_label']} · {row['subject']}",
+            expanded=False,
+        ):
+            sender_col, recipient_col = st.columns(2)
+            sender_col.markdown(
+                f"**보낸 사람**\n\n{ui.esc(row.get('sender') or '발신자 정보 없음')}",
+                unsafe_allow_html=True,
+            )
+            recipient_col.markdown(
+                f"**받는 사람**\n\n{ui.esc(recipients)}",
+                unsafe_allow_html=True,
+            )
+            st.caption(f"Mail ID {row['mail_id']} · {row['occurred_at']}")
+            st.markdown(
+                f'<div class="ui-mail__body ui-mail__body--detail">{ui.esc(row.get("body") or "본문 내용 없음")}</div>',
+                unsafe_allow_html=True,
+            )
 
 
 @st.dialog("업무 상세", width="large", on_dismiss=_clear_selected_operational_task)
