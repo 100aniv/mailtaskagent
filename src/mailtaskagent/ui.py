@@ -557,35 +557,50 @@ def _priority_tone(level: PriorityLevel) -> str:
     return _PRIORITY_TONES.get(level, "neutral")
 
 
-def _due_chip(task: dict) -> str:
-    """Render the deadline and, separately, how far past it the Task is.
+def _due_text(task: dict) -> tuple[str, str]:
+    """Return the deadline wording and its tone.
 
-    The overdue count is the single most actionable fact in a row, so it gets
-    its own chip rather than being folded into a reason sentence.
+    The overdue count is the most actionable fact in a row, so it is written
+    out next to the date rather than hidden in a rationale sentence.
     """
 
     due_value = task.get("due_date")
     if not due_value:
-        return ui.chip("기한", "미지정", "neutral")
-    days = (date.fromisoformat(str(due_value)) - date.today()).days
+        return "없음", "neutral"
     if task.get("status") in {"COMPLETED", "CANCELLED"}:
-        return ui.chip("기한", str(due_value), "neutral")
+        return str(due_value), "neutral"
+    days = (date.fromisoformat(str(due_value)) - date.today()).days
     if days < 0:
-        return ui.chip("기한", f"{due_value} · {abs(days)}일 초과", "danger")
+        return f"{due_value} · {abs(days)}일 초과", "danger"
     if days == 0:
-        return ui.chip("기한", f"{due_value} · 오늘", "danger")
+        return f"{due_value} · 오늘 마감", "danger"
     if days <= 3:
-        return ui.chip("기한", f"{due_value} · {days}일 남음", "warning")
-    return ui.chip("기한", str(due_value), "neutral")
+        return f"{due_value} · {days}일 남음", "warning"
+    return str(due_value), "neutral"
 
 
-def _priority_reason_chips(decision) -> str:
-    """Render the priority rationale that the rest of the row does not show.
+def _due_chip(task: dict) -> str:
+    text, tone = _due_text(task)
+    return ui.chip("기한", text, tone)
 
-    `PriorityDecision.reasons` mixes deadline pressure with importance rules
-    such as a VIP sender or a keyword. Deadline pressure is already spelled out
-    by the deadline chip, so only the waiting time and the importance rules are
-    repeated here, each with its category named rather than colour-coded.
+
+def _fact(label: str, value: str, tone: str = "neutral") -> str:
+    """One `label value` pair on the row's fact line."""
+
+    modifier = f" ui-row__fact--{tone}" if tone != "neutral" else ""
+    return (
+        f'<span class="ui-row__fact{modifier}">{ui.esc(label)} '
+        f"<b>{ui.esc(value)}</b></span>"
+    )
+
+
+def _priority_reasons(decision) -> tuple[list[str], list[str]]:
+    """Split the rationale into importance rules and waiting time.
+
+    Deadline pressure is already written out next to the date, so it is not
+    repeated here. What is left is why this Task outranks others: the rule that
+    matched, such as a VIP sender or a keyword, and how long a reply has been
+    outstanding.
     """
 
     waiting: list[str] = []
@@ -599,8 +614,16 @@ def _priority_reason_chips(decision) -> str:
             continue
         cleaned = re.sub(r"\s*Rule\s+P\d\s*$", "", text).strip()
         importance.append(cleaned or text)
-    parts = [ui.chip("중요도 근거", value, "review") for value in importance]
-    parts += [ui.chip("대기", value, "hold") for value in waiting]
+    return importance, waiting
+
+
+def _priority_reason_chips(decision) -> str:
+    importance, waiting = _priority_reasons(decision)
+    parts = []
+    if importance:
+        parts.append(ui.chip("중요도", " · ".join(importance), "review"))
+    if waiting:
+        parts.append(ui.chip("대기", " · ".join(waiting), "hold"))
     return ui.chips(parts)
 
 
@@ -786,30 +809,32 @@ def _render_work_summary(priority_by_task: dict, active_tasks: list[dict], revie
 
 
 def _task_row_html(task: dict, decision) -> str:
-    """One scannable Task row: rank, title, status, deadline and rationale."""
+    """One scannable Task row.
 
+    A coloured edge and a matching dot carry the priority, so the internal
+    P1..P4 codes never reach the screen. Everything else sits on a single line
+    of facts, which keeps every row the same height.
+    """
+
+    tone = _priority_tone(decision.level)
+    due_text, due_tone = _due_text(task)
+    importance, waiting = _priority_reasons(decision)
+    facts = [
+        _fact("우선순위", decision.label, tone),
+        _fact("기한", due_text, due_tone),
+        _fact("요청자", task.get("requester") or "미지정"),
+    ]
+    if importance:
+        facts.append(_fact("중요도", " · ".join(importance)))
+    if waiting:
+        facts.append(_fact("대기", " · ".join(waiting), "warning"))
     return (
-        '<div class="ui-row">'
-        f'<div class="ui-row__mark">{ui.rank(decision.level.value)}</div>'
-        '<div class="ui-row__body">'
+        f'<div class="ui-row ui-row--{tone}"><div class="ui-row__body">'
         '<div class="ui-row__top">'
         f'<span class="ui-row__title">{ui.esc(task["title"])}</span>'
         f"{_status_badge(task['status'])}</div>"
-        '<div class="ui-row__meta">'
-        + ui.chips(
-            [
-                ui.chip("우선순위", decision.label, _priority_tone(decision.level)),
-                _due_chip(task),
-                ui.chip("요청자", task.get("requester") or "미지정", "neutral"),
-            ]
-        )
-        + "</div>"
-        + (
-            f'<div class="ui-row__meta">{reason_chips}</div>'
-            if (reason_chips := _priority_reason_chips(decision))
-            else ""
-        )
-        + "</div></div>"
+        f'<div class="ui-row__meta">{"".join(facts)}</div>'
+        "</div></div>"
     )
 
 
@@ -826,7 +851,9 @@ def _render_task_rows(
         for task in tasks:
             decision = priority_by_task[task["task_id"]]
             with st.container():
-                content_col, action_col = st.columns([7.2, 1.3])
+                content_col, action_col = st.columns(
+                    [8.2, 1.25], vertical_alignment="top"
+                )
                 content_col.markdown(_task_row_html(task, decision), unsafe_allow_html=True)
                 if task.get("description") and detail_button:
                     content_col.markdown(
@@ -844,7 +871,6 @@ def _render_task_rows(
                 if task["status"] not in {"COMPLETED", "CANCELLED"} and action_col.button(
                     "완료 처리",
                     key=f"complete_{button_prefix}_{task['task_id']}",
-                    type="primary" if not detail_button else "secondary",
                     width="stretch",
                 ):
                     try:
@@ -889,13 +915,8 @@ def _render_product_dashboard(
         _render_work_summary(priority_by_task, active_tasks, len(pending_reviews))
 
         if pending_reviews:
-            review_col, review_action_col = st.columns([5.0, 1.5])
-            with review_col:
-                ui.note(
-                    "Agent가 자동 반영을 멈추고 사용자의 결정을 기다리고 있습니다.",
-                    tone="review",
-                    heading=f"검토 요청 {len(pending_reviews)}건",
-                )
+            st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+            _, review_action_col = st.columns([4.9, 1.4])
             review_action_col.button(
                 "검토 요청 보기",
                 width="stretch",
@@ -1032,9 +1053,10 @@ def _render_product_dashboard(
                 ["우선순위", "업무", "상태", "기한", "요청자"],
                 [
                     (
-                        ui.rank(priority_by_task[task["task_id"]].level.value)
-                        + " "
-                        + ui.muted(priority_by_task[task["task_id"]].label),
+                        ui.priority_label(
+                            priority_by_task[task["task_id"]].level.value,
+                            priority_by_task[task["task_id"]].label,
+                        ),
                         ui.strong(task["title"]),
                         _status_badge(task["status"]),
                         _due_chip(task),
@@ -2231,7 +2253,10 @@ def _render_tasks_and_histories(storage, settings=None, *, show_history: bool = 
                     ["우선순위", "업무 제목", "상태", "기한", "요청자"],
                     [
                         (
-                            ui.rank(priority_by_task[task["task_id"]].level.value),
+                            ui.priority_label(
+                                priority_by_task[task["task_id"]].level.value,
+                                priority_by_task[task["task_id"]].label,
+                            ),
                             ui.strong(task["title"])
                             + (
                                 f'<div class="ui-tl__meta">{ui.esc(_task_attention(task))}</div>'
@@ -2624,30 +2649,32 @@ def _render_reply_draft_assistant(storage, settings, selected_task: dict) -> Non
 
 
 def _render_task_summary(task: dict, decision) -> None:
+    due_text, due_tone = _due_text(task)
+    importance, waiting = _priority_reasons(decision)
+    rationale = " · ".join([*importance, *waiting]) or "기본 규칙"
     st.markdown(
         ui.card(
-            f'<div class="ui-row__top">'
-            f'{ui.rank(decision.level.value)}'
+            '<div class="ui-row__top">'
             f'<span class="ui-title ui-title--lg">{ui.esc(task["title"])}</span>'
-            f"{_status_badge(task['status'])}</div>"
-            f'<div class="ui-row__meta">'
-            + ui.chips(
+            f"{_status_badge(task['status'])}"
+            f"{ui.priority_label(decision.level.value, decision.label)}</div>"
+            + ui.facts(
                 [
-                    ui.chip("우선순위", decision.label, _priority_tone(decision.level)),
-                    _due_chip(task),
-                    ui.chip("요청자", task.get("requester") or "미지정", "neutral"),
-                    ui.chip(
-                        "회신",
-                        "필요" if task.get("reply_required") else "불필요",
-                        "hold" if task.get("reply_required") else "neutral",
+                    (
+                        "기한",
+                        f'<span class="ui-row__fact--{due_tone}">'
+                        f"<b>{ui.esc(due_text)}</b></span>"
+                        if due_tone != "neutral"
+                        else ui.strong(due_text),
                     ),
-                ]
-            )
-            + "</div>"
-            + (
-                f'<div class="ui-row__meta">{reason_chips}</div>'
-                if (reason_chips := _priority_reason_chips(decision))
-                else ""
+                    ("요청자", ui.strong(task.get("requester") or "미지정")),
+                    (
+                        "회신",
+                        ui.strong("필요" if task.get("reply_required") else "불필요"),
+                    ),
+                    ("우선순위 근거", ui.strong(rationale)),
+                ],
+                columns=4,
             )
             + (
                 f'<div class="ui-row__desc" style="-webkit-line-clamp:3">'
@@ -2655,7 +2682,7 @@ def _render_task_summary(task: dict, decision) -> None:
                 if task.get("description")
                 else ""
             ),
-            tone="accent",
+            tone=_priority_tone(decision.level),
         ),
         unsafe_allow_html=True,
     )
@@ -2670,16 +2697,16 @@ def _render_task_timeline(rows: list[dict]) -> None:
         status_html = _status_badge(row["status"]) if row["status"] else ""
         items.append(
             f'<li class="ui-tl__item ui-tl__item--{"in" if inbound else "out"}">'
-            f'<div class="ui-tl__head">'
+            '<div class="ui-tl__head">'
             f'{ui.badge("받은 메일" if inbound else "보낸 메일", "accent" if inbound else "review")}'
             f'<span class="ui-tl__subject">{ui.esc(row["subject"])}</span>'
+            '<span class="ui-tl__out">'
+            f'{_action_badge(row["action"]) if row["action"] else ""}'
+            f"{status_html}"
             f'<span class="ui-tl__time">{occurred_at.strftime("%Y-%m-%d %H:%M")}</span>'
-            "</div>"
+            "</span></div>"
             f'<div class="ui-tl__meta">{ui.esc(counterpart_label)} · '
-            f'{ui.esc(row["counterpart"])}</div>'
-            f'<div class="ui-row__meta">'
-            f'{_action_badge(row["action"]) if row["action"] else ui.badge("처리 기록 없음", "neutral")}'
-            f"{status_html}</div></li>"
+            f'{ui.esc(row["counterpart"])}</div></li>'
         )
     st.markdown(f'<ul class="ui-tl">{"".join(items)}</ul>', unsafe_allow_html=True)
 
@@ -3361,27 +3388,29 @@ def _render_automation_center(storage, mails) -> None:
     filter_rules = storage.list_mail_filter_rules()
     active_priority = sum(rule["enabled"] for rule in priority_rules)
     active_filters = sum(rule["enabled"] for rule in filter_rules)
-    ui.stat_cards(
-        [
-            (
-                "Agent 상태",
-                "실행 중" if operation_settings["gmail_auto_sync_enabled"] else "일시정지",
-                "사이드바에서 일시정지할 수 있습니다",
-                "success" if operation_settings["gmail_auto_sync_enabled"] else "warning",
-            ),
-            ("중요 발신자·키워드", f"{active_priority}개", "우선순위를 올리는 규칙", "review"),
-            ("광고·반복 메일 제외", f"{active_filters}개", "업무에서 제외하는 규칙", "neutral"),
-        ]
+    running = bool(operation_settings["gmail_auto_sync_enabled"])
+    st.markdown(
+        '<div class="ui-bar">'
+        + f'<span class="ui-bar__item">{ui.dot("success" if running else "warning")}'
+        + f"<b>Agent {'실행 중' if running else '일시정지'}</b></span>"
+        + '<span class="ui-bar__sep"></span>'
+        + _fact("확인 주기", f"{operation_settings['gmail_sync_interval_minutes']}분")
+        + '<span class="ui-bar__sep"></span>'
+        + _fact("중요 발신자·키워드", f"{active_priority}개")
+        + '<span class="ui-bar__sep"></span>'
+        + _fact("광고·반복 메일 제외", f"{active_filters}개")
+        + "</div>",
+        unsafe_allow_html=True,
     )
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
     priority_tab, filter_tab, auto_tab = st.tabs(
         ["우선순위 기준", "광고·반복 메일 제외", "실행 주기"]
     )
     with auto_tab:
-        ui.section("Agent 실행 주기")
-        st.write(
-            "Gmail 연결 후 Agent는 기본 실행됩니다. 이 값은 새 메일을 확인하는 간격이며, "
-            "Agent 일시정지와 재실행은 사이드바에서 할 수 있습니다."
+        ui.section(
+            "Agent 실행 주기",
+            "새 메일을 확인하는 간격입니다. 일시정지와 재실행은 사이드바에서 합니다.",
         )
         with st.form("gmail_auto_sync_form_v2"):
             sync_interval = int(
@@ -3408,13 +3437,16 @@ def _render_automation_center(storage, mails) -> None:
                 st.error(f"실행 주기를 저장할 수 없습니다: {exc}")
 
     with priority_tab:
-        ui.section("우선순위 계산 기준")
-        st.write(
+        ui.note(
             "우선순위는 긴급도(기한·회신 대기)와 중요도(VIP 발신자·고객사 도메인·"
-            "중요 키워드·사용자 직접 지정)를 함께 반영해 P1~P4로 계산합니다."
+            "중요 키워드·사용자 직접 지정)를 함께 반영해 계산합니다.",
+            tone="info",
+            heading="계산 방식",
         )
-        ui.section("기한·회신 대기 시간 기준")
-        st.caption("아래 3개는 사용자가 일수로 조정할 수 있는 긴급도 경계값입니다.")
+        ui.section(
+            "기한·회신 대기 시간 기준",
+            "사용자가 일수로 조정할 수 있는 긴급도 경계값입니다.",
+        )
         settings = storage.get_priority_settings()
         with st.form("priority_threshold_form_v2"):
             soon_col, later_col, waiting_col = st.columns(3)
@@ -3445,7 +3477,8 @@ def _render_automation_center(storage, mails) -> None:
                     help="이 기간 이상 회신이 없으면 우선 확인합니다.",
                 )
             )
-            save_thresholds = st.form_submit_button("시간 기준 저장")
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+            save_thresholds = st.form_submit_button("시간 기준 저장", type="primary")
         if save_thresholds:
             try:
                 storage.update_priority_settings(
@@ -3465,24 +3498,25 @@ def _render_automation_center(storage, mails) -> None:
             "이 기준만으로 완료·취소·기한을 임의로 확정하지는 않습니다."
         )
         with st.form("priority_rule_form_v2", clear_on_submit=True):
-            name = st.text_input("표시 이름", placeholder="예: ABC 고객사 또는 김부장님")
-            rule_type = st.selectbox(
+            name_col, type_col = st.columns([1.4, 1])
+            name = name_col.text_input("표시 이름", placeholder="예: ABC 고객사 또는 김부장님")
+            rule_type = type_col.selectbox(
                 "무엇을 확인할까요?",
                 list(PRIORITY_RULE_LABELS),
                 format_func=lambda value: PRIORITY_RULE_LABELS[value],
             )
-            pattern = st.text_input(
+            pattern_col, importance_col = st.columns([1.4, 1])
+            pattern = pattern_col.text_input(
                 "이메일·도메인·키워드",
                 placeholder="owner@abc.co.kr, abc.co.kr 또는 장애",
             )
-            importance = st.selectbox(
+            importance = importance_col.selectbox(
                 "표시할 중요도",
                 [1, 2, 3, 4],
                 index=1,
-                format_func=lambda value: (
-                    f"{PRIORITY_PRESENTATION[PriorityLevel(f'P{value}')][0]} P{value}"
-                ),
+                format_func=lambda value: ui.PRIORITY_TEXT[f"P{value}"],
             )
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
             add_rule = st.form_submit_button("중요 기준 추가", type="primary")
         if add_rule:
             try:
@@ -3499,23 +3533,28 @@ def _render_automation_center(storage, mails) -> None:
 
         priority_rules = storage.list_priority_rules()
         if not priority_rules:
-            st.info("등록된 VIP·고객사·중요 키워드가 없습니다. 기한과 회신 대기 기준만 사용합니다.")
+            ui.empty_state(
+                "등록된 VIP·고객사·중요 키워드가 없습니다.",
+                "기한과 회신 대기 기준만으로 우선순위를 계산합니다.",
+            )
         else:
-            st.dataframe(
-                pd.DataFrame(
-                    [
-                        {
-                            "사용": "켜짐" if rule["enabled"] else "꺼짐",
-                            "이름": rule["name"],
-                            "구분": PRIORITY_RULE_LABELS.get(rule["rule_type"], rule["rule_type"]),
-                            "일치 값": rule["pattern"],
-                            "중요도": f"P{rule['importance']}",
-                        }
-                        for rule in priority_rules
-                    ]
-                ),
-                width="stretch",
-                hide_index=True,
+            ui.table(
+                ["사용", "이름", "구분", "일치 값", "중요도"],
+                [
+                    (
+                        ui.badge(
+                            "켜짐" if rule["enabled"] else "꺼짐",
+                            "success" if rule["enabled"] else "neutral",
+                        ),
+                        ui.strong(rule["name"]),
+                        ui.muted(
+                            PRIORITY_RULE_LABELS.get(rule["rule_type"], rule["rule_type"])
+                        ),
+                        ui.muted(rule["pattern"]),
+                        ui.priority_label(f"P{rule['importance']}"),
+                    )
+                    for rule in priority_rules
+                ],
             )
             selected_rule = st.selectbox(
                 "수정할 중요 기준",
@@ -3759,24 +3798,40 @@ def _render_operations_monitoring(storage, settings, mails, selected_source: str
 
     sync_runs = storage.list_sync_runs(source="GMAIL", limit=10)
     latest = sync_runs[0] if sync_runs else None
-    latest_status = (
-        _SYNC_STATUS_PRESENTATION.get(latest["status"], (latest["status"], "neutral"))[0]
-        if latest
-        else "기록 없음"
-    )
-    ui.stat_cards(
-        [
-            ("최근 실행", latest_status, "마지막 자동 수집 결과", "review"),
-            ("신규 메일", f"{latest['pending_count'] if latest else 0}건", "", "warning"),
-            ("처리 성공", f"{latest['succeeded_count'] if latest else 0}건", "", "success"),
-            ("처리 실패", f"{latest['failed_count'] if latest else 0}건", "", "danger"),
-        ]
-    )
 
-    ui.section("Gmail 자동 실행 기록", aside=f"최근 {len(sync_runs)}회")
-    if not sync_runs:
-        ui.empty_state("아직 Gmail 자동 실행 기록이 없습니다.")
+    if latest is None:
+        ui.section("Gmail 자동 실행 기록", "Agent가 새 메일을 확인한 이력입니다.")
+        ui.empty_state(
+            "아직 자동 실행 기록이 없습니다.",
+            "Gmail을 연결하고 Agent를 실행하면 확인 주기마다 여기에 쌓입니다.",
+        )
     else:
+        ui.section("최근 자동 수집", "Agent가 마지막으로 새 메일을 확인한 결과입니다.")
+        label, tone = _SYNC_STATUS_PRESENTATION.get(
+            latest["status"], (latest["status"], "neutral")
+        )
+        started = datetime.fromisoformat(latest["started_at"]).astimezone()
+        failed = int(latest["failed_count"])
+        st.markdown(
+            ui.card(
+                '<div class="ui-row__top">'
+                f"{ui.badge(label, tone)}"
+                f'<span class="ui-title ui-title--md">'
+                f'{started.strftime("%m월 %d일 %H:%M")} 실행</span></div>'
+                '<div class="ui-row__meta">'
+                + _fact("신규 메일", f"{latest['pending_count']}건")
+                + _fact("처리 성공", f"{latest['succeeded_count']}건")
+                + _fact("처리 실패", f"{failed}건", "danger" if failed else "neutral")
+                + _fact("중복 제외", f"{latest['duplicate_count']}건")
+                + _fact("재시도", f"{latest['retry_count']}회")
+                + "</div>",
+                tone="danger" if failed else "accent",
+            ),
+            unsafe_allow_html=True,
+        )
+
+    if sync_runs:
+        ui.section("Gmail 자동 실행 기록", aside=f"최근 {len(sync_runs)}회")
         ui.table(
             ["시작 시각", "상태", "신규", "성공", "실패", "중복", "재시도"],
             [
@@ -3808,24 +3863,32 @@ def _render_operations_monitoring(storage, settings, mails, selected_source: str
         storage.list_mails(),
         storage.list_processing_results(),
     )
-    ui.stat_cards(
-        [
-            ("수신", f"{pilot_report['observed_cases']}/20", "", "review"),
-            ("통과", f"{pilot_report['passed_cases']}건", "", "success"),
-            ("실패", f"{pilot_report['failed_cases']}건", "", "danger"),
-            ("대기", f"{pilot_report['pending_cases']}건", "", "warning"),
-        ]
+    passed = pilot_report["passed_cases"]
+    st.markdown(
+        ui.card(
+            ui.progress(
+                "통과한 Case",
+                passed,
+                20,
+                tone="success" if pilot_report["status"] == "PASSED" else "accent",
+                parts=[
+                    ("수신", f"{pilot_report['observed_cases']}건"),
+                    ("통과", f"{passed}건"),
+                    ("실패", f"{pilot_report['failed_cases']}건"),
+                    ("대기", f"{pilot_report['pending_cases']}건"),
+                ],
+            )
+            + '<div class="ui-meter__caption" style="margin-top:10px">'
+            + (
+                "실메일 20건의 방향·Thread·Action·사용자 확인 결과가 모두 일치합니다."
+                if pilot_report["status"] == "PASSED"
+                else "별도 송신 Gmail 계정으로 GL-001~020을 송수신하면 결과가 자동 집계됩니다."
+            )
+            + "</div>"
+        ),
+        unsafe_allow_html=True,
     )
-    if pilot_report["status"] == "PASSED":
-        ui.note(
-            "실메일 20건의 방향·Thread·Action·사용자 확인 결과가 모두 일치합니다.",
-            tone="success",
-        )
-    else:
-        ui.note(
-            "별도 송신 Gmail 계정으로 GL-001~020을 송수신하면 결과가 자동 집계됩니다.",
-            tone="info",
-        )
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
     with st.expander("20건 상세 결과"):
         ui.table(
             ["Case", "상태", "기대 방향", "실제 방향", "기대 Action", "실제 Action"],

@@ -500,14 +500,7 @@ def test_operation_monitoring_is_separate_from_task_home(tmp_path, monkeypatch) 
     rendered = _rendered_text(app)
     assert "운영 상태" in rendered
     assert "Gmail 자동 실행 기록" in rendered
-    for label in (
-        "최근 실행",
-        "신규 메일",
-        "처리 성공",
-        "처리 실패",
-        "수신",
-        "통과",
-        "실패",
-        "대기",
-    ):
+    # The acceptance-test figures stay on the monitoring page. Sync run counts
+    # only appear once a run exists, so they are not asserted on a fresh DB.
+    for label in ("Gmail 실메일 수용시험", "수신", "통과", "실패", "대기"):
         assert label in rendered
