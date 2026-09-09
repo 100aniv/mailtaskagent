@@ -174,6 +174,21 @@ def _select_radio(
     return radio.set_value(value).run(timeout=timeout)
 
 
+def _rendered_text(app: AppTest) -> str:
+    """All text the screen actually paints, whatever widget produced it."""
+
+    return "\n".join(
+        [
+            *(item.value for item in app.markdown),
+            *(item.value for item in app.caption),
+            *(item.value for item in app.subheader),
+            *(item.value for item in app.info),
+            *(item.value for item in app.warning),
+            *(item.value for item in app.success),
+        ]
+    )
+
+
 def test_mode_entry_separates_operational_and_demo_navigation(
     tmp_path, monkeypatch
 ) -> None:
@@ -199,7 +214,9 @@ def test_mode_entry_separates_operational_and_demo_navigation(
     assert not app.tabs
     assert not any(button.label == "데모 DB 초기화" for button in app.button)
     assert any(button.label == "전체 업무 보기" for button in app.button)
-    assert any("즉시 처리" in item.value for item in app.markdown)
+    home_text = _rendered_text(app)
+    assert "업무 홈" in home_text
+    assert "즉시 처리" in home_text
 
 
 def test_product_dashboard_and_full_mock_mail_flow(tmp_path, monkeypatch) -> None:
@@ -222,12 +239,15 @@ def test_product_dashboard_and_full_mock_mail_flow(tmp_path, monkeypatch) -> Non
         "품질 검증",
         "데모 도구",
     ]
-    assert [(metric.label, metric.value) for metric in app.metric[:4]] == [
+    initial_text = _rendered_text(app)
+    for label, value in (
         ("처리된 Mail", "0/15건"),
         ("활성 업무", "0건"),
         ("기한·대기 주의", "0건"),
         ("Agent 확인 필요", "0건"),
-    ]
+    ):
+        assert label in initial_text
+        assert value in initial_text
 
     reset_button = next(button for button in app.button if button.label == "데모 DB 초기화")
     app = reset_button.click().run(timeout=60)
@@ -246,25 +266,22 @@ def test_product_dashboard_and_full_mock_mail_flow(tmp_path, monkeypatch) -> Non
     full_run_button.click().run(timeout=120)
 
     assert not app.exception
-    assert [(metric.label, metric.value) for metric in app.metric[:4]] == [
+    processed_text = _rendered_text(app)
+    for label, value in (
         ("처리된 Mail", "15/15건"),
         ("활성 업무", "3건"),
         ("기한·대기 주의", "2건"),
         ("Agent 확인 필요", "7건"),
-    ]
+    ):
+        assert label in processed_text
+        assert value in processed_text
     assert any(
         message.value == "미처리 합성 메일 15건 자동 정리를 실행했습니다. 성공 15건"
         for message in app.success
     )
     assert any("Agentic Workflow Trace" in item.value for item in app.markdown)
     assert any(item.label == "Trace를 확인할 Mail" for item in app.selectbox)
-    quality_text = "\n".join(
-        [
-            *(item.value for item in app.markdown),
-            *(item.value for item in app.caption),
-            *(item.value for item in app.subheader),
-        ]
-    )
+    quality_text = _rendered_text(app)
     assert "Task Context Agent · RAG/ReAct Live 검증" in quality_text
     assert any(metric.label == "동일 업무 판단 신뢰도" for metric in app.metric)
 
@@ -289,14 +306,19 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
     app = batch_button.click().run(timeout=120)
     app = _select_radio(app, "운영 화면", "시스템 로그")
     assert not app.exception
-    trace_text = "\n".join(
-        [*(item.value for item in app.markdown), *(item.value for item in app.caption)]
-    )
+    trace_text = _rendered_text(app)
     assert "이번 판단 한눈에 보기" in trace_text
-    assert "1 · LLM Mail 분석" in trace_text
-    assert "2 · Task Context 선택" in trace_text
-    assert "3 · Agent Action 제안" in trace_text
-    assert "4 · Python Guard / 실행" in trace_text
+    # The decision chain names every stage, including the recommended action,
+    # the guard verdict and the final action.
+    assert "1 · Mail 분석" in trace_text
+    assert "2 · Task Context" in trace_text
+    assert "3 · Agent 제안" in trace_text
+    assert "4 · Python Guard" in trace_text
+    assert "5 · 최종 실행" in trace_text
+    # An escalation must never be presented as a success.
+    assert "사용자 확인으로 이관" in trace_text
+    # Confidence is labelled as the model's own score, with its threshold.
+    assert "LLM 자기보고 신뢰도" in trace_text
     app = _select_radio(app, "주 메뉴", ui_module.TASKS_PAGE)
 
     assert not app.exception
@@ -307,19 +329,19 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
     detail_button = next(button for button in app.button if button.label == "상세 보기")
     app = detail_button.click().run(timeout=60)
     assert not app.exception
-    assert any("메일 진행 타임라인" in item.value for item in app.markdown)
-    assert any("AI 회신 준비" in item.value for item in app.markdown)
-    assert any(
-        button.label == "최신 수신 메일의 회신 방식 판단" for button in app.button
-    )
+    # The dialog leads with the Task itself and splits the long content into
+    # tabs instead of one continuous scroll.
+    detail_tabs = [tab.label for tab in app.tabs]
+    assert any(label.startswith("메일 흐름") for label in detail_tabs)
+    assert "AI 회신 준비" in detail_tabs
+    assert any(label.startswith("변경 기록") for label in detail_tabs)
+    assert "업무 편집" in detail_tabs
+    assert any(button.label == "회신 방식 판단" for button in app.button)
     assert not any("전송" in button.label for button in app.button)
-    assert any("업무 변경 기록" in item.value for item in app.markdown)
     assert any(button.label == "변경 내용 저장" for button in app.button)
 
     reply_button = next(
-        button
-        for button in app.button
-        if button.label == "최신 수신 메일의 회신 방식 판단"
+        button for button in app.button if button.label == "회신 방식 판단"
     )
     app = reply_button.click().run(timeout=60)
     assert not app.exception
@@ -331,8 +353,12 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
 
     assert not app.exception
     assert any(button.label == "완료 처리" for button in app.button)
-    assert any("우선순위 근거 ·" in caption.value for caption in app.caption)
-    assert any("즉시 처리" in item.value for item in app.markdown)
+    home_text = _rendered_text(app)
+    # Deadline pressure and importance evidence are shown as separate, named
+    # facts rather than one grey sentence.
+    assert "즉시 처리" in home_text
+    assert "기한" in home_text
+    assert "일 초과" in home_text
     complete_button = next(button for button in app.button if button.label == "완료 처리")
     app = complete_button.click().run(timeout=60)
     assert not app.exception
@@ -356,11 +382,9 @@ def test_gmail_readonly_source_empty_state(tmp_path, monkeypatch) -> None:
     app = _select_radio(app, "운영 화면", "메일 처리 내역")
 
     assert not app.exception
-    assert any("Gmail 연결됨" in message.value for message in app.markdown)
-    assert any(
-        "현재 입력 Source에서 가져온 메일이 없습니다." in message.value
-        for message in app.info
-    )
+    empty_text = _rendered_text(app)
+    assert "Gmail 연결됨" in empty_text
+    assert "현재 입력 Source에서 가져온 메일이 없습니다." in empty_text
 
 
 def test_connected_operation_mode_runs_gmail_agent_by_default(
@@ -387,9 +411,9 @@ def test_connected_operation_mode_runs_gmail_agent_by_default(
     app = _select_radio(app, "주 메뉴", ui_module.AUTOMATION_PAGE)
 
     assert [tab.label for tab in app.tabs] == [
-        "⭐ 우선순위 기준",
-        "🚫 광고·반복 메일 제외",
-        "⚙️ 실행 주기",
+        "우선순위 기준",
+        "광고·반복 메일 제외",
+        "실행 주기",
     ]
     assert any(
         "VIP 발신자·고객사 도메인·중요 키워드" in item.value
@@ -466,15 +490,16 @@ def test_operation_monitoring_is_separate_from_task_home(tmp_path, monkeypatch) 
     app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
     app = _start_mode(app, "실제 업무 모드로 시작")
 
-    assert any(item.value == "업무 홈" for item in app.subheader)
-    assert not any("Gmail 자동 실행 기록" in item.value for item in app.markdown)
+    home_text = _rendered_text(app)
+    assert "업무 홈" in home_text
+    assert "Gmail 자동 실행 기록" not in home_text
 
     app = _select_radio(app, "주 메뉴", ui_module.MONITORING_PAGE)
 
     assert not app.exception
-    assert any(item.value == "운영 상태" for item in app.subheader)
-    assert any("Gmail 자동 실행 기록" in item.value for item in app.markdown)
-    rendered = "\n".join(item.value for item in app.markdown)
+    rendered = _rendered_text(app)
+    assert "운영 상태" in rendered
+    assert "Gmail 자동 실행 기록" in rendered
     for label in (
         "최근 실행",
         "신규 메일",
