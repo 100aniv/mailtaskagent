@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import date, datetime
+from html import escape
 from pathlib import Path
 from time import perf_counter
 
@@ -446,82 +447,708 @@ class _GmailSyncSource:
         return list(self.loaded_mails)
 
 
+_BADGE_TONES = frozenset(
+    {"danger", "warning", "hold", "review", "success", "accent", "neutral"}
+)
+
+_PRIORITY_TONES = {
+    PriorityLevel.P1: "danger",
+    PriorityLevel.P2: "warning",
+    PriorityLevel.P3: "accent",
+    PriorityLevel.P4: "neutral",
+}
+
+_STATUS_TONES = {
+    "TODO": "accent",
+    "IN_PROGRESS": "success",
+    "WAITING_REPLY": "hold",
+    "COMPLETED": "neutral",
+    "CANCELLED": "neutral",
+}
+
+
+def _badge(label: str, tone: str = "neutral") -> str:
+    """Return an inline pill for a status, priority or verdict label.
+
+    The markup is emitted inside an existing ``st.markdown``/``st.caption``
+    call, never as a new element, and the label text is preserved verbatim so
+    substring assertions on the rendered value keep matching.
+    """
+
+    resolved = tone if tone in _BADGE_TONES else "neutral"
+    return f'<span class="mta-badge mta-badge--{resolved}">{escape(str(label))}</span>'
+
+
+def _priority_badge(decision) -> str:
+    return _badge(decision.label, _PRIORITY_TONES.get(decision.level, "neutral"))
+
+
+def _status_badge(status: str) -> str:
+    return _badge(_task_status_label(status), _STATUS_TONES.get(status, "neutral"))
+
+
+def _priority_dot(level: PriorityLevel) -> str:
+    """Return the priority marker as a CSS circle instead of an emoji glyph."""
+
+    return f'<span class="mta-dot mta-dot--{str(level).lower()}"></span>'
+
+
+def _muted(text: str) -> str:
+    return f'<span class="mta-muted">{escape(str(text))}</span>'
+
+
+def _strong(text: str) -> str:
+    return f'<span class="mta-strong">{escape(str(text))}</span>'
+
+
+def _num(text: str) -> str:
+    return f'<span class="mta-num">{escape(str(text))}</span>'
+
+
+def _meta_line(*parts: str) -> str:
+    """Join meta segments with a de-emphasised separator."""
+
+    return '<span class="mta-sep">·</span>'.join(part for part in parts if part)
+
+
 def _apply_styles() -> None:
     st.markdown(
         """
         <style>
-        html, body, [class*="css"] {font-family: "Noto Sans KR", "Malgun Gothic", sans-serif;}
-        .stApp {background: #f8fafc; color: #172033;}
-        .block-container {padding-top: 4.25rem; padding-bottom: 3rem; max-width: 1320px;}
-        [data-testid="stSidebar"] {background: #17223b; border-right: 0;}
-        [data-testid="stSidebar"] h1,
-        [data-testid="stSidebar"] h2,
-        [data-testid="stSidebar"] h3,
-        [data-testid="stSidebar"] p,
-        [data-testid="stSidebar"] label {color: #e7eefc;}
-        [data-testid="stSidebar"] button {
-            border-color: #435270; color: #e7eefc; background: #24314e;
+        /* ==================================================================
+           0 · DESIGN TOKENS
+           Light professional theme. White and cool grey surfaces, navy text
+           and navigation, one blue accent. Red, orange, yellow and violet are
+           reserved for priority and risk states only.
+           ================================================================== */
+        :root {
+            --mta-bg: #f5f7fb;
+            --mta-surface: #ffffff;
+            --mta-surface-sunken: #f1f5f9;
+
+            --mta-line: #e4e9f2;
+            --mta-line-strong: #cdd6e5;
+            --mta-ring: rgba(66, 99, 235, 0.26);
+
+            --mta-text: #17213a;
+            --mta-text-2: #4b5a72;
+            --mta-text-3: #7d8ba3;
+            --mta-text-inv: #e7eefc;
+
+            --mta-accent: #4263eb;
+            --mta-accent-hover: #3451c7;
+            --mta-accent-soft: #eef2ff;
+            --mta-accent-text: #2f47b8;
+            --mta-accent-line: #dbe2fe;
+
+            --mta-nav: #17223b;
+            --mta-nav-raised: #24314e;
+            --mta-nav-active: #2c3b5d;
+            --mta-nav-line: #334563;
+
+            --mta-danger: #dc2626;
+            --mta-danger-soft: #fef2f2;
+            --mta-danger-text: #b42318;
+            --mta-danger-line: #fbd5d5;
+            --mta-warning: #f97316;
+            --mta-warning-soft: #fff5ed;
+            --mta-warning-text: #b45309;
+            --mta-warning-line: #fddcbe;
+            --mta-hold: #eab308;
+            --mta-hold-soft: #fdfae8;
+            --mta-hold-text: #8a6d12;
+            --mta-hold-line: #f5e7a8;
+            --mta-review: #7c3aed;
+            --mta-review-soft: #f5f2fe;
+            --mta-review-text: #6127c9;
+            --mta-review-line: #e2d8fb;
+            --mta-success: #16a34a;
+            --mta-success-soft: #f0fdf4;
+            --mta-success-text: #15803d;
+            --mta-success-line: #c9ecd4;
+            --mta-neutral-soft: #f1f5f9;
+            --mta-neutral-text: #475569;
+            --mta-neutral-line: #e2e8f0;
+
+            --mta-fs-2xs: 0.72rem;
+            --mta-fs-xs: 0.785rem;
+            --mta-fs-sm: 0.845rem;
+            --mta-fs-md: 0.925rem;
+            --mta-fs-lg: 1rem;
+            --mta-fs-xl: 1.15rem;
+            --mta-fs-2xl: 1.35rem;
+            --mta-fs-3xl: 1.6rem;
+
+            --mta-lh-body: 1.62;
+            --mta-lh-meta: 1.5;
+            --mta-lh-tight: 1.32;
+
+            --mta-1: 0.25rem;
+            --mta-2: 0.375rem;
+            --mta-3: 0.5rem;
+            --mta-4: 0.75rem;
+            --mta-5: 1rem;
+            --mta-6: 1.25rem;
+            --mta-7: 1.75rem;
+            --mta-8: 2.5rem;
+
+            --mta-r-sm: 6px;
+            --mta-r-md: 8px;
+            --mta-r-lg: 10px;
+            --mta-r-xl: 14px;
+            --mta-r-pill: 999px;
+
+            --mta-sh-1: 0 1px 2px rgba(16, 24, 40, 0.04);
+            --mta-sh-2: 0 1px 3px rgba(16, 24, 40, 0.07);
+
+            --mta-content-max: 1320px;
+            --mta-gap: 1rem;
         }
-        [data-testid="stSidebar"] hr {border-color: #334563;}
-        [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] {gap: 5px;}
+
+        /* ==================================================================
+           1 · BASE
+           ================================================================== */
+        html, body, [class*="css"] {
+            font-family: "Pretendard", "Noto Sans KR", "Malgun Gothic",
+                         -apple-system, "Segoe UI", sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        .stApp {background: var(--mta-bg); color: var(--mta-text);}
+
+        /* Korean wraps by word; long latin tokens such as mail ids, mail
+           addresses and URLs still break instead of overflowing a column. */
+        [data-testid="stMarkdownContainer"],
+        [data-testid="stCaptionContainer"] {
+            word-break: keep-all;
+            overflow-wrap: anywhere;
+            line-height: var(--mta-lh-body);
+        }
+
+        /* ==================================================================
+           2 · PAGE FRAME
+           ================================================================== */
+        [data-testid="stMainBlockContainer"], .block-container {
+            max-width: var(--mta-content-max);
+            padding-top: 3.25rem;
+            padding-bottom: var(--mta-8);
+            padding-inline: clamp(1rem, 2.2vw, 2.875rem);
+        }
+        [data-testid="stMain"] {overflow-x: clip;}
+
+        /* Streamlit gives every column a minimum width of 8rem, so a
+           0.4 weight marker column is forced to 128px and squeezes the
+           content column. Release it inside cards and rows only; page level
+           columns keep the protective minimum for tables and charts. */
+        [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"]
+            [data-testid="stColumn"] {min-width: 0;}
+
+        /* ==================================================================
+           3 · HEADINGS
+           st.subheader renders inside stHeading; markdown h3 and h4 render
+           inside stMarkdown. They are styled separately so the three levels
+           stay visually distinct.
+           ================================================================== */
+        [data-testid="stHeading"] h3 {
+            font-size: var(--mta-fs-2xl);
+            font-weight: 700;
+            letter-spacing: -0.012em;
+            padding: 0;
+            margin: 0 0 var(--mta-3) 0;
+            color: var(--mta-text);
+        }
+        [data-testid="stMainBlockContainer"] .stMarkdown
+            [data-testid="stMarkdownContainer"] > h3 {
+            font-size: var(--mta-fs-xl);
+            font-weight: 600;
+            line-height: 1.35;
+            letter-spacing: -0.008em;
+            color: var(--mta-text);
+            padding: 0;
+            margin: var(--mta-7) 0 var(--mta-2) 0;
+        }
+        [data-testid="stMainBlockContainer"] .stMarkdown
+            [data-testid="stMarkdownContainer"] > h4 {
+            font-size: var(--mta-fs-lg);
+            font-weight: 600;
+            line-height: 1.35;
+            color: var(--mta-text);
+            padding: 0;
+            margin: var(--mta-6) 0 var(--mta-2) 0;
+        }
+        [data-testid="stElementContainer"]:first-child .stMarkdown
+            [data-testid="stMarkdownContainer"] > :is(h3, h4) {margin-top: 0;}
+        [data-testid="stMainBlockContainer"] hr {
+            border: 0;
+            border-top: 1px solid var(--mta-line);
+            margin: var(--mta-7) 0 var(--mta-6) 0;
+        }
+
+        /* ==================================================================
+           4 · CAPTIONS
+           The stock caption grey is too faint for Korean running text.
+           ================================================================== */
+        [data-testid="stCaptionContainer"] {
+            color: var(--mta-text-2);
+            font-size: var(--mta-fs-sm);
+            line-height: var(--mta-lh-meta);
+        }
+        [data-testid="stCaptionContainer"] p:last-child {margin-bottom: 0;}
+
+        /* ==================================================================
+           5 · CARDS
+           st.container(border=True) no longer emits a border wrapper testid.
+           In this app the only markup that produces a vertical block directly
+           inside another vertical block is st.container(), so that shape is
+           the card hook.
+           ================================================================== */
+        [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] {
+            background: var(--mta-surface);
+            border-color: var(--mta-line);
+            border-radius: var(--mta-r-lg);
+            padding: var(--mta-4) var(--mta-5);
+            gap: var(--mta-3);
+            box-shadow: var(--mta-sh-1);
+        }
+        [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"]
+            + [data-testid="stVerticalBlock"] {
+            margin-top: calc(var(--mta-3) - var(--mta-gap));
+        }
+
+        /* ==================================================================
+           6 · SCANNABLE LISTS
+           Rows inside a container keyed mta_list drop the card frame and
+           become divided rows, so a long list reads as one list rather than a
+           stack of boxes.
+           ================================================================== */
+        [class*="st-key-mta_list"] {
+            background: var(--mta-surface);
+            border: 1px solid var(--mta-line);
+            border-radius: var(--mta-r-lg);
+            padding: var(--mta-1) var(--mta-4);
+            box-shadow: var(--mta-sh-1);
+            gap: 0;
+        }
+        [class*="st-key-mta_list"] > [data-testid="stVerticalBlock"] {
+            background: transparent;
+            border: 0;
+            border-bottom: 1px solid var(--mta-line);
+            border-radius: 0;
+            box-shadow: none;
+            padding: var(--mta-4) var(--mta-2);
+            margin-top: 0;
+            gap: var(--mta-1);
+        }
+        [class*="st-key-mta_list"] > [data-testid="stVerticalBlock"]:last-child {
+            border-bottom: 0;
+        }
+
+        /* Row title: a paragraph whose whole content is a single bold run. */
+        [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"]
+            [data-testid="stMarkdownContainer"] > p:only-child > strong:only-child {
+            font-weight: 600;
+            font-size: var(--mta-fs-lg);
+            color: var(--mta-text);
+            letter-spacing: -0.006em;
+        }
+        .mta-row-title {
+            display: block;
+            font-size: var(--mta-fs-lg);
+            font-weight: 600;
+            line-height: var(--mta-lh-tight);
+            color: var(--mta-text);
+            letter-spacing: -0.006em;
+        }
+
+        /* ==================================================================
+           7 · BUTTONS
+           1.62 exposes the button kind through data-testid, not through a DOM
+           attribute. The form submit variants share the same prefixes.
+           ================================================================== */
+        [data-testid^="stBaseButton-primary"] {
+            background: var(--mta-accent);
+            border-color: var(--mta-accent);
+            color: #ffffff;
+            font-weight: 600;
+            border-radius: var(--mta-r-md);
+            box-shadow: var(--mta-sh-1);
+        }
+        [data-testid^="stBaseButton-primary"]:hover {
+            background: var(--mta-accent-hover);
+            border-color: var(--mta-accent-hover);
+            color: #ffffff;
+        }
+        [data-testid^="stBaseButton-primary"]:focus-visible,
+        [data-testid^="stBaseButton-secondary"]:focus-visible {
+            box-shadow: 0 0 0 3px var(--mta-ring);
+        }
+        [data-testid^="stBaseButton-secondary"] {
+            background: var(--mta-surface);
+            border-color: var(--mta-line-strong);
+            color: var(--mta-text-2);
+            font-weight: 500;
+            border-radius: var(--mta-r-md);
+            box-shadow: none;
+        }
+        [data-testid^="stBaseButton-secondary"]:hover {
+            background: var(--mta-accent-soft);
+            border-color: var(--mta-accent);
+            color: var(--mta-accent-text);
+        }
+        [data-testid^="stBaseButton-tertiary"] {
+            color: var(--mta-accent-text);
+            font-weight: 500;
+        }
+        [data-testid^="stBaseButton-tertiary"]:hover {
+            color: var(--mta-accent-hover);
+            background: var(--mta-accent-soft);
+        }
+        /* Row actions repeat on every line, so keep them compact. */
+        [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"]
+            [data-testid^="stBaseButton-"] {
+            min-height: 2rem;
+            padding-block: 0.15rem;
+            font-size: var(--mta-fs-sm);
+        }
+
+        /* ==================================================================
+           8 · WIDGETS
+           ================================================================== */
+        [data-testid="stMetric"] {
+            background: var(--mta-surface);
+            border: 1px solid var(--mta-line);
+            border-radius: var(--mta-r-lg);
+            padding: var(--mta-4) var(--mta-5);
+            box-shadow: var(--mta-sh-1);
+        }
+        [data-testid="stMetricLabel"] {
+            color: var(--mta-text-2);
+            font-size: var(--mta-fs-sm);
+            font-weight: 500;
+        }
+        [data-testid="stMetricValue"] {
+            color: var(--mta-text);
+            font-size: var(--mta-fs-3xl);
+            font-weight: 700;
+            line-height: 1.15;
+            font-variant-numeric: tabular-nums;
+        }
+
+        [data-testid="stAlertContainer"] {
+            border-radius: var(--mta-r-md);
+            border-left: 3px solid transparent;
+            font-size: var(--mta-fs-md);
+            line-height: var(--mta-lh-body);
+        }
+        [data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]) {
+            background: var(--mta-accent-soft);
+            border-left-color: var(--mta-accent);
+            color: var(--mta-accent-text);
+        }
+        [data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]) {
+            background: var(--mta-warning-soft);
+            border-left-color: var(--mta-warning);
+            color: var(--mta-warning-text);
+        }
+        [data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]) {
+            background: var(--mta-success-soft);
+            border-left-color: var(--mta-success);
+            color: var(--mta-success-text);
+        }
+        [data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]) {
+            background: var(--mta-danger-soft);
+            border-left-color: var(--mta-danger);
+            color: var(--mta-danger-text);
+        }
+
+        [data-testid="stTab"] {
+            font-weight: 500;
+            font-size: var(--mta-fs-md);
+            color: var(--mta-text-2);
+            padding-inline: var(--mta-4);
+        }
+        [data-testid="stTab"][aria-selected="true"],
+        [data-testid="stTab"][data-selected="true"] {
+            color: var(--mta-accent-text);
+            font-weight: 600;
+        }
+
+        [data-testid="stExpander"] {
+            border-color: var(--mta-line);
+            border-radius: var(--mta-r-lg);
+            background: var(--mta-surface);
+        }
+        [data-testid="stExpanderDetails"] {
+            border-top-color: var(--mta-line);
+            padding: var(--mta-5);
+        }
+        [data-testid="stDataFrame"] {
+            border: 1px solid var(--mta-line);
+            border-radius: var(--mta-r-md);
+            overflow: hidden;
+        }
+        div[data-testid="stStatusWidget"] {border-radius: var(--mta-r-xl);}
+
+        /* ==================================================================
+           9 · TASK DETAIL DIALOG
+           The dialog is rendered outside .stApp, so these rules are not
+           prefixed. Its regions are separated by rules on the headings that
+           the markup already contains, not by extra boxes.
+           ================================================================== */
+        [data-testid="stDialog"] .stMarkdown
+            [data-testid="stMarkdownContainer"] > h4 {
+            font-size: var(--mta-fs-lg);
+            font-weight: 600;
+            color: var(--mta-text);
+            padding: var(--mta-5) 0 0 0;
+            margin: var(--mta-6) 0 var(--mta-2) 0;
+            border-top: 1px solid var(--mta-line);
+        }
+        [data-testid="stDialog"] .stMarkdown
+            [data-testid="stMarkdownContainer"] > h5 {
+            font-size: var(--mta-fs-md);
+            font-weight: 600;
+            color: var(--mta-text);
+            margin: var(--mta-5) 0 var(--mta-2) 0;
+        }
+        [data-testid="stDialog"] [data-testid="stForm"] {
+            border: 0;
+            border-top: 1px solid var(--mta-line);
+            border-radius: 0;
+            padding: var(--mta-6) 0 0 0;
+            margin-top: var(--mta-6);
+        }
+        [data-testid="stDialog"] [data-testid="stVerticalBlock"]
+            > [data-testid="stVerticalBlock"] {
+            box-shadow: none;
+        }
+
+        /* The irreversible Gmail send step keeps its exact order and wording
+           and is framed so it cannot be mistaken for a draft action. */
+        [class*="st-key-mta_send_approval"] {
+            border: 1px solid var(--mta-warning-line);
+            background: var(--mta-warning-soft);
+            border-radius: var(--mta-r-lg);
+            padding: var(--mta-5);
+        }
+        [class*="st-key-mta_send_approval"] [data-testid="stForm"] {
+            border: 0;
+            border-top: 1px solid var(--mta-warning-line);
+            border-radius: 0;
+            padding: var(--mta-4) 0 0 0;
+            margin-top: var(--mta-4);
+        }
+
+        /* ==================================================================
+           10 · AGENT REASONING
+           Agent judgement is tinted so it never reads as an ordinary log line.
+           ================================================================== */
+        [class*="st-key-mta_agent"] {
+            border-left: 3px solid var(--mta-accent);
+        }
+        .mta-agent-value {
+            display: block;
+            font-size: var(--mta-fs-md);
+            font-weight: 600;
+            color: var(--mta-text);
+            line-height: var(--mta-lh-tight);
+        }
+        .mta-eyebrow {
+            display: block;
+            font-size: var(--mta-fs-2xs);
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            color: var(--mta-text-3);
+        }
+
+        /* ==================================================================
+           11 · SIDEBAR
+           ================================================================== */
+        [data-testid="stSidebar"] {background: var(--mta-nav); border-right: 0;}
+        [data-testid="stSidebar"] :is(h1, h2, h3, p, label) {color: var(--mta-text-inv);}
+        [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {color: #9fb0d0;}
+        [data-testid="stSidebar"] hr {border-color: var(--mta-nav-line);}
+        [data-testid="stSidebar"] [data-testid^="stBaseButton-"] {
+            border-color: var(--mta-nav-line);
+            color: var(--mta-text-inv);
+            background: var(--mta-nav-raised);
+        }
+        [data-testid="stSidebar"] [data-testid^="stBaseButton-"]:hover {
+            background: var(--mta-nav-active);
+            border-color: var(--mta-accent);
+            color: #ffffff;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadioGroup"],
+        [data-testid="stSidebar"] div[role="radiogroup"] {gap: var(--mta-1);}
         [data-testid="stSidebar"] [data-testid="stRadioOption"] {
-            min-height: 42px; padding: 8px 11px; border-radius: 10px;
+            min-height: 42px;
+            padding: 8px 11px;
+            border-radius: var(--mta-r-lg);
         }
-        [data-testid="stSidebar"] [data-testid="stRadioOption"][data-selected="true"] {
-            background: #2c3b5d;
+        [data-testid="stSidebar"] [data-testid="stRadioOption"]:hover {
+            background: #212e4c;
         }
+        [data-testid="stSidebar"] [data-testid="stRadioOption"][data-selected="true"],
+        [data-testid="stSidebar"] [data-testid="stRadioOption"]:has(input:checked) {
+            background: var(--mta-nav-active);
+            box-shadow: inset 2px 0 0 var(--mta-accent);
+        }
+        /* Hides the radio dot so the menu reads as navigation. This walks the
+           radio's internal structure; if a Streamlit upgrade changes it the
+           dot simply reappears and nothing else breaks. */
         [data-testid="stSidebar"] [data-testid="stRadioOption"] > div > div > div:first-child {
             display: none;
         }
-        [data-testid="stMetric"] {
-            background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
-            padding: 15px 17px; box-shadow: none;
+
+        /* ==================================================================
+           12 · INLINE PRIMITIVES
+           ================================================================== */
+        .mta-badge {
+            display: inline-flex;
+            align-items: center;
+            height: 1.25rem;
+            padding: 0 var(--mta-3);
+            border-radius: var(--mta-r-pill);
+            font-size: var(--mta-fs-2xs);
+            font-weight: 600;
+            line-height: 1;
+            white-space: nowrap;
+            vertical-align: 0.06em;
+            background: var(--mta-neutral-soft);
+            color: var(--mta-neutral-text);
+            border: 1px solid var(--mta-neutral-line);
         }
-        [data-testid="stMetricLabel"] {color: #475569;}
-        button[data-baseweb="tab"] {font-weight: 600; padding-left: 14px; padding-right: 14px;}
-        button[data-baseweb="tab"][aria-selected="true"] {color: #3157d5;}
-        button[kind="primary"] {background: #4263eb !important; border-color: #4263eb !important;}
-        button[kind="primary"]:hover {background: #3451c7 !important; border-color: #3451c7 !important;}
-        div[data-testid="stStatusWidget"] {border-radius: 12px;}
-        [data-testid="stVerticalBlockBorderWrapper"] {border-color: #e2e8f0; border-radius: 12px;}
+        .mta-badge--danger {
+            background: var(--mta-danger-soft);
+            color: var(--mta-danger-text);
+            border-color: var(--mta-danger-line);
+        }
+        .mta-badge--warning {
+            background: var(--mta-warning-soft);
+            color: var(--mta-warning-text);
+            border-color: var(--mta-warning-line);
+        }
+        .mta-badge--hold {
+            background: var(--mta-hold-soft);
+            color: var(--mta-hold-text);
+            border-color: var(--mta-hold-line);
+        }
+        .mta-badge--review {
+            background: var(--mta-review-soft);
+            color: var(--mta-review-text);
+            border-color: var(--mta-review-line);
+        }
+        .mta-badge--success {
+            background: var(--mta-success-soft);
+            color: var(--mta-success-text);
+            border-color: var(--mta-success-line);
+        }
+        .mta-badge--accent {
+            background: var(--mta-accent-soft);
+            color: var(--mta-accent-text);
+            border-color: var(--mta-accent-line);
+        }
+
+        .mta-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-top: 0.45rem;
+        }
+        .mta-dot--p1 {background: var(--mta-danger);}
+        .mta-dot--p2 {background: var(--mta-warning);}
+        .mta-dot--p3 {background: var(--mta-accent);}
+        .mta-dot--p4 {background: #cbd5e1;}
+
+        .mta-sep {color: var(--mta-line-strong); padding: 0 0.35em;}
+        .mta-muted {color: var(--mta-text-3);}
+        .mta-strong {color: var(--mta-text); font-weight: 600;}
+        .mta-num {font-variant-numeric: tabular-nums;}
+
+        /* ==================================================================
+           13 · COMPOSED BLOCKS
+           ================================================================== */
         .mail-card {
-            padding: 16px 18px; border-radius: 14px; background: #ffffff;
-            border: 1px solid #dde5f1; margin-bottom: 12px;
+            padding: var(--mta-5);
+            border-radius: var(--mta-r-lg);
+            background: var(--mta-surface);
+            border: 1px solid var(--mta-line);
+            margin-bottom: var(--mta-4);
+            font-size: var(--mta-fs-md);
+            line-height: var(--mta-lh-body);
         }
-        .mail-card small {color: #64748b;}
-        .priority-title {font-size: 1rem; font-weight: 700; color: #17213a;}
-        .priority-meta {font-size: 0.86rem; color: #64748b; margin-top: 0.2rem;}
+        .mail-card small {color: var(--mta-text-3); font-size: var(--mta-fs-xs);}
+        .mail-card strong {font-size: var(--mta-fs-lg); color: var(--mta-text);}
+
         .operation-status-bar {
-            display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-            background: #ffffff; border: 1px solid #dbe3ef; border-radius: 10px;
-            padding: 10px 14px; margin: 0.35rem 0 1rem 0; color: #475569;
-            font-size: 0.86rem;
+            display: flex;
+            align-items: center;
+            gap: var(--mta-6);
+            flex-wrap: wrap;
+            background: var(--mta-surface);
+            border: 1px solid var(--mta-line);
+            border-left: 3px solid var(--mta-success);
+            border-radius: var(--mta-r-lg);
+            padding: var(--mta-4) var(--mta-5);
+            margin: var(--mta-2) 0 var(--mta-6) 0;
+            color: var(--mta-text-2);
+            font-size: var(--mta-fs-sm);
         }
-        .operation-status-bar strong {color: #172033; font-weight: 700;}
+        .operation-status-bar strong {color: var(--mta-text); font-weight: 600;}
         .operation-status-bar .status-dot {
-            width: 9px; height: 9px; border-radius: 50%; display: inline-block;
-            margin-right: 7px; background: #16a34a;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: var(--mta-3);
+            background: var(--mta-success);
         }
-        .operation-status-bar.warning .status-dot {background: #f59e0b;}
-        .operation-status-bar.danger .status-dot {background: #dc2626;}
-        .operation-status-bar .status-separator {color: #cbd5e1;}
+        .operation-status-bar.warning {border-left-color: var(--mta-warning);}
+        .operation-status-bar.warning .status-dot {background: var(--mta-warning);}
+        .operation-status-bar.danger {border-left-color: var(--mta-danger);}
+        .operation-status-bar.danger .status-dot {background: var(--mta-danger);}
+        .operation-status-bar .status-separator {color: var(--mta-line-strong);}
+
         .work-summary-grid {
-            display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr));
-            gap: 10px; margin: 0.2rem 0 1.25rem 0;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: var(--mta-4);
+            margin: var(--mta-1) 0 var(--mta-6) 0;
         }
         .work-summary-card {
-            background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
-            padding: 14px 16px;
+            background: var(--mta-surface);
+            border: 1px solid var(--mta-line);
+            border-radius: var(--mta-r-lg);
+            padding: var(--mta-4) var(--mta-5);
+            box-shadow: var(--mta-sh-1);
         }
-        .work-summary-label {font-size: 0.84rem; color: #64748b; margin-bottom: 7px;}
-        .work-summary-value {font-size: 1.55rem; line-height: 1; font-weight: 750; color: #172033;}
-        .work-summary-card.red {border-top: 3px solid #dc2626;}
-        .work-summary-card.orange {border-top: 3px solid #f97316;}
-        .work-summary-card.yellow {border-top: 3px solid #eab308;}
-        .work-summary-card.purple {border-top: 3px solid #7c3aed;}
+        .work-summary-label {
+            font-size: var(--mta-fs-sm);
+            color: var(--mta-text-2);
+            margin-bottom: var(--mta-3);
+        }
+        .work-summary-value {
+            font-size: var(--mta-fs-3xl);
+            line-height: 1.1;
+            font-weight: 700;
+            color: var(--mta-text);
+            font-variant-numeric: tabular-nums;
+        }
+        .work-summary-card.red {border-top: 3px solid var(--mta-danger);}
+        .work-summary-card.orange {border-top: 3px solid var(--mta-warning);}
+        .work-summary-card.yellow {border-top: 3px solid var(--mta-hold);}
+        .work-summary-card.purple {border-top: 3px solid var(--mta-review);}
+
+        /* ==================================================================
+           14 · RESPONSIVE
+           ================================================================== */
+        @media (max-width: 1200px) {
+            .work-summary-grid {gap: var(--mta-3);}
+            .work-summary-value {font-size: 1.35rem;}
+        }
         @media (max-width: 900px) {
-            .work-summary-grid {grid-template-columns: repeat(2, minmax(120px, 1fr));}
-            .operation-status-bar {gap: 10px;}
+            .work-summary-grid {grid-template-columns: repeat(2, minmax(0, 1fr));}
+            .operation-status-bar {gap: var(--mta-4);}
             .operation-status-bar .status-separator {display: none;}
         }
         </style>
