@@ -368,6 +368,71 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
     assert any("업무를 완료했습니다." in message.value for message in app.success)
 
 
+def test_task_detail_mail_flow_opens_one_mail_at_a_time(tmp_path, monkeypatch) -> None:
+    """Clicking a mail flow row opens that mail, and only that mail."""
+
+    database_path = tmp_path / "mail-flow.db"
+    settings = Settings(
+        api_url="https://example.test",
+        api_key="",
+        model="mock",
+        api_version="test",
+        timeout_seconds=1,
+        use_mock=True,
+        database_path=database_path,
+        confidence_threshold=0.75,
+    )
+    storage = SQLiteStorage(database_path)
+    workflow = MailTaskWorkflow(settings, storage, MockMailAnalyzer())
+    mails = {
+        mail.mail_id: mail
+        for mail in load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
+    }
+    for mail_id in ("MAIL-001", "MAIL-003", "MAIL-004"):
+        workflow.process(mails[mail_id])
+    task_id = storage.list_tasks()[0]["task_id"]
+
+    monkeypatch.setenv("DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+    monkeypatch.setenv(
+        "GMAIL_CREDENTIALS_PATH", str(tmp_path / "missing-gmail-credentials.json")
+    )
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(tmp_path / "missing-gmail-token.json"))
+
+    app = AppTest.from_file(PROJECT_ROOT / "app.py").run(timeout=60)
+    app = _start_mode(app, "실제 업무 모드로 시작")
+    app = _select_radio(app, "주 메뉴", ui_module.TASKS_PAGE)
+    detail_button = next(button for button in app.button if button.label == "상세 보기")
+    app = detail_button.click().run(timeout=60)
+    assert not app.exception
+
+    escape = ui_module.ui.esc
+    first, last = mails["MAIL-001"], mails["MAIL-004"]
+
+    # The newest mail is open on arrival, so the tab is never empty.
+    opened = _rendered_text(app)
+    assert escape(last.body) in opened
+    assert escape(first.body) not in opened
+
+    # Every mail in the flow has its own row control; there is no second list.
+    row_keys = {
+        f"open_mail_{task_id}_{mail_id}"
+        for mail_id in ("MAIL-001", "MAIL-003", "MAIL-004")
+    }
+    assert row_keys <= {button.key for button in app.button}
+
+    # Clicking a row opens that mail, with its participants and body.
+    app = app.button(key=f"open_mail_{task_id}_MAIL-001").click().run(timeout=60)
+    assert not app.exception
+    switched = _rendered_text(app)
+    assert escape(first.body) in switched
+    assert escape(first.sender) in switched
+    for recipient in first.recipients:
+        assert escape(recipient) in switched
+    # Only one mail body is expanded at a time.
+    assert escape(last.body) not in switched
+
+
 def test_gmail_readonly_source_empty_state(tmp_path, monkeypatch) -> None:
     credentials_path = tmp_path / "gmail_credentials.json"
     token_path = tmp_path / "gmail_token.json"

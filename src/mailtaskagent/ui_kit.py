@@ -847,6 +847,40 @@ div[data-testid="stStatusWidget"]{border-radius:var(--ui-r-lg);}
 .ui-tl__time{font-size:var(--ui-fs-2xs); color:var(--ui-ink-3); font-variant-numeric:tabular-nums;}
 .ui-tl__meta{margin-top:6px; font-size:var(--ui-fs-xs); color:var(--ui-ink-3);}
 
+/* --- clickable mail flow ------------------------------------------------
+   Each row carries its own invisible full-size button, so the whole row is
+   the click target rather than a separate link the reader has to find. */
+[class*="st-key-ui-mailflow"]{position:relative; gap:0;}
+[class*="st-key-ui-mailflow"]::before{
+  content:""; position:absolute; left:5px; top:22px; bottom:22px;
+  width:2px; background:var(--ui-line-2); border-radius:1px;
+}
+[class*="st-key-ui-mailrow"]{position:relative; border-radius:var(--ui-r-md);}
+[class*="st-key-ui-mailrow"]:hover{background:var(--ui-surface-2);}
+[class*="st-key-ui-mailrow"]:has(:focus-visible){box-shadow:0 0 0 2px var(--ui-ring);}
+[class*="st-key-ui-mailrow"]:has(.is-selected){background:var(--ui-accent-soft);}
+/* the button sits on top of the row and is invisible */
+[class*="st-key-ui-mailrow"] [data-testid="stElementContainer"]:last-child{
+  position:absolute; inset:0; margin:0; z-index:2;
+}
+[class*="st-key-ui-mailrow"] [data-testid="stButton"],
+[class*="st-key-ui-mailrow"] [data-testid^="stBaseButton-"]{
+  width:100%; height:100%; min-height:0; padding:0; border:0;
+  background:transparent; opacity:0; cursor:pointer;
+}
+
+.ui-mailrow{position:relative; padding:12px 14px 12px 26px;}
+.ui-mailrow__node{
+  position:absolute; left:0; top:16px; width:12px; height:12px; border-radius:50%;
+  background:var(--ui-surface); border:3px solid var(--ui-line-2);
+}
+.ui-mailrow__node--in{border-color:var(--ui-accent);}
+.ui-mailrow__node--out{border-color:var(--ui-review);}
+.ui-mailrow__head{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+.ui-mailrow__subject{font-size:var(--ui-fs-md); font-weight:650; color:var(--ui-ink);}
+.ui-mailrow.is-selected .ui-mailrow__subject{color:var(--ui-accent-ink);}
+.ui-mailrow__meta{margin-top:6px; font-size:var(--ui-fs-xs); color:var(--ui-ink-3);}
+
 /* ==========================================================================
    12 · TRACE
    ========================================================================== */

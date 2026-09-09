@@ -2691,47 +2691,90 @@ def _render_task_summary(task: dict, decision) -> None:
     )
 
 
-def _render_task_timeline(rows: list[dict]) -> None:
-    items = []
-    for row in rows:
-        inbound = row["direction"] == "INBOUND"
-        occurred_at = datetime.fromisoformat(row["occurred_at"]).astimezone()
-        counterpart_label = "보낸 사람" if inbound else "받는 사람"
-        status_html = _status_badge(row["status"]) if row["status"] else ""
-        items.append(
-            f'<li class="ui-tl__item ui-tl__item--{"in" if inbound else "out"}">'
-            '<div class="ui-tl__head">'
-            f'{ui.badge("받은 메일" if inbound else "보낸 메일", "accent" if inbound else "review")}'
-            f'<span class="ui-tl__subject">{ui.esc(row["subject"])}</span>'
-            '<span class="ui-tl__out">'
-            f'{_action_badge(row["action"]) if row["action"] else ""}'
-            f"{status_html}"
-            f'<span class="ui-tl__time">{occurred_at.strftime("%Y-%m-%d %H:%M")}</span>'
-            "</span></div>"
-            f'<div class="ui-tl__meta">{ui.esc(counterpart_label)} · '
-            f'{ui.esc(row["counterpart"])}</div></li>'
-        )
-    st.markdown(f'<ul class="ui-tl">{"".join(items)}</ul>', unsafe_allow_html=True)
-    for row in rows:
-        recipients = ", ".join(row.get("recipients") or []) or "수신자 정보 없음"
-        with st.expander(
-            f"메일 내용 보기 · {row['direction_label']} · {row['subject']}",
-            expanded=False,
-        ):
-            sender_col, recipient_col = st.columns(2)
-            sender_col.markdown(
-                f"**보낸 사람**\n\n{ui.esc(row.get('sender') or '발신자 정보 없음')}",
-                unsafe_allow_html=True,
+def _select_task_mail(state_key: str, mail_id: str) -> None:
+    st.session_state[state_key] = mail_id
+
+
+def _render_mail_detail(row: dict) -> None:
+    """The full mail behind the selected row: who, when, what and the outcome."""
+
+    inbound = row["direction"] == "INBOUND"
+    occurred_at = datetime.fromisoformat(row["occurred_at"]).astimezone()
+    recipients = ", ".join(row.get("recipients") or []) or "수신자 정보 없음"
+    outcome = [
+        _action_badge(row["action"]) if row["action"] else ui.badge("처리 기록 없음", "neutral")
+    ]
+    if row["status"]:
+        outcome.append(_status_badge(row["status"]))
+    st.markdown(
+        ui.card(
+            '<div class="ui-row__top">'
+            f'{ui.badge(row["direction_label"], "accent" if inbound else "review")}'
+            f'<span class="ui-title ui-title--md">{ui.esc(row["subject"])}</span>'
+            f'<span class="ui-tl__out">{"".join(outcome)}'
+            f'<span class="ui-tl__time">'
+            f'{occurred_at.strftime("%Y-%m-%d %H:%M")}</span></span></div>'
+            + ui.facts(
+                [
+                    ("보낸 사람", ui.strong(row.get("sender") or "발신자 정보 없음")),
+                    ("받는 사람", ui.strong(recipients)),
+                    ("Mail ID", ui.muted(row["mail_id"])),
+                ]
             )
-            recipient_col.markdown(
-                f"**받는 사람**\n\n{ui.esc(recipients)}",
-                unsafe_allow_html=True,
-            )
-            st.caption(f"Mail ID {row['mail_id']} · {row['occurred_at']}")
-            st.markdown(
-                f'<div class="ui-mail__body ui-mail__body--detail">{ui.esc(row.get("body") or "본문 내용 없음")}</div>',
-                unsafe_allow_html=True,
-            )
+            + f'<div class="ui-mail__body">{ui.esc(row.get("body") or "본문 내용 없음")}</div>',
+            tone="accent" if inbound else "review",
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def _render_task_timeline(task_id: str, rows: list[dict]) -> None:
+    """A clickable chronological list of the Task's mails.
+
+    Each row is the click target, and exactly one mail is expanded below the
+    list, so the same subject is never repeated in a second list of its own.
+    """
+
+    state_key = f"mail_flow_selected_{task_id}"
+    mail_ids = [row["mail_id"] for row in rows]
+    if st.session_state.get(state_key) not in mail_ids:
+        st.session_state[state_key] = mail_ids[-1]
+    selected_id = st.session_state[state_key]
+
+    with st.container(key="ui-mailflow"):
+        for row in rows:
+            inbound = row["direction"] == "INBOUND"
+            occurred_at = datetime.fromisoformat(row["occurred_at"]).astimezone()
+            counterpart_label = "보낸 사람" if inbound else "받는 사람"
+            selected = row["mail_id"] == selected_id
+            outcome = _action_badge(row["action"]) if row["action"] else ""
+            if row["status"]:
+                outcome += _status_badge(row["status"])
+            with st.container(key=f"ui-mailrow-{row['mail_id']}"):
+                st.markdown(
+                    f'<div class="ui-mailrow{" is-selected" if selected else ""}">'
+                    f'<span class="ui-mailrow__node ui-mailrow__node--'
+                    f'{"in" if inbound else "out"}"></span>'
+                    '<div class="ui-mailrow__head">'
+                    f'{ui.badge(row["direction_label"], "accent" if inbound else "review")}'
+                    f'<span class="ui-mailrow__subject">{ui.esc(row["subject"])}</span>'
+                    f'<span class="ui-tl__out">{outcome}'
+                    f'<span class="ui-tl__time">'
+                    f'{occurred_at.strftime("%Y-%m-%d %H:%M")}</span></span></div>'
+                    f'<div class="ui-mailrow__meta">{ui.esc(counterpart_label)} · '
+                    f'{ui.esc(row["counterpart"])}</div></div>',
+                    unsafe_allow_html=True,
+                )
+                st.button(
+                    "메일 내용 보기",
+                    key=f"open_mail_{task_id}_{row['mail_id']}",
+                    on_click=_select_task_mail,
+                    args=(state_key, row["mail_id"]),
+                    width="stretch",
+                )
+
+    selected_row = next(row for row in rows if row["mail_id"] == selected_id)
+    _render_mail_detail(selected_row)
 
 
 @st.dialog("업무 상세", width="large", on_dismiss=_clear_selected_operational_task)
@@ -2765,7 +2808,8 @@ def _render_operational_task_detail(storage, settings, selected_task: dict) -> N
                 "직접 추가한 업무이거나 아직 후속 메일이 없습니다.",
             )
         else:
-            _render_task_timeline(timeline_rows)
+            st.caption("행을 클릭하면 아래에 해당 메일의 전체 내용이 열립니다.")
+            _render_task_timeline(selected_task["task_id"], timeline_rows)
 
     with reply_tab:
         _render_reply_draft_assistant(storage, settings, selected_task)
