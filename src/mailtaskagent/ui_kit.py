@@ -711,6 +711,18 @@ div[data-testid="stStatusWidget"]{border-radius:var(--ui-r-lg);}
 [class*="st-key-ui-list"] [data-testid="stLayoutWrapper"]:last-child > [data-testid="stVerticalBlock"]{border-bottom:0;}
 [class*="st-key-ui-list"] [data-testid^="stBaseButton-"]{min-height:32px; padding-block:2px; font-size:var(--ui-fs-sm);}
 
+/* The irreversible Gmail send step keeps its exact order and wording and is
+   framed so it cannot be mistaken for a draft action. */
+[class*="st-key-ui-send-approval"]{
+  border:1px solid var(--ui-warning-line); background:var(--ui-warning-soft);
+  border-radius:var(--ui-r-lg); padding:16px 18px;
+}
+[class*="st-key-ui-send-approval"] [data-testid="stForm"]{
+  border:0; border-top:1px solid var(--ui-warning-line); border-radius:0;
+  padding:14px 0 0 0; margin-top:14px; background:transparent;
+}
+[class*="st-key-ui-send-approval"] .ui-fact dd{font-size:var(--ui-fs-lg);}
+
 .ui-row{display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:start;}
 .ui-row__mark{padding-top:2px;}
 .ui-row__body{min-width:0;}
