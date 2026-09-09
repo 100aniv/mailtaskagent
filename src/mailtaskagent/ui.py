@@ -322,7 +322,7 @@ def _task_mail_timeline_rows(storage, task: dict, *, limit: int = 50) -> list[di
                 "mail_id": mail["mail_id"],
                 "occurred_at": mail["occurred_at"],
                 "direction": direction,
-                "direction_label": "🔵 받은 메일" if direction == "INBOUND" else "🟣 보낸 메일",
+                "direction_label": "받은 메일" if direction == "INBOUND" else "보낸 메일",
                 "counterpart": counterpart,
                 "subject": mail["subject"],
                 "action": action,
@@ -346,7 +346,7 @@ def _render_mode_entry(*, gmail_connected: bool = False) -> str | None:
     st.write("사용 목적에 맞는 화면을 선택하세요. 언제든 사이드바에서 다시 바꿀 수 있습니다.")
     operation_col, demo_col = st.columns(2)
     with operation_col:
-        with st.container(border=True):
+        with st.container(border=True, key="mta_card_mode_operation"):
             st.markdown("### 실제 업무 모드")
             st.write("홈에서 오늘 할 일과 검토 대기를 보고, 업무·검토함·설정만 사용합니다.")
             st.caption("Gmail 읽기 전용 파일럿을 위한 실제 사용 화면입니다.")
@@ -358,7 +358,7 @@ def _render_mode_entry(*, gmail_connected: bool = False) -> str | None:
                 st.session_state["app_mode"] = OPERATION_MODE
                 st.rerun()
     with demo_col:
-        with st.container(border=True):
+        with st.container(border=True, key="mta_card_mode_demo"):
             st.markdown("### MVP 시연 모드")
             st.write("합성 시나리오, 품질 검증, 기술 설정과 데모 초기화 도구를 함께 표시합니다.")
             st.caption("멘토 시연과 AI Master 검증 증적 확인에 사용합니다.")
@@ -639,8 +639,7 @@ def _apply_styles() -> None:
            0.4 weight marker column is forced to 128px and squeezes the
            content column. Release it inside cards and rows only; page level
            columns keep the protective minimum for tables and charts. */
-        [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"]
-            [data-testid="stColumn"] {min-width: 0;}
+        [class*="st-key-mta_"] [data-testid="stColumn"] {min-width: 0;}
 
         /* ==================================================================
            3 · HEADINGS
@@ -656,8 +655,7 @@ def _apply_styles() -> None:
             margin: 0 0 var(--mta-3) 0;
             color: var(--mta-text);
         }
-        [data-testid="stMainBlockContainer"] .stMarkdown
-            [data-testid="stMarkdownContainer"] > h3 {
+        [data-testid="stMainBlockContainer"] [data-testid="stMarkdown"] h3 {
             font-size: var(--mta-fs-xl);
             font-weight: 600;
             line-height: 1.35;
@@ -666,8 +664,7 @@ def _apply_styles() -> None:
             padding: 0;
             margin: var(--mta-7) 0 var(--mta-2) 0;
         }
-        [data-testid="stMainBlockContainer"] .stMarkdown
-            [data-testid="stMarkdownContainer"] > h4 {
+        [data-testid="stMainBlockContainer"] [data-testid="stMarkdown"] h4 {
             font-size: var(--mta-fs-lg);
             font-weight: 600;
             line-height: 1.35;
@@ -675,8 +672,11 @@ def _apply_styles() -> None:
             padding: 0;
             margin: var(--mta-6) 0 var(--mta-2) 0;
         }
-        [data-testid="stElementContainer"]:first-child .stMarkdown
-            [data-testid="stMarkdownContainer"] > :is(h3, h4) {margin-top: 0;}
+        [data-testid="stElementContainer"]:first-child
+            [data-testid="stMarkdown"] :is(h3, h4) {margin-top: 0;}
+        [data-testid="stMarkdownContainer"]:has(
+            > [data-testid="stHeadingWithActionElements"]
+        ) {margin-bottom: 0;}
         [data-testid="stMainBlockContainer"] hr {
             border: 0;
             border-top: 1px solid var(--mta-line);
@@ -692,59 +692,55 @@ def _apply_styles() -> None:
             font-size: var(--mta-fs-sm);
             line-height: var(--mta-lh-meta);
         }
+        /* Streamlit cancels a caption's trailing paragraph margin with a
+           negative bottom margin on the container. Both are zeroed together
+           so the caption keeps its own box. */
+        [data-testid="stCaptionContainer"] {margin-bottom: 0;}
         [data-testid="stCaptionContainer"] p:last-child {margin-bottom: 0;}
 
         /* ==================================================================
-           5 · CARDS
-           st.container(border=True) no longer emits a border wrapper testid.
-           In this app the only markup that produces a vertical block directly
-           inside another vertical block is st.container(), so that shape is
-           the card hook.
+           5 · CARDS AND SCANNABLE LISTS
+           st.container(border=True) no longer emits a border wrapper testid
+           in Streamlit 1.62, and a bordered container is not distinguishable
+           from an unbordered one by any attribute. Containers therefore carry
+           an explicit key, which Streamlit turns into an `st-key-<key>` class
+           on the block. A container key registers no widget and no session
+           state, so this is a styling hook only.
+
+           mta_card_*  a real card: warnings, approvals, summaries
+           mta_list_*  a scannable list whose rows are divided, not boxed
            ================================================================== */
-        [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] {
+        [class*="st-key-mta_card"] {
             background: var(--mta-surface);
-            border-color: var(--mta-line);
+            border: 1px solid var(--mta-line);
             border-radius: var(--mta-r-lg);
             padding: var(--mta-4) var(--mta-5);
             gap: var(--mta-3);
             box-shadow: var(--mta-sh-1);
         }
-        [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"]
-            + [data-testid="stVerticalBlock"] {
-            margin-top: calc(var(--mta-3) - var(--mta-gap));
-        }
 
-        /* ==================================================================
-           6 · SCANNABLE LISTS
-           Rows inside a container keyed mta_list drop the card frame and
-           become divided rows, so a long list reads as one list rather than a
-           stack of boxes.
-           ================================================================== */
         [class*="st-key-mta_list"] {
             background: var(--mta-surface);
             border: 1px solid var(--mta-line);
             border-radius: var(--mta-r-lg);
-            padding: var(--mta-1) var(--mta-4);
+            padding: 0 var(--mta-5);
             box-shadow: var(--mta-sh-1);
             gap: 0;
         }
-        [class*="st-key-mta_list"] > [data-testid="stVerticalBlock"] {
-            background: transparent;
-            border: 0;
+        [class*="st-key-mta_list"] [data-testid="stLayoutWrapper"]
+            > [data-testid="stVerticalBlock"] {
             border-bottom: 1px solid var(--mta-line);
-            border-radius: 0;
-            box-shadow: none;
-            padding: var(--mta-4) var(--mta-2);
-            margin-top: 0;
+            padding: var(--mta-4) 0;
             gap: var(--mta-1);
         }
-        [class*="st-key-mta_list"] > [data-testid="stVerticalBlock"]:last-child {
+        [class*="st-key-mta_list"] [data-testid="stLayoutWrapper"]:last-child
+            > [data-testid="stVerticalBlock"] {
             border-bottom: 0;
         }
 
         /* Row title: a paragraph whose whole content is a single bold run. */
-        [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"]
-            [data-testid="stMarkdownContainer"] > p:only-child > strong:only-child {
+        [class*="st-key-mta_"] [data-testid="stMarkdownContainer"]
+            p:only-child > strong:only-child {
             font-weight: 600;
             font-size: var(--mta-fs-lg);
             color: var(--mta-text);
@@ -757,6 +753,15 @@ def _apply_styles() -> None:
             line-height: var(--mta-lh-tight);
             color: var(--mta-text);
             letter-spacing: -0.006em;
+        }
+        /* A row reads title, meta, then reasoning. The third line is the
+           lowest tier so the first two carry the scan. */
+        [class*="st-key-mta_list"] [data-testid="stColumn"]
+            > [data-testid="stVerticalBlock"]
+            > [data-testid="stElementContainer"]:nth-child(n + 3)
+            [data-testid="stCaptionContainer"] {
+            font-size: var(--mta-fs-xs);
+            color: var(--mta-text-3);
         }
 
         /* ==================================================================
@@ -803,8 +808,7 @@ def _apply_styles() -> None:
             background: var(--mta-accent-soft);
         }
         /* Row actions repeat on every line, so keep them compact. */
-        [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"]
-            [data-testid^="stBaseButton-"] {
+        [class*="st-key-mta_list"] [data-testid^="stBaseButton-"] {
             min-height: 2rem;
             padding-block: 0.15rem;
             font-size: var(--mta-fs-sm);
@@ -894,8 +898,7 @@ def _apply_styles() -> None:
            prefixed. Its regions are separated by rules on the headings that
            the markup already contains, not by extra boxes.
            ================================================================== */
-        [data-testid="stDialog"] .stMarkdown
-            [data-testid="stMarkdownContainer"] > h4 {
+        [data-testid="stDialog"] [data-testid="stMarkdown"] h4 {
             font-size: var(--mta-fs-lg);
             font-weight: 600;
             color: var(--mta-text);
@@ -903,8 +906,7 @@ def _apply_styles() -> None:
             margin: var(--mta-6) 0 var(--mta-2) 0;
             border-top: 1px solid var(--mta-line);
         }
-        [data-testid="stDialog"] .stMarkdown
-            [data-testid="stMarkdownContainer"] > h5 {
+        [data-testid="stDialog"] [data-testid="stMarkdown"] h5 {
             font-size: var(--mta-fs-md);
             font-weight: 600;
             color: var(--mta-text);
@@ -917,8 +919,8 @@ def _apply_styles() -> None:
             padding: var(--mta-6) 0 0 0;
             margin-top: var(--mta-6);
         }
-        [data-testid="stDialog"] [data-testid="stVerticalBlock"]
-            > [data-testid="stVerticalBlock"] {
+        [data-testid="stDialog"] [class*="st-key-mta_list"],
+        [data-testid="stDialog"] [class*="st-key-mta_card"] {
             box-shadow: none;
         }
 
@@ -942,8 +944,9 @@ def _apply_styles() -> None:
            10 · AGENT REASONING
            Agent judgement is tinted so it never reads as an ordinary log line.
            ================================================================== */
-        [class*="st-key-mta_agent"] {
+        [class*="st-key-mta_card_agent"] {
             border-left: 3px solid var(--mta-accent);
+            background: var(--mta-surface);
         }
         .mta-agent-value {
             display: block;
@@ -1050,10 +1053,10 @@ def _apply_styles() -> None:
 
         .mta-dot {
             display: inline-block;
-            width: 10px;
-            height: 10px;
+            width: 9px;
+            height: 9px;
             border-radius: 50%;
-            margin-top: 0.45rem;
+            margin-top: 0.3rem;
         }
         .mta-dot--p1 {background: var(--mta-danger);}
         .mta-dot--p2 {background: var(--mta-warning);}
@@ -1403,8 +1406,13 @@ def _render_product_dashboard(
 
         st.markdown("### 우선순위 업무")
         st.caption(
-            "🔴 즉시 처리(P1) · 🟠 우선 처리(P2) · "
-            "🟡 회신 대기(업무 상태) · 🟣 검토 요청(사용자 결정 대기)"
+            _meta_line(
+                _badge("즉시 처리(P1)", "danger"),
+                _badge("우선 처리(P2)", "warning"),
+                _badge("회신 대기(업무 상태)", "hold"),
+                _badge("검토 요청(사용자 결정 대기)", "review"),
+            ),
+            unsafe_allow_html=True,
         )
         st.caption(
             "목록은 기한·회신 대기의 긴급도와 VIP·고객사·키워드·사용자 지정 중요도를 "
@@ -1412,26 +1420,37 @@ def _render_product_dashboard(
         )
         if not prioritized:
             st.info("진행 중인 업무가 없습니다. 새 업무 메일이 도착하면 자동으로 여기에 추가됩니다.")
-        for task in prioritized[:5]:
-            decision = priority_by_task[task["task_id"]]
-            with st.container(border=True):
-                mark_col, content_col, action_col = st.columns([0.4, 5.3, 1.25])
-                mark_col.markdown(f"### {decision.emoji}")
-                content_col.markdown(f"**{task['title']}**")
-                content_col.caption(
-                    f"{decision.label} · {STATUS_LABELS.get(task['status'], task['status'])} · "
-                    f"기한 {task.get('due_date') or '없음'} · {task.get('requester') or '요청자 없음'}"
-                )
-                content_col.caption(f"우선순위 근거 · {decision.reason}")
-                if action_col.button(
-                    "완료 처리",
-                    key=f"complete_today_{task['task_id']}",
-                    width="stretch",
-                ):
-                    try:
-                        _complete_task_from_dashboard(storage, task)
-                    except ValueError as exc:
-                        st.error(f"완료할 수 없습니다: {exc}")
+        with st.container(key="mta_list_home_priority"):
+            for task in prioritized[:5]:
+                decision = priority_by_task[task["task_id"]]
+                with st.container():
+                    mark_col, content_col, action_col = st.columns([0.3, 5.4, 1.25])
+                    mark_col.markdown(
+                        _priority_dot(decision.level), unsafe_allow_html=True
+                    )
+                    content_col.markdown(
+                        f'<span class="mta-row-title">{escape(task["title"])}</span>',
+                        unsafe_allow_html=True,
+                    )
+                    content_col.caption(
+                        _meta_line(
+                            _priority_badge(decision),
+                            _status_badge(task["status"]),
+                            f"기한 {_num(task.get('due_date') or '없음')}",
+                            _muted(task.get("requester") or "요청자 없음"),
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                    content_col.caption(f"우선순위 근거 · {decision.reason}")
+                    if action_col.button(
+                        "완료 처리",
+                        key=f"complete_today_{task['task_id']}",
+                        width="stretch",
+                    ):
+                        try:
+                            _complete_task_from_dashboard(storage, task)
+                        except ValueError as exc:
+                            st.error(f"완료할 수 없습니다: {exc}")
         st.button(
             "전체 업무 보기",
             width="stretch",
@@ -1480,18 +1499,39 @@ def _render_product_dashboard(
             )[:3]
             if not latest_mails:
                 st.info("연결된 Gmail 테스트 라벨에 표시할 메일이 없습니다.")
-            for mail in latest_mails:
-                stored = storage.get_processing_result(mail.mail_id)
-                action = stored.get("proposal", {}).get("action") if stored else None
-                status_text = ACTION_LABELS.get(action, action) if action else "새 메일"
-                with st.container(border=True):
-                    subject_col, status_col = st.columns([4.5, 1.4])
-                    subject_col.markdown(f"**{mail.subject}**")
-                    subject_col.caption(
-                        f"{'🔵 받은 메일' if mail.direction.value == 'INBOUND' else '🟣 보낸 메일'} · "
-                        f"{mail.sender} · {mail.occurred_at.astimezone().strftime('%m-%d %H:%M')}"
+            with st.container(key="mta_list_home_mail"):
+                for mail in latest_mails:
+                    stored = storage.get_processing_result(mail.mail_id)
+                    action = (
+                        stored.get("proposal", {}).get("action") if stored else None
                     )
-                    status_col.caption(status_text)
+                    status_text = (
+                        ACTION_LABELS.get(action, action) if action else "새 메일"
+                    )
+                    inbound = mail.direction.value == "INBOUND"
+                    with st.container():
+                        subject_col, status_col = st.columns([4.5, 1.4])
+                        subject_col.markdown(
+                            f'<span class="mta-row-title">'
+                            f"{escape(mail.subject)}</span>",
+                            unsafe_allow_html=True,
+                        )
+                        subject_col.caption(
+                            _meta_line(
+                                _badge(
+                                    "받은 메일" if inbound else "보낸 메일",
+                                    "accent" if inbound else "review",
+                                ),
+                                _muted(mail.sender),
+                                _num(
+                                    mail.occurred_at.astimezone().strftime("%m-%d %H:%M")
+                                ),
+                            ),
+                            unsafe_allow_html=True,
+                        )
+                        status_col.caption(
+                            _badge(status_text, "neutral"), unsafe_allow_html=True
+                        )
         else:
             st.info("Gmail을 연결하면 최근 메일 3건과 정리 결과가 여기에 표시됩니다.")
         return
@@ -1528,14 +1568,24 @@ def _render_product_dashboard(
                 f"Agent 확인 필요 {len(pending_reviews)}건 · "
                 f"{first_review['mail_id']} {first_review['proposal']['reason']}"
             )
-        for task in sorted(attention_tasks, key=_task_priority)[:3]:
-            with st.container(border=True):
-                st.markdown(f"**{task['title']}**")
-                st.caption(
-                    f"{_task_attention(task)} · "
-                    f"{STATUS_LABELS.get(task['status'], task['status'])} · "
-                    f"{task.get('requester') or '요청자 없음'}"
-                )
+        attention_preview = sorted(attention_tasks, key=_task_priority)[:3]
+        if attention_preview:
+            with st.container(key="mta_list_attention"):
+                for task in attention_preview:
+                    with st.container():
+                        st.markdown(
+                            f'<span class="mta-row-title">'
+                            f"{escape(task['title'])}</span>",
+                            unsafe_allow_html=True,
+                        )
+                        st.caption(
+                            _meta_line(
+                                _badge(_task_attention(task), "warning"),
+                                _status_badge(task["status"]),
+                                _muted(task.get("requester") or "요청자 없음"),
+                            ),
+                            unsafe_allow_html=True,
+                        )
         if not pending_reviews and not attention_tasks:
             st.success("지금 확인이 필요한 변경이나 일정 경고가 없습니다.")
 
@@ -2169,16 +2219,37 @@ def _render_agentic_trace(
         "원시 사고과정이 아니라 LLM이 반환한 구조화 결과, 검색 근거와 Python 검증 결과를 연결해 보여줍니다."
     )
     overview_columns = st.columns(4)
-    with overview_columns[0].container(border=True):
-        st.caption("1 · LLM Mail 분석")
-        st.markdown(f"**{analysis_details.get('intent') or '-'}**")
+    with overview_columns[0].container(
+        border=True, key="mta_card_agent_step_1"
+    ):
+        st.caption(
+            '<span class="mta-eyebrow">1 · LLM Mail 분석</span>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<span class="mta-agent-value">'
+            f"{escape(str(analysis_details.get('intent') or '-'))}</span>",
+            unsafe_allow_html=True,
+        )
         analysis_confidence = analysis_details.get("confidence")
         if isinstance(analysis_confidence, (int, float)):
-            st.caption(f"신뢰도 {analysis_confidence:.0%} ({analysis_confidence:.2f})")
+            st.caption(
+                _badge(f"신뢰도 {analysis_confidence:.0%}", "accent")
+                + f" ({analysis_confidence:.2f})",
+                unsafe_allow_html=True,
+            )
         st.caption(str(analysis_details.get("request_summary") or "분석 기록 없음")[:180])
-    with overview_columns[1].container(border=True):
-        st.caption("2 · Task Context 선택")
-        st.markdown(f"**{route_label}**")
+    with overview_columns[1].container(
+        border=True, key="mta_card_agent_step_2"
+    ):
+        st.caption(
+            '<span class="mta-eyebrow">2 · Task Context 선택</span>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<span class="mta-agent-value">{escape(str(route_label))}</span>',
+            unsafe_allow_html=True,
+        )
         if route == "THREAD_EXACT":
             st.caption("확정 가능한 Thread ID가 있어 Task Context LLM 호출을 생략했습니다.")
         elif route == "STRUCTURED_RAG":
@@ -2186,27 +2257,63 @@ def _render_agentic_trace(
             st.caption(f"관련 Task 후보 {candidate_count}개와 최근 Mail·History를 검색했습니다.")
         else:
             st.caption("현재 Mail과 기존 후보를 기준으로 결정 경로를 선택했습니다.")
-    with overview_columns[2].container(border=True):
-        st.caption("3 · Agent Action 제안")
+    with overview_columns[2].container(
+        border=True, key="mta_card_agent_step_3"
+    ):
+        st.caption(
+            '<span class="mta-eyebrow">3 · Agent Action 제안</span>',
+            unsafe_allow_html=True,
+        )
         if proposal_details:
             action_label = ACTION_LABELS.get(proposed_action, proposed_action or "-")
-            st.markdown(f"**{relation_label} · {action_label}**")
+            st.markdown(
+                f'<span class="mta-agent-value">'
+                f"{escape(f'{relation_label} · {action_label}')}</span>",
+                unsafe_allow_html=True,
+            )
             if isinstance(proposal_confidence, (int, float)):
                 passed = proposal_confidence >= confidence_threshold
                 st.caption(
-                    f"신뢰도 {proposal_confidence:.0%} ({proposal_confidence:.2f}) · "
-                    f"기준 {confidence_threshold:.0%} {'통과' if passed else '미달'}"
+                    _meta_line(
+                        _badge(
+                            f"신뢰도 {proposal_confidence:.0%}",
+                            "success" if passed else "danger",
+                        )
+                        + f" ({proposal_confidence:.2f})",
+                        _muted(
+                            f"기준 {confidence_threshold:.0%} "
+                            f"{'통과' if passed else '미달'}"
+                        ),
+                    ),
+                    unsafe_allow_html=True,
                 )
             st.caption(str(proposal_details.get("reason") or "-")[:180])
         elif route == "THREAD_EXACT":
-            st.markdown("**Task Context Agent 생략**")
+            st.markdown(
+                '<span class="mta-agent-value">Task Context Agent 생략</span>',
+                unsafe_allow_html=True,
+            )
             st.caption("확정 Metadata가 있어 불필요한 LLM 호출을 하지 않았습니다.")
         else:
-            st.markdown("**제안 기록 없음**")
-    with overview_columns[3].container(border=True):
-        st.caption("4 · Python Guard / 실행")
+            st.markdown(
+                '<span class="mta-agent-value">제안 기록 없음</span>',
+                unsafe_allow_html=True,
+            )
+    with overview_columns[3].container(
+        border=True, key="mta_card_agent_step_4"
+    ):
+        st.caption(
+            '<span class="mta-eyebrow">4 · Python Guard / 실행</span>',
+            unsafe_allow_html=True,
+        )
         verdict = guard_details.get("verdict") or guard_details.get("guard_verdict") or "검증 완료"
-        st.markdown(f"**{verdict} → {ACTION_LABELS.get(final_action, final_action)}**")
+        st.markdown(
+            _badge(verdict, "success")
+            + '<span class="mta-agent-value">'
+            + escape(ACTION_LABELS.get(final_action, final_action))
+            + "</span>",
+            unsafe_allow_html=True,
+        )
         st.caption(str(guard_details.get("reason") or "상태 전이와 Payload 정책을 확인했습니다.")[:180])
 
     if reply_details:
@@ -2222,80 +2329,95 @@ def _render_agentic_trace(
             f"{confidence_text} · {reply_details.get('reason') or '-'}"
         )
 
-    for event in trace_events:
-        phase, icon = _agentic_trace_phase(event["step"])
-        details = _parse_json(event["details_json"])
-        with st.container(border=True):
-            phase_col, step_col, result_col = st.columns([1.3, 2.4, 0.9])
-            phase_col.markdown(f"**{icon} {phase}**")
-            step_col.markdown(f"**{event['step']}**")
-            result_col.markdown(
-                "🟢 성공"
-                if event["status"] in {"SUCCESS", "ACCEPTED"}
-                else "🟡 확인"
-                if event["status"] in {"WAITING", "STARTED", "ESCALATED", "FALLBACK"}
-                else "🔴 실패"
-            )
-            st.write(_event_display_message(event))
-            if isinstance(details, dict):
-                summary_parts = []
-                for key, label in (
-                    ("route", "경로"),
-                    ("relation", "관계"),
-                    ("agent_action", "Agent 제안"),
-                    ("verdict", "Guard"),
-                    ("action", "Action"),
-                    ("final_action", "최종 Action"),
-                    ("selected_task_id", "선택 Task"),
-                    ("confidence", "신뢰도"),
-                    ("retry_count", "재시도"),
-                ):
-                    value = details.get(key)
-                    if value is not None:
-                        if key == "confidence" and isinstance(value, (int, float)):
-                            value = f"{value:.0%} ({value:.2f})"
-                        elif key in {"agent_action", "action", "final_action"}:
-                            value = ACTION_LABELS.get(value, value)
-                        summary_parts.append(f"**{label}** {value}")
-                if summary_parts:
-                    st.caption(" · ".join(summary_parts))
-                retrieval_results = details.get("retrieval_results")
-                if isinstance(retrieval_results, list) and retrieval_results:
-                    retrieval_rows = [
-                        {
-                            "후보 Task": item.get("task_id"),
-                            "검색 점수": (
-                                f"{item.get('score'):.2f}"
-                                if isinstance(item.get("score"), (int, float))
-                                else item.get("score")
-                            ),
-                            "검색 근거": item.get("reason"),
-                        }
-                        for item in retrieval_results
-                    ]
-                    st.dataframe(
-                        pd.DataFrame(retrieval_rows),
-                        width="stretch",
-                        hide_index=True,
-                    )
-                observed_contexts = details.get("observed_contexts")
-                if isinstance(observed_contexts, list) and observed_contexts:
-                    st.dataframe(
-                        pd.DataFrame(observed_contexts),
-                        width="stretch",
-                        hide_index=True,
-                    )
-                decision_reason = details.get("reason") or details.get("decision_reason")
-                if decision_reason:
-                    st.caption(f"판단 근거: {decision_reason}")
-            st.caption(
-                f"{event['created_at']}"
-                + (
-                    f" · {int(event['duration_ms'])} ms"
-                    if event["duration_ms"] is not None
-                    else ""
+    with st.container(key="mta_list_trace"):
+        for event in trace_events:
+            phase = _agentic_trace_phase(event["step"])[0]
+            details = _parse_json(event["details_json"])
+            if event["status"] in {"SUCCESS", "ACCEPTED"}:
+                status_label, status_tone = "성공", "success"
+            elif event["status"] in {"WAITING", "STARTED", "ESCALATED", "FALLBACK"}:
+                status_label, status_tone = "확인", "warning"
+            else:
+                status_label, status_tone = "실패", "danger"
+            with st.container():
+                phase_col, step_col, result_col = st.columns([1.3, 2.4, 0.9])
+                phase_col.markdown(
+                    f'<span class="mta-agent-value">{escape(phase)}</span>',
+                    unsafe_allow_html=True,
                 )
-            )
+                step_col.caption(
+                    _strong(event["step"]), unsafe_allow_html=True
+                )
+                result_col.markdown(
+                    _badge(status_label, status_tone), unsafe_allow_html=True
+                )
+                st.write(_event_display_message(event))
+                if isinstance(details, dict):
+                    summary_parts = []
+                    for key, label in (
+                        ("route", "경로"),
+                        ("relation", "관계"),
+                        ("agent_action", "Agent 제안"),
+                        ("verdict", "Guard"),
+                        ("action", "Action"),
+                        ("final_action", "최종 Action"),
+                        ("selected_task_id", "선택 Task"),
+                        ("confidence", "신뢰도"),
+                        ("retry_count", "재시도"),
+                    ):
+                        value = details.get(key)
+                        if value is not None:
+                            if key == "confidence" and isinstance(value, (int, float)):
+                                value = f"{value:.0%} ({value:.2f})"
+                            elif key in {"agent_action", "action", "final_action"}:
+                                value = ACTION_LABELS.get(value, value)
+                            summary_parts.append(
+                                f"{_muted(label)} {_strong(value)}"
+                            )
+                    if summary_parts:
+                        st.caption(_meta_line(*summary_parts), unsafe_allow_html=True)
+                    retrieval_results = details.get("retrieval_results")
+                    if isinstance(retrieval_results, list) and retrieval_results:
+                        retrieval_rows = [
+                            {
+                                "후보 Task": item.get("task_id"),
+                                "검색 점수": (
+                                    f"{item.get('score'):.2f}"
+                                    if isinstance(item.get("score"), (int, float))
+                                    else item.get("score")
+                                ),
+                                "검색 근거": item.get("reason"),
+                            }
+                            for item in retrieval_results
+                        ]
+                        st.dataframe(
+                            pd.DataFrame(retrieval_rows),
+                            width="stretch",
+                            hide_index=True,
+                        )
+                    observed_contexts = details.get("observed_contexts")
+                    if isinstance(observed_contexts, list) and observed_contexts:
+                        st.dataframe(
+                            pd.DataFrame(observed_contexts),
+                            width="stretch",
+                            hide_index=True,
+                        )
+                    decision_reason = (
+                        details.get("reason") or details.get("decision_reason")
+                    )
+                    if decision_reason:
+                        st.caption(f"판단 근거: {decision_reason}")
+                st.caption(
+                    _num(
+                        f"{event['created_at']}"
+                        + (
+                            f" · {int(event['duration_ms'])} ms"
+                            if event["duration_ms"] is not None
+                            else ""
+                        )
+                    ),
+                    unsafe_allow_html=True,
+                )
 
 
 def _render_event_log(storage, mail_ids: list[str], *, confidence_threshold: float = 0.75) -> None:
@@ -2366,7 +2488,7 @@ def _render_event_log(storage, mail_ids: list[str], *, confidence_threshold: flo
     )
     details = _parse_json(selected_event["details_json"])
     st.markdown("#### 선택 로그 요약")
-    with st.container(border=True):
+    with st.container(border=True, key="mta_card_event_detail"):
         step_col, status_col, duration_col = st.columns(3)
         step_col.metric("처리 단계", selected_event["step"])
         status_col.metric("결과", selected_event["status"])
@@ -2607,7 +2729,7 @@ def _render_tasks_and_histories(storage, settings=None, *, show_history: bool = 
         user_decision = _parse_json(selected_history["user_decision"])
         change_rows = _history_change_rows(before, after)
         st.markdown("#### 선택 History 요약")
-        with st.container(border=True):
+        with st.container(border=True, key="mta_card_agent_result"):
             action_col, task_col, confidence_col = st.columns(3)
             action_col.metric(
                 "Agent Action",
@@ -2789,7 +2911,7 @@ def _render_reply_draft_assistant(storage, settings, selected_task: dict) -> Non
     except ValueError as exc:
         st.warning(str(exc))
         return
-    with st.container(border=True):
+    with st.container(border=True, key="mta_send_approval"):
         st.write(f"**받는 사람** · {send_preview['recipient']}")
         st.write(f"**제목** · {send_preview['subject']}")
         st.caption("원본 Gmail Thread에 Plain Text 답장으로 전송합니다. 수신자는 수정할 수 없습니다.")
@@ -2841,20 +2963,41 @@ def _render_operational_task_detail(storage, settings, selected_task: dict) -> N
     if not timeline_rows:
         st.info("이 업무에 연결된 메일 기록이 없습니다. 직접 추가한 업무일 수 있습니다.")
     else:
-        for row in timeline_rows:
-            with st.container(border=True):
-                time_col, content_col, result_col = st.columns([1.35, 4.6, 1.7])
-                occurred_at = datetime.fromisoformat(row["occurred_at"]).astimezone()
-                time_col.markdown(f"**{row['direction_label']}**")
-                time_col.caption(occurred_at.strftime("%m-%d %H:%M"))
-                content_col.markdown(f"**{row['subject']}**")
-                arrow = "보낸 사람" if row["direction"] == "INBOUND" else "받는 사람"
-                content_col.caption(f"{arrow} · {row['counterpart']}")
-                result_col.markdown(f"**{row['action_label']}**")
-                if row["status"]:
-                    result_col.caption(
-                        f"상태 · {STATUS_LABELS.get(row['status'], row['status'])}"
+        with st.container(key="mta_list_timeline"):
+            for row in timeline_rows:
+                inbound = row["direction"] == "INBOUND"
+                with st.container():
+                    time_col, content_col, result_col = st.columns([1.35, 4.6, 1.7])
+                    occurred_at = datetime.fromisoformat(
+                        row["occurred_at"]
+                    ).astimezone()
+                    time_col.markdown(
+                        _badge(
+                            row["direction_label"],
+                            "accent" if inbound else "review",
+                        ),
+                        unsafe_allow_html=True,
                     )
+                    time_col.caption(
+                        _num(occurred_at.strftime("%m-%d %H:%M")),
+                        unsafe_allow_html=True,
+                    )
+                    content_col.markdown(
+                        f'<span class="mta-row-title">'
+                        f"{escape(row['subject'])}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    arrow = "보낸 사람" if inbound else "받는 사람"
+                    content_col.caption(f"{arrow} · {row['counterpart']}")
+                    result_col.markdown(
+                        f'<span class="mta-agent-value">'
+                        f"{escape(row['action_label'])}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    if row["status"]:
+                        result_col.caption(
+                            _status_badge(row["status"]), unsafe_allow_html=True
+                        )
     _render_reply_draft_assistant(storage, settings, selected_task)
     st.markdown("#### 업무 변경 기록")
     st.caption(
@@ -2862,19 +3005,29 @@ def _render_operational_task_detail(storage, settings, selected_task: dict) -> N
     )
     task_history_rows = _task_history_rows(storage, selected_task["task_id"])
     if task_history_rows:
-        for row in task_history_rows[:5]:
-            with st.container(border=True):
-                action_col, source_col, decision_col = st.columns([1.5, 2.4, 1.5])
-                action_col.markdown(f"**{row['Action']}**")
-                source_col.caption(f"{row['처리 시각']} · {row['Source Mail']}")
-                decision_col.markdown(f"**{row['사용자 결정']}**")
-                st.caption(f"판단 근거 · {row['판단 근거']}")
-                if row["변경 전"] == "-":
-                    st.caption(row["변경 후"])
-                else:
-                    before_col, after_col = st.columns(2)
-                    before_col.caption(f"변경 전 · {row['변경 전']}")
-                    after_col.caption(f"변경 후 · {row['변경 후']}")
+        with st.container(key="mta_list_history"):
+            for row in task_history_rows[:5]:
+                with st.container():
+                    action_col, source_col, decision_col = st.columns([1.5, 2.4, 1.5])
+                    action_col.markdown(
+                        _badge(row["Action"], "accent"), unsafe_allow_html=True
+                    )
+                    source_col.caption(
+                        _meta_line(
+                            _num(row["처리 시각"]), _muted(row["Source Mail"])
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                    decision_col.markdown(
+                        _badge(row["사용자 결정"], "neutral"), unsafe_allow_html=True
+                    )
+                    st.caption(f"판단 근거 · {row['판단 근거']}")
+                    if row["변경 전"] == "-":
+                        st.caption(row["변경 후"])
+                    else:
+                        before_col, after_col = st.columns(2)
+                        before_col.caption(f"변경 전 · {row['변경 전']}")
+                        after_col.caption(f"변경 후 · {row['변경 후']}")
         if len(task_history_rows) > 5:
             with st.expander(f"이전 변경 기록 {len(task_history_rows) - 5}건"):
                 st.dataframe(
@@ -2994,34 +3147,46 @@ def _render_operational_task_list(storage, settings) -> None:
     st.caption(f"검색 결과 {len(filtered_tasks)}건")
     if not filtered_tasks:
         st.info("선택한 조건에 맞는 업무가 없습니다.")
-    for task in filtered_tasks:
-        priority = priority_by_task[task["task_id"]]
-        with st.container(border=True):
-            icon_col, content_col, action_col = st.columns([0.4, 5.1, 1.4])
-            icon_col.markdown(f"### {priority.emoji}")
-            content_col.markdown(f"**{task['title']}**")
-            content_col.caption(
-                f"{priority.label} · {STATUS_LABELS.get(task['status'], task['status'])} · "
-                f"기한 {task.get('due_date') or '없음'} · {task.get('requester') or '요청자 없음'}"
-            )
-            if task.get("description"):
-                content_col.caption(task["description"])
-            if action_col.button(
-                "상세 보기",
-                key=f"open_task_{task['task_id']}",
-                width="stretch",
-            ):
-                st.session_state["selected_operational_task_id"] = task["task_id"]
-                st.rerun()
-            if task["status"] not in {"COMPLETED", "CANCELLED"} and action_col.button(
-                "완료 처리",
-                key=f"complete_task_list_{task['task_id']}",
-                width="stretch",
-            ):
-                try:
-                    _complete_task_from_dashboard(storage, task)
-                except ValueError as exc:
-                    st.error(f"완료할 수 없습니다: {exc}")
+    with st.container(key="mta_list_tasks"):
+        for task in filtered_tasks:
+            priority = priority_by_task[task["task_id"]]
+            with st.container():
+                icon_col, content_col, action_col = st.columns([0.3, 5.2, 1.4])
+                icon_col.markdown(
+                    _priority_dot(priority.level), unsafe_allow_html=True
+                )
+                content_col.markdown(
+                    f'<span class="mta-row-title">{escape(task["title"])}</span>',
+                    unsafe_allow_html=True,
+                )
+                content_col.caption(
+                    _meta_line(
+                        _priority_badge(priority),
+                        _status_badge(task["status"]),
+                        f"기한 {_num(task.get('due_date') or '없음')}",
+                        _muted(task.get("requester") or "요청자 없음"),
+                    ),
+                    unsafe_allow_html=True,
+                )
+                if task.get("description"):
+                    content_col.caption(task["description"])
+                if action_col.button(
+                    "상세 보기",
+                    key=f"open_task_{task['task_id']}",
+                    type="tertiary",
+                    width="stretch",
+                ):
+                    st.session_state["selected_operational_task_id"] = task["task_id"]
+                    st.rerun()
+                if task["status"] not in {"COMPLETED", "CANCELLED"} and action_col.button(
+                    "완료 처리",
+                    key=f"complete_task_list_{task['task_id']}",
+                    width="stretch",
+                ):
+                    try:
+                        _complete_task_from_dashboard(storage, task)
+                    except ValueError as exc:
+                        st.error(f"완료할 수 없습니다: {exc}")
 
     selected_task_id = st.session_state.get("selected_operational_task_id")
     selected_task = next(
@@ -3537,7 +3702,7 @@ def _render_operation_settings(storage, gmail_summary: dict, mails) -> None:
     if settings_flash:
         st.success(settings_flash)
 
-    with st.container(border=True):
+    with st.container(border=True, key="mta_card_mail_connection"):
         st.markdown("### 메일 연결")
         if gmail_summary["credentials_ready"] and gmail_summary["token_ready"]:
             access_label = (
@@ -4154,7 +4319,7 @@ def _render_connection_and_data_settings(storage, settings, gmail_summary: dict)
 
     with connection_tab:
         mail_col, slack_col = st.columns(2)
-        with mail_col.container(border=True):
+        with mail_col.container(border=True, key="mta_card_gmail"):
             st.markdown("### Gmail")
             if gmail_summary["credentials_ready"] and gmail_summary["token_ready"]:
                 access_label = (
@@ -4172,7 +4337,7 @@ def _render_connection_and_data_settings(storage, settings, gmail_summary: dict)
             else:
                 st.warning("사용자 승인이 필요합니다.")
             st.caption("Outlook / Microsoft Graph는 Gmail Workflow 검증 이후 연결합니다.")
-        with slack_col.container(border=True):
+        with slack_col.container(border=True, key="mta_card_slack"):
             st.markdown("### Slack 운영 알림")
             slack_settings = load_slack_notification_settings()
             if slack_settings.enabled and slack_settings.configured:
