@@ -2417,8 +2417,9 @@ def _render_task_edit_form(
             )
             if edited_importance != task.get("importance_override"):
                 storage.set_task_importance(task["task_id"], edited_importance)
+            saved_title = (result.get("after") or {}).get("title") or task["title"]
             st.session_state["task_edit_flash"] = (
-                flash(result) if flash else f"{result['title']} 변경을 저장했습니다."
+                flash(result) if flash else f"{saved_title} 변경을 저장했습니다."
             )
             st.session_state.pop("selected_operational_task_id", None)
             st.rerun()

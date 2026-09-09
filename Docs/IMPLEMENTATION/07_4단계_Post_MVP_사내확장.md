@@ -391,4 +391,4 @@ Task 연결 Thread 추적을 적용한 Live `SYNC-0BA30F517ECC`도 가져옴 22�
 실제 Streamlit 화면 흐름도 통과했다. 이어 별도 브랜치에서 테스트 Gmail 사용자 승인 발송을
 추가해 당시 전체 pytest `168 passed`, OAuth Health `READY`, 회사 LLM 초안 기반 실제 발송 1건,
 동일 Thread `SENT`, Task `WAITING_REPLY`, Audit·Trace와 DB 무결성을 확인했다. 2026-09-08에는
-읽기/발송 OAuth Token 분리와 명시적 상대 날짜 정규화 회귀를 추가해 최종 `170 passed`와 두 OAuth 경로의 `READY`를 확인했다.
+읽기/발송 OAuth Token 분리와 명시적 상대 날짜 정규화 회귀를 추가해 2026-09-08 기준선 `170 passed`와 두 OAuth 경로의 `READY`를 확인했다. 이후 UI 메일 흐름 회귀 1건을 추가했고 2026-09-09 최신 전체 회귀는 `171 passed`다.
