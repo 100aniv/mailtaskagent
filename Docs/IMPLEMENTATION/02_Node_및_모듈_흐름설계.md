@@ -181,8 +181,8 @@ Validation은 독립된 Guard이며 LLM 판단을 그대로 실행하지 않는�
 
 구조화 출력 오류는 최대 1회 재시도를 기본값으로 한다. 재시도 횟수는 설정으로 분리하되 무한 재시도는 금지한다.
 
-Task Context RAG의 재검색 횟수도 최대 1회로 고정한다. 완료·취소·기한 단축과 복수 후보의
-기존 사용자 승인 Gate는 RAG 판단으로 우회할 수 없다.
+Task Context RAG의 재검색 횟수도 최대 1회로 고정한다. 완료·취소·기한 단축과 복수 후보를
+구분할 근거가 부족한 경우의 기존 사용자 승인 Gate는 RAG 판단으로 우회할 수 없다.
 
 ### 2026-09-02 구현 결과와 설정 계약
 
@@ -225,6 +225,8 @@ Task Context RAG의 재검색 횟수도 최대 1회로 고정한다. 완료·취
 - 실패 시 일부만 저장하지 않고 Rollback한다.
 - `IGNORE`, 거절, 오류도 Task 변경 없이 처리 이력은 남긴다.
 - 사용자 확정값은 최신 확정 상태로 보존하고 Agent가 임의 덮어쓰지 않는다.
+- Action 실행 직후 `get_task()`와 관련 History를 다시 조회해 기대 Payload와 실제 저장 상태를 비교한다. 일치한 경우에만 `M-04 EXECUTION_OBSERVATION` 성공 Event를 남기며, 불일치는 성공으로 표시하지 않는다.
+- 승인 Gmail 발송 후에도 OUTBOUND Mail·발송 History와 `WAITING_REPLY` 상태를 재조회해 원본 Thread 및 예약값과 일치하는지 확인한다.
 - Processing Event는 Task Transaction과 분리해 기록하여 실패 시에도 중단 단계와 오류를 확인할 수 있게 한다. Secret과 인증 정보는 저장 전에 제거한다.
 - `RAG_RETRIEVAL`, `RAG_DECISION`, `QUERY_REWRITE`,
   `RAG_RETRIEVAL_RETRY`, `RAG_REDECISION`, `RAG_FALLBACK` 또는 `ASK_USER` Event에

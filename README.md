@@ -58,8 +58,8 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 제한 Gmail 개인 파�
 - 완료 제안 후 사용자 승인 시에만 `COMPLETED` 반영
 - Dashboard에서 Task 제목·설명·기한·상태·회신 필요 여부 직접 수정과 History 저장
 - 기대결과를 분리한 대표 Business Case 15개와 제품형 Dashboard·Gmail Adapter Contract,
-  운영/시연 모드 및 DB 격리 회귀를 포함한 AI Master MVP pytest 60건
-- Post-MVP Priority Rule·사용자 Override·실전 UI·Gmail 자동 동기화, 운영 CLI·재시도·
+  운영/시연 모드 및 DB 격리 회귀를 포함한 초기 AI Master Core 기준선 pytest 60건
+- Core 이후 운영 고도화로 추가한 Priority Rule·사용자 Override·실전 UI·Gmail 자동 동기화, 운영 CLI·재시도·
   SQLite Backup·Mail 제외 Rule과 합성 Microsoft Graph Adapter Contract를 포함한
   Outlook 전 Gmail 전체 Case 수용시험·Slack 최소 알림·6개 역할 기반 운영 UI를 포함한
   Agent 기본 실행·일시정지 통합, Task 연결 Gmail Thread의 양방향 후속 Mail 추적,
@@ -246,6 +246,8 @@ Plain Text 답장 1건을 보낸다. 발송 성공 뒤 `SET_WAITING`과 History�
 사용자 승인 발송 증적은 `evidence/gmail_approved_send_evaluation_2026-09-06.json`에 저장한다.
 최신 제출 Gate는 `evidence/final_submission_audit_2026-09-13_final.json`이며,
 Gmail E2E 직후 감사 결과는 `evidence/final_submission_audit_2026-09-13_after_gmail_e2e.json`에 보존한다.
+2026-09-14 코드·문서·제출자료 정합성 재감사는
+`evidence/final_submission_consistency_audit_2026-09-14_final_v3.json`에 별도 보존한다.
 2026-09-08 코드·Live·Gmail·DB·문서 통합 Gate는 `evidence/final_mvp_acceptance_2026-09-08.json`에
 과거 최종 MVP 기준선으로 보존한다.
 2026-09-13 수정 후 새 Gmail Root Mail의 무개입 `CREATE_TASK`와 35/35 중복 재조회 방지는

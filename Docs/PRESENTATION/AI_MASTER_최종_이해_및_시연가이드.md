@@ -111,8 +111,11 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 | 기존 Task 연결 | 8/8 |
 | 테스트 Gmail 수용시험 | 20/20 |
 | Task Context Agent Live 합성 검증 | 3/3 |
-| 전체 자동 테스트 | 170 passed |
-| Gmail 재조회 | 신규 처리 0, 중복 차단 20, 실패 0 |
+| Reply Planning Live | 3/3 |
+| 사용자 입력 기반 Draft 생성 | 1/1 |
+| 테스트 Gmail 사용자 승인 발송 | 실제 발송 1건 및 원본 Thread·History·`WAITING_REPLY` 확인 |
+| 전체 자동 테스트 | 179 passed |
+| Gmail 재조회 | 2026-09-13 최종 E2E 33/33, 새 Root Mail 재검증 35/35 중복 차단 |
 | Windows Scheduler | 반복 실행 성공, `LastTaskResult=0` |
 | SQLite 무결성 | `quick_check=ok` |
 
@@ -138,7 +141,11 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 - 기존 완료·취소·기한 단축 승인 Gate와 전체 회귀 유지
 - Agent Action Proposal과 Python Safety Guard를 분리한 실행 통제
 - Observe Input부터 Final Output까지의 Agentic Workflow Trace
-- 신규 RAG·Guard 평가 Evidence와 전체 pytest 149개 통과
+- 실행 후 DB 재조회와 `M-04 EXECUTION_OBSERVATION`을 통한 실제 저장 결과 확인
+- Reply Agent의 7개 회신 방식 판단과 날짜·값·승인 등 필요한 사용자 입력 선택
+- 사용자 입력 기반 회사 LLM Draft 생성·수정과 사용자 승인 Gmail 발송
+- 원본 Thread·Allowlist 단일 수신자·중복 발송 Guard와 발송 후 `WAITING_REPLY`
+- 신규 RAG·Guard·Reply 평가 Evidence와 전체 pytest 179개 통과
 
 ### 사내 운영 전 추가로 필요한 것
 
@@ -157,7 +164,8 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 
 - Mail 한 건 안의 독립적인 여러 요청을 여러 Task로 자동 분해하는 기능
 - 사내 문서·첨부파일 RAG, Vector DB·LangGraph·Multi-Agent
-- 실제 Mail 자동 발송·삭제·이동
+- 사용자 승인 없는 Mail 자동 발송, Mail 삭제·이동
+- Reply-All, CC/BCC, 첨부파일·HTML·서명 자동 처리
 - Calendar 자동 생성
 - Outlook·Microsoft Graph 사내 연결
 - 다중 사용자 인증과 서버 운영 배포
@@ -174,13 +182,16 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 6. Task 상세의 Mail 타임라인과 변경 전·후 History를 보여준다.
 7. 운영 상태의 Agentic Workflow Trace에서 RAG 검색, 후보 관찰, 판단, Query Rewrite,
    Agent Action Proposal, Python Safety Guard와 실행 결과 관찰을 보여준다.
-8. 마지막에 15/15, 28/28, Task Context Live 3/3, Gmail 20/20, 사용자 승인 실제 발송 최초·최종 재검증, pytest 170 passed와 측정 한계를 설명한다.
+8. AI 회신 준비에서 Reply Agent의 회신 방식, 필요한 사용자 입력, LLM Draft와 승인 발송 후 `WAITING_REPLY`를 보여준다.
+9. 마지막에 15/15, 28/28, Task Context Live 3/3, Reply Planning 3/3, Draft 1/1, Gmail 20/20, 사용자 승인 실제 발송, pytest 179 passed와 측정 한계를 설명한다.
 
 ## 12. 발표용 30초 결론
 
 “MailTaskAgent는 Mail을 요약하는 도구가 아니라 Mail Thread와 현재 Task 상태를 함께 보고 다음
-Action을 결정하는 개인 업무관리 Agent입니다. 회사 LLM Mail 분석 15개 실행 단위와 28개 Action
-단계, Task Context Agent Live 3건, 테스트 Gmail 20건, 자동 테스트 149건을 통과했습니다.
-다른 표현의 동일 업무는 SQLite Task Context를 검색하고 최대 한 번 재검색하며, 그래도
-불확실하면 사용자에게 넘깁니다. Outlook·사내 인증·서버 배포와 사내 문서 RAG는 그 이후
-Post-MVP 범위입니다.”
+Task Action과 필요한 회신 방식을 판단하는 개인 업무관리 Agent입니다. 다른 표현의 동일 업무는
+SQLite Task Context를 검색하고 최대 한 번 재검색하며, 그래도 불확실하면 사용자에게 넘깁니다.
+회신이 필요하면 Reply Agent가 날짜·값·승인 등 필요한 입력을 선택하고 회사 LLM이 Draft를 만든
+뒤, 원본 Thread와 수신자를 검증하고 사용자가 승인한 경우에만 Gmail로 발송합니다. 회사 LLM
+15/15 실행 단위·28/28 Action 단계, Task Context 3/3, Reply Planning 3/3, Draft 1/1,
+테스트 Gmail 20/20과 자동 테스트 179건을 확인했습니다. Outlook·사내 인증·서버 배포와 사내
+문서 RAG는 Post-MVP 범위입니다.”

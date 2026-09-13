@@ -2,18 +2,24 @@
 
 ## 파일 구성
 
-- `AI_MASTER_최종_이해_및_시연가이드.md`: 최종 MVP 구현 범위, 자동 동작, 완료 처리와 5분 시연 순서를 정리한 설명 자료
-- `2026-09-02_멘토시연_이해자료_및_스크립트.md`: 내일 시연용 구조 설명, 실행 순서, 발표 대사, 예상 질문과 답변
+- `2. 최종/09285_백준현_AI_Master_최종발표자료_v7.pptx`: 코드·Evidence와 동기화한 4장 최종 발표자료와 발표자 노트
+- `2. 최종/09285_백준현_AI_Master_최종발표자료.pdf`: 제출용 4장 PDF
+- `2. 최종/09285_백준현_최종시연_스크립트.md`: 실제 Gmail 중심 5분 시연 대사와 장애 대응
+- `AI_MASTER_최종_이해_및_시연가이드.md`: 최종 MVP 구현 범위와 사용자 학습·시연 설명 자료
+- `2026-09-02_멘토시연_이해자료_및_스크립트.md`: 2026-09-02 당시 멘토 시연 기록
 - `MailTaskAgent_멘토리뷰_2026-08-26.pptx`: 2026-08-26 멘토 리뷰용 설명 자료
 - `build_mentor_deck.mjs`: 발표자료를 다시 생성하는 소스
 
-이 자료는 최종 발표본이 아니라 현재 시연 가능한 Core E2E와 Task Context RAG·ReAct,
-Agent Action Proposal·Python Safety Guard 구현 증적과 운영 UI 방향을 설명하기 위한 리뷰본이다. 전체 pytest `149 passed`와 Task Context
-Agent 회사 LLM Live 합성 검증 `3/3` 결과를 반영했으며 이를 최종 발표자료로 발전시킨다.
+최종 제출 기준은 `2. 최종` 폴더의 v7 PPTX·PDF·시연 스크립트다. 최종 MVP에는 Core E2E,
+SQLite Task Context RAG·최대 1회 ReAct 재판단, Agent Action Proposal·Python Safety Guard,
+실행 결과 재조회, Reply Agent의 회신 방식 판단·사용자 입력 기반 LLM Draft·사용자 승인 Gmail
+발송과 `WAITING_REPLY` 전환이 포함된다. 2026-09-13 최종 기준은 pytest `179 passed`, 회사
+LLM 15/15 실행 단위·28/28 Action 단계, Task Context Agent 3/3, Reply Planning 3/3,
+Draft 1/1이다. 각 수치는 서로 다른 검증 분모이며 실제 회사 Mailbox 전체 정확도가 아니다.
 
 ## 화면 구분
 
-- 현재 Streamlit UI: 합성 Mail로 기능을 검증하는 시연 화면
-- 운영 UI 콘셉트: 자동 동기화된 Mail, 오늘의 업무, 확인 필요, 활동 기록을 중심으로 사용하는 목표 화면
+- 실제 업무 모드: 테스트 Gmail 자동 동기화, Task·검토 요청·메일 흐름·회신 준비·운영 상태를 확인하는 기본 화면
+- MVP 시연 모드: 실제 업무 DB와 분리된 합성 시나리오·품질 검증 화면
 
-운영 UI 콘셉트 원본은 `prototype/final_ui_mockup.html`에서 확인한다.
+과거 멘토 보고자료와 Prototype은 개발 이력으로 보존하며 현재 최종 제출본으로 사용하지 않는다.

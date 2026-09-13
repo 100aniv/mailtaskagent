@@ -7,6 +7,8 @@
 - [ ] SQLite 운영·시연 DB `integrity_check=ok`
 - [ ] 회사 LLM Live 15/15 Case, 28/28 Action 결과 확인
 - [ ] 실제 Gmail 신규 업무 자동 생성과 35/35 중복 방지 증적 확인
+- [ ] Reply Planning 3/3, 사용자 입력 기반 Draft 1/1과 승인 Gmail 발송 증적 확인
+- [ ] 발송 전 사용자 승인·원본 Thread·Allowlist 수신자·중복 방지 Guard 확인
 - [ ] `.env`, OAuth Token, 실제 DB, 개인 메일 본문, 임시 파일이 제출본에서 제외됨
 - [ ] README의 설치·실행·검증 명령을 깨끗한 환경에서 재현
 - [ ] AI_MASTER 01~07의 공식 제목·항목 순서 유지
@@ -19,13 +21,19 @@
 
 ## 30초 프로젝트 설명
 
-> MailTaskAgent는 Gmail의 수신·발신 메일을 업무로 구조화하고 기존 Task와의 관계를 판단해 7개 Action 중 다음 행동을 제안하는 개인 업무관리 Agent입니다. 다른 표현의 후속 메일은 SQLite Task Context RAG로 관련 Task와 최근 History를 검색하고, 저신뢰 판단은 Query Rewrite로 한 번 재검토합니다. Python Guard는 위험하거나 모호한 Action을 ASK_USER로 전환하고, 실행 후 실제 DB 상태를 다시 관찰합니다.
+> MailTaskAgent는 Gmail의 수신·발신 메일을 업무로 구조화하고 기존 Task와의 관계를 판단해 7개 Task Action 중 다음 행동을 제안하는 개인 업무관리 Agent입니다. 다른 표현의 후속 메일은 SQLite Task Context RAG로 관련 Task와 최근 History를 검색하고, 저신뢰 판단은 Query Rewrite로 한 번 재검토합니다. Python Guard는 위험하거나 모호한 Action을 `ASK_USER`로 전환하고 실행 후 실제 DB 상태를 다시 관찰합니다. 회신이 필요하면 Reply Agent가 7개 회신 방식 중 하나와 필요한 사용자 입력을 선택하고, 회사 LLM Draft를 사용자가 승인한 경우에만 검증된 원본 Gmail Thread로 발송합니다.
 
 ## 핵심 면접 질문
 
 ### 왜 단순 Workflow가 아니라 Agentic AI인가
 
 현재 Mail과 검색한 Task Context에 따라 경로와 Action이 달라진다. Agent가 관계와 Action을 제안하고, 저신뢰이면 Query를 재작성해 다시 검색·판단한다. 실행 결과를 관찰하고 사용자 결정을 다음 History로 기억한다.
+
+일반 Workflow로 구현할 수 없는 것은 아니다. 확정 가능한 동일 Thread와 안전 정책은 규칙으로 처리하고, 규칙으로 모든 표현을 열거하기 어려운 Task 관계·다음 Action·회신 방식만 LLM Agent에 제한적으로 위임한 하이브리드 구조다.
+
+### 답장 초안 기능도 Agentic AI인가
+
+문장 생성만으로는 생성형 AI 기능이다. 이 프로젝트에서는 Reply Agent가 `NO_REPLY`, `SIMPLE_ACK`, `DATE_REPLY`, `VALUE_REPLY`, `APPROVE_REPLY`, `DRAFT_REPLY`, `ASK_USER` 중 회신 방식을 선택하고 필요한 사용자 입력을 요청한다. 회사 LLM이 확인된 입력으로 Draft를 만들고, Python Guard와 사용자가 발송을 승인하며, 성공 후 OUTBOUND Mail·History와 `WAITING_REPLY`를 관찰하므로 판단과 행동이 연결된다.
 
 ### RAG는 무엇을 검색하는가
 

@@ -42,7 +42,7 @@
 |---|---|---|
 | **프롬프트·환각** | 회사 LLM이 “다음 주 중”을 특정 날짜로 임의 해석하거나 “거의 끝난 것 같다”를 완료로 판단할 수 있음 | **리서치:** Structured Output, 명시적 System Prompt와 Deterministic Guard 적용 방식을 검토했습니다. **적용:** 모호한 날짜·완료 표현을 Prompt에 명시하고, 원문 Marker를 Python Logic이 다시 확인하여 `ASK_USER`로 차단했습니다. |
 | **구조화 출력** | LLM JSON이 Pydantic Schema와 맞지 않으면 후속 로직이 잘못 실행될 위험 | **리서치:** JSON Object 응답과 Pydantic Validation, 제한된 Retry 패턴을 검토했습니다. **적용:** Schema 오류 시 1회 재시도하고 최종 실패 시 DB를 변경하지 않도록 했습니다. |
-| **Task 연결** | 같은 DDC 주제의 활성 Task가 여러 개면 하나를 임의 선택할 위험 | **리서치:** Metadata 우선 Entity Resolution과 Human-in-the-loop 방식을 검토했습니다. **적용:** 동일 `conversation_id`를 최우선으로 하고 후보별 점수·근거를 표시하며, 복수 후보는 `ASK_USER`로 전환했습니다. |
+| **Task 연결** | 같은 DDC 주제의 활성 Task가 여러 개면 하나를 임의 선택할 위험 | **리서치:** Metadata 우선 Entity Resolution과 Human-in-the-loop 방식을 검토했습니다. **적용:** 동일 `conversation_id`를 최우선으로 하고 후보별 점수·근거를 표시하며, 복수 후보를 구분할 근거가 부족하거나 신뢰도가 낮으면 `ASK_USER`로 전환했습니다. |
 | **상태·안전** | 완료·취소·기한 단축은 오판 시 업무 상태를 크게 훼손할 수 있음 | **리서치:** 중요 변경 승인 Gate와 Audit History 방식을 적용했습니다. **적용:** 사용자 승인 전 Task를 변경하지 않고 Agent 제안과 사용자 최종 결정을 모두 History에 저장했습니다. |
 | **운영 추적** | 결과만 보면 어느 단계에서 실패했는지 알 수 없음 | **리서치:** 단계별 Event Logging과 Secret Redaction 방식을 검토했습니다. **적용:** Mail 입력부터 DB 반영까지 단계·시각·처리시간·오류를 SQLite Processing Event와 Streamlit 운영 로그에 표시하고 Secret을 저장 전에 마스킹했습니다. |
 | **운영 안정성** | Dashboard와 1분 주기 Gmail Scheduler가 동시에 SQLite에 쓰면 잠금 충돌이나 비정상 종료 위험이 있음 | **리서치:** SQLite WAL·Busy Timeout·동기화 수준과 Process 단일 실행 잠금을 검토했습니다. **적용:** WAL, 30초 Busy Timeout, `synchronous=FULL`, OS 단일 실행 잠금과 Online Backup·무결성 점검을 적용했습니다. |
@@ -71,6 +71,6 @@
 
 * **최종 결과:**
 
-`TASK-001` 한 건만 유지되며 기한은 `2026-08-24`로 변경됩니다. Agent Action, 판단 근거, 원본 Mail ID, 변경 전·후 값과 처리 시각은 Dashboard의 Task History와 운영 로그에서 확인할 수 있습니다. 복수 후보·모호한 기한·완료·취소 Case는 자동 변경하지 않고 사용자 확인으로 전환됩니다.
+`TASK-001` 한 건만 유지되며 기한은 `2026-08-24`로 변경됩니다. Agent Action, 판단 근거, 원본 Mail ID, 변경 전·후 값과 처리 시각은 Dashboard의 Task History와 운영 로그에서 확인할 수 있습니다. 복수 후보를 구분할 근거가 부족하거나 신뢰도가 낮은 Case, 모호한 기한, 완료·취소 Case는 자동 변경하지 않고 사용자 확인으로 전환됩니다.
 
 최종 회귀 검증은 2026-09-13 최종 감사를 포함한 `pytest 179 passed`다(2026-09-09 UI 기준선 `171 passed`). 회사 LLM Mail 분석 Live는 15/15 실행 단위·28/28 Action 단계·60.852초이며, Task Context Agent Live 합성 검증 3/3, Agent Action Proposal·Python Safety Guard 회귀, 별도 테스트 Gmail 비식별 합성 Mail 20/20 수용시험, Windows Scheduler 반복 실행과 SQLite 무결성 `ok`를 확인했습니다. 최종 MVP의 Mail-to-Action은 Reply Planning Live 3/3, 사용자 입력 기반 Draft 생성 1/1과 Streamlit 판단→입력→초안→승인 흐름을 통과했습니다. 2026-09-13 실제 Gmail 5-message E2E의 첫 Mail은 `ASK_USER`로 안전하게 이관됐고, 사용자 확정 뒤 원본 발신자·Thread 잠금, Send Allowlist, 승인 발송, `WAITING_REPLY`, 기한 단축 승인, 자료 도착 후 `IN_PROGRESS`, 완료 승인 후 `COMPLETED`, 33/33 중복 재조회 방지를 확인했습니다. 이후 별도의 새 Gmail root Mail은 무개입 `CREATE_TASK`로 `TASK-010`·`TODO`·기한 `2026-09-16`을 저장했고 35/35 중복 재조회 방지를 확인했습니다. Read-only 동기화와 승인 발송의 OAuth Token은 서로 분리합니다.

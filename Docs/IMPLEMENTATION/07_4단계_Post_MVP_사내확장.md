@@ -4,7 +4,10 @@
 
 3단계에서 검증한 M-01~M-05 Agent Core를 유지하면서 먼저 테스트 Gmail 기반 실전 개인 사용성과 Priority Rule을 검증하고, 이후 입력, 자동 실행, Database, 배포, 인증·보안을 사내 운영환경으로 교체·확장한다.
 
-Post-MVP는 AI Master 최종 MVP의 필수 완료 조건이 아니다. 아래 기능은 현재 구현 완료로 간주하지 않는다.
+이 문서는 Core 이후 검토한 확장 항목의 이력과 현재 경계를 함께 기록한다. Priority Rule·운영 UI,
+테스트 Gmail 자동 동기화, Mail-to-Action Draft와 사용자 승인 발송은 구현·검증 후 최종 MVP에
+흡수했다. Outlook·사내 인증·서버·운영 DB·사내 문서 RAG 등 아직 구현하지 않은 항목만
+Post-MVP로 유지하며, 이들은 AI Master 최종 MVP의 필수 완료 조건이 아니다.
 
 경량 Task Context Agentic RAG는 2026-09-01 멘토 피드백에 따라 Post-MVP가 아니라 최종 MVP
 잔여 범위로 이동했다. 이 문서의 RAG는 사내 정책·매뉴얼·첨부파일 지식검색과 Vector DB를 뜻한다.
@@ -35,7 +38,8 @@ Post-MVP는 AI Master 최종 MVP의 필수 완료 조건이 아니다. 아래 �
 - SQLite 교체는 M-04 저장 Interface 내부에서 수행한다.
 - 사내 UI·SSO는 M-05 영역에서 교체한다.
 - n8n은 Mail Polling, Schedule, Reminder 등 정형 자동화만 담당하며 Agent 의미 판단을 대체하지 않는다.
-- 운영 연동 전까지 실제 Mail 발송·삭제·이동은 하지 않는다.
+- 사용자 승인 없는 자동 발송과 Mail 삭제·이동은 하지 않는다. 실제 발송은 테스트 계정,
+  Allowlist, 원본 Thread 잠금과 명시적 사용자 승인 Guard를 통과한 경우에만 허용한다.
 
 ## 4. 실전 개인 사용 UI와 Priority Rule
 
