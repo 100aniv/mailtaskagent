@@ -4,12 +4,14 @@
 메일 기반 개인 업무관리 Agent다. 합성 Mail 기반 3단계 Core E2E를 완성하고 회사 LLM API
 Live로 상태 흐름과 세부 KPI를 검증했으며, 제한 Gmail 개인 파일럿과 사용자 승인 발송까지 확장한 상태다.
 
-> **2026-09-08 상태:** Core E2E에 SQLite 기반 경량 Task Context Agentic RAG, 최대 1회
+> **2026-09-13 최종 감사 상태:** Core E2E에 SQLite 기반 경량 Task Context Agentic RAG, 최대 1회
 > Query Rewrite·재판단, Agent Action Proposal, Python Safety Guard, 실행 결과 재조회와 안전한
 > Agent Trace를 결합했다. 이어서 필요한 회신 방식·사용자 입력·초안을 만드는
 > Mail-to-Action Draft와 테스트 계정 대상 Gmail 사용자 승인 발송을 추가했다. Read/Send OAuth
-> Token도 분리했고 명시적 상대 날짜 정규화를 보강했으며 전체 pytest `170 passed`, Task Context Agent 회사 LLM
+> Token도 분리했고 명시적 상대 날짜 정규화와 INBOUND/WAITING 의미 계약 재시도를 보강했으며 전체 pytest `179 passed`, Task Context Agent 회사 LLM
 > Live 합성 검증 `3/3`, Reply Planning Live `3/3`과 Draft 생성 `1/1`을 통과했다.
+> 최신 회사 LLM Core 평가는 15/15 Case·28/28 Action이고, 승인된 두 테스트 계정의 실제
+> Gmail 5-message Lifecycle에서 승인 발송·기한 단축 승인·자료 도착 재개·완료 승인·중복 방지를 확인했다.
 > Outlook·사내 인증·서버와 사내 문서 RAG는 그 이후 Post-MVP다.
 
 ## 현재 구현 범위
@@ -64,7 +66,7 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 제한 Gmail 개인 파�
   저장 DB 우선 화면 시작·삭제 Thread 장애 격리와 Gmail 실메일 20건 자동 평가를 포함한
   로컬 SQLite 무결성 오류 시 자동 처리 중지·복구 안내와 업무별 변경 이력 UI까지 포함한
   SQLite WAL·동시 동기화 단일 실행 잠금, Task Context RAG·ReAct·Agent Action Guard·Trace까지
-  Mail-to-Action Draft와 Gmail 사용자 승인 발송까지 포함한 전체 pytest 170건
+  Mail-to-Action Draft와 Gmail 사용자 승인 발송, 최종 Gmail 회귀 보완까지 포함한 전체 pytest 179건
 - SC-001·002·003 동일 Case의 사람 수동 정리시간과 Live Agent 시간을 비교하는 측정 UI
 - 기한 단축은 사용자 날짜 확인·수정 후 승인, 모호한 날짜·완료는 자동 반영 차단
 - Core와 분리된 제한 Gmail 읽기 Adapter 및 사용자 승인 발송 Adapter Contract와 합성 Payload 회귀

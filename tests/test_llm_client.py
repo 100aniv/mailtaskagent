@@ -120,6 +120,68 @@ def test_live_analyzer_retries_schema_null_reason_with_contract_reminder(tmp_pat
     ]
 
 
+def test_live_analyzer_retries_inbound_waiting_as_direction_intent_violation(tmp_path) -> None:
+    settings = Settings(
+        api_url="https://example.test",
+        api_key="test-key",
+        model="test-model",
+        api_version="test-version",
+        timeout_seconds=1,
+        use_mock=False,
+        database_path=tmp_path / "unused.db",
+        confidence_threshold=0.75,
+        schema_retries=1,
+    )
+    invalid_content = json.dumps(
+        {
+            "is_task_request": True,
+            "intent": "WAITING",
+            "task_title": "테스트 서버 점검 일정 회신",
+            "request_summary": "테스트 서버 점검 가능 일정을 회신한다.",
+            "requester": "requester@example.test",
+            "due_date": "2026-09-16",
+            "reply_required": True,
+            "reason": "일정 회신 요청",
+            "confidence": 0.95,
+        }
+    )
+    valid_content = json.dumps(
+        {
+            "is_task_request": True,
+            "intent": "NEW_TASK",
+            "task_title": "테스트 서버 점검 일정 회신",
+            "request_summary": "테스트 서버 점검 가능 일정을 회신한다.",
+            "requester": "requester@example.test",
+            "due_date": "2026-09-16",
+            "reply_required": True,
+            "reason": "수신한 메일의 명확한 신규 일정 회신 요청",
+            "confidence": 0.95,
+        }
+    )
+    contents = iter([invalid_content, valid_content])
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=next(contents)))]
+        )
+
+    analyzer = AzureMailAnalyzer(settings)
+    analyzer.client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    inbound_mail = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")[0]
+
+    result = analyzer.analyze(inbound_mail)
+
+    assert result.intent == MailIntent.NEW_TASK
+    assert len(calls) == 2
+    assert "WAITING은 상대의 자료나 답변을 요청한 OUTBOUND Mail에만" in calls[1][
+        "messages"
+    ][-1]["content"]
+
+
 def test_explicit_relative_weekday_is_normalized_but_approximate_date_is_not() -> None:
     mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
 

@@ -1,0 +1,108 @@
+{
+  "generated_at": "2026-09-13T21:23:00+09:00",
+  "mode": "GMAIL_LIVE_WITH_COMPANY_LLM",
+  "scenario": "MTA-FINAL-0913 synthetic test-server scheduling thread",
+  "accounts": {
+    "requester": "approved_test_sender",
+    "agent_owner": "approved_test_receiver"
+  },
+  "privacy": {
+    "real_company_mail_used": false,
+    "raw_mail_body_stored_in_evidence": false,
+    "credentials_or_tokens_stored": false
+  },
+  "observed_flow": [
+    {
+      "order": 1,
+      "mail_id": "GMAIL-1a09aa6b60e7991f",
+      "direction": "INBOUND",
+      "observed_action": "ASK_USER",
+      "final_action": "CREATE_TASK",
+      "task_id": "TASK-009",
+      "result": "PASS_WITH_DISCOVERED_ANALYZER_DEFECT",
+      "note": "The pre-fix analyzer used WAITING for an inbound reply request. Python Guard correctly failed closed and the user created the Task. A direction-intent semantic retry guard was then added."
+    },
+    {
+      "order": 2,
+      "mail_id": "GMAIL-1a09ab080af9f1f5",
+      "direction": "OUTBOUND",
+      "observed_action": "SET_WAITING",
+      "final_action": "SET_WAITING",
+      "task_id": "TASK-009",
+      "result": "PASS",
+      "note": "Company LLM selected DATE_REPLY with self-reported confidence 0.95. A user-supplied date was inserted into the draft, the allowlisted recipient and source thread were locked, and user-approved Gmail send changed the Task to WAITING_REPLY."
+    },
+    {
+      "order": 3,
+      "mail_id": "GMAIL-1a09ab191ea2fd9b",
+      "direction": "INBOUND",
+      "observed_action": "ASK_USER",
+      "final_action": "UPDATE_TASK",
+      "task_id": "TASK-009",
+      "result": "PASS",
+      "note": "The same Gmail thread was matched deterministically. A due-date shortening from 2026-09-16 to 2026-09-15 was blocked until explicit user approval."
+    },
+    {
+      "order": 4,
+      "mail_id": "GMAIL-1a09ab334131e8b0",
+      "direction": "INBOUND",
+      "observed_action": "UPDATE_TASK",
+      "final_action": "UPDATE_TASK",
+      "task_id": "TASK-009",
+      "result": "PASS",
+      "note": "Requested information arrived in the same thread and the Task moved from WAITING_REPLY to IN_PROGRESS."
+    },
+    {
+      "order": 5,
+      "mail_id": "GMAIL-1a09ab446316c5d9",
+      "direction": "INBOUND",
+      "observed_action": "MARK_COMPLETED",
+      "final_action": "MARK_COMPLETED",
+      "task_id": "TASK-009",
+      "result": "PASS",
+      "note": "Completion intent had self-reported confidence 0.95 but still required user approval. The final Task status became COMPLETED."
+    }
+  ],
+  "final_task_observation": {
+    "task_id": "TASK-009",
+    "status": "COMPLETED",
+    "due_date": "2026-09-15",
+    "waiting_since": null,
+    "linked_mail_count": 5,
+    "history_count": 7
+  },
+  "duplicate_recheck": {
+    "sync_status": "SUCCESS",
+    "fetched_count": 33,
+    "pending_count": 0,
+    "duplicate_count": 33,
+    "task_count_before": 9,
+    "task_count_after": 9,
+    "task_history_count_before": 7,
+    "task_history_count_after": 7,
+    "result": "PASS"
+  },
+  "post_fix_live_semantic_check": {
+    "input_direction": "INBOUND",
+    "input_kind": "new scheduling reply request equivalent to the Gmail root mail",
+    "intent": "NEW_TASK",
+    "is_task_request": true,
+    "due_date": "2026-09-16",
+    "reply_required": true,
+    "self_reported_confidence": 1.0,
+    "result": "PASS"
+  },
+  "related_verification": {
+    "pytest": "179 passed",
+    "company_llm_cases": "15/15",
+    "company_llm_action_steps": "28/28",
+    "database_integrity": "ok",
+    "gmail_read_oauth": "ready",
+    "gmail_send_oauth": "ready"
+  },
+  "limits": [
+    "The first Gmail root mail was processed before the direction-intent retry fix and therefore required user review; automatic CREATE_TASK after the fix was verified with an equivalent isolated company-LLM input, not by sending a second root Gmail mail.",
+    "This evidence proves the scoped synthetic Gmail workflow on the current local environment; it does not prove production Outlook deployment or error-free behavior for every possible mail.",
+    "LLM confidence is self-reported and is not an accuracy probability."
+  ]
+}

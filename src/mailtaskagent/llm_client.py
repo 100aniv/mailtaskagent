@@ -8,7 +8,7 @@ from typing import Protocol
 from openai import AzureOpenAI
 
 from mailtaskagent.config import Settings
-from mailtaskagent.models import MailAnalysis, MailInput, MailIntent
+from mailtaskagent.models import MailAnalysis, MailDirection, MailInput, MailIntent
 
 
 SYSTEM_PROMPT = """당신은 메일 기반 업무요청 관리 Agent의 Mail Analyzer다.
@@ -99,6 +99,16 @@ def _normalize_explicit_due_date(mail: MailInput, analysis: MailAnalysis) -> Mai
     })
 
 
+def _validate_direction_intent(mail: MailInput, analysis: MailAnalysis) -> None:
+    """Reject direction/intent combinations that violate the analyzer contract."""
+
+    if mail.direction == MailDirection.INBOUND and analysis.intent == MailIntent.WAITING:
+        raise ValueError(
+            "INBOUND mail cannot use WAITING; use an intent that describes the "
+            "received request or update"
+        )
+
+
 class AzureMailAnalyzer:
     def __init__(self, settings: Settings):
         if not settings.api_key:
@@ -136,7 +146,9 @@ class AzureMailAnalyzer:
                         "content": (
                             "이전 응답이 JSON/Pydantic Schema 검증에 실패했다. "
                             "모든 필수 키와 타입을 다시 확인하고 reason을 비어 있지 않은 "
-                            "문자열로 반환하라. JSON object만 응답한다."
+                            "문자열로 반환하라. direction과 intent 규칙도 다시 확인하라. "
+                            "특히 WAITING은 상대의 자료나 답변을 요청한 OUTBOUND Mail에만 "
+                            "사용한다. JSON object만 응답한다."
                         ),
                     }
                 )
@@ -151,6 +163,7 @@ class AzureMailAnalyzer:
                 if not content:
                     raise ValueError("LLM returned an empty response")
                 analysis = MailAnalysis.model_validate(_extract_json(content))
+                _validate_direction_intent(mail, analysis)
                 return _normalize_explicit_due_date(mail, analysis)
             except (json.JSONDecodeError, ValueError) as exc:
                 last_schema_error = exc
