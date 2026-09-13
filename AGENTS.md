@@ -49,7 +49,7 @@ Mail -> Mail Analyzer -> Task Matcher -> Action Decision
 
 ## 변경 관리
 
-1. 범위 변경은 `Docs/IMPLEMENTATION/01_SCOPE.md`에 먼저 반영한다.
-2. State, Action, Node 변경은 `02_NODE_FLOW.md`, `04_FINAL_E2E_SCOPE.md`, `05_TEST_CASES.md`를 함께 갱신한다.
+1. 범위 변경은 `Docs/IMPLEMENTATION/01_전체_구현범위_및_원칙.md`에 먼저 반영한다.
+2. State, Action, Node 변경은 `02_Node_및_모듈_흐름설계.md`, `05_3단계_최종_E2E_구현범위.md`, `06_테스트_전략_및_케이스.md`를 함께 갱신한다.
 3. PoC와 최종 E2E를 같은 의미로 사용하지 않는다.
 4. 기능은 작은 Task로 나누고, 각 단계의 실행·테스트 성공 후 다음 단계로 이동한다.

@@ -10,8 +10,8 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 제한 Gmail 개인 파�
 > Mail-to-Action Draft와 테스트 계정 대상 Gmail 사용자 승인 발송을 추가했다. Read/Send OAuth
 > Token도 분리했고 명시적 상대 날짜 정규화와 INBOUND/WAITING 의미 계약 재시도를 보강했으며 전체 pytest `179 passed`, Task Context Agent 회사 LLM
 > Live 합성 검증 `3/3`, Reply Planning Live `3/3`과 Draft 생성 `1/1`을 통과했다.
-> 최신 회사 LLM Core 평가는 15/15 Case·28/28 Action이고, 승인된 두 테스트 계정의 실제
-> Gmail 5-message Lifecycle에서 승인 발송·기한 단축 승인·자료 도착 재개·완료 승인·중복 방지를 확인했다.
+> 최신 회사 LLM Core 평가는 15/15 Case·28/28 Action·60.852초다. 승인된 두 테스트 계정의 실제
+> Gmail 5-message Lifecycle에서는 첫 Mail이 안전하게 `ASK_USER`로 이관된 뒤 승인 발송·기한 단축 승인·자료 도착 재개·완료 승인·33/33 중복 방지를 확인했다. 별도의 새 Gmail root Mail은 사용자 개입 없이 `CREATE_TASK`로 `TASK-010`·`TODO`·기한 `2026-09-16`을 생성했고 재조회 35/35 중복 방지를 확인해 앞선 첫 Mail의 한계를 해소했다.
 > Outlook·사내 인증·서버와 사내 문서 RAG는 그 이후 Post-MVP다.
 
 ## 현재 구현 범위
@@ -94,7 +94,7 @@ Model: gpt-4.1-mini
 
 ## 처음 설치
 
-Python 3.12.13이 설치된 Windows PowerShell에서 실행한다.
+최종 검증 환경과 같은 Python 3.12.14가 설치된 Windows PowerShell에서 실행한다.
 
 ```powershell
 py -3.12 -m venv .venv
@@ -168,8 +168,9 @@ Windows 예약 작업은 `.\scripts\manage_scheduler.ps1`로 관리한다. 현�
 .venv\Scripts\python.exe -m mailtaskagent.evaluation_cli --mode LIVE
 ```
 
-최신 Live 증적은 `evidence/final_live_evaluation_2026-09-08_after_date_guard.json`이며, 같은 날
-발견한 14/15 결과도 `evidence/final_live_evaluation_2026-09-08.json`에 보존한다. Prompt 보강 전 결과는
+최신 Live 증적은 `evidence/final_audit_live_2026-09-13_after_inbound_intent_guard.json`이며,
+2026-09-08의 최종 MVP Live 기준선은 `evidence/final_live_evaluation_2026-09-08_after_date_guard.json`에
+보존한다. 같은 날 발견한 14/15 결과도 `evidence/final_live_evaluation_2026-09-08.json`에 보존한다. Prompt 보강 전 결과는
 `evidence/live_evaluation_2026-08-27_before_prompt.json`에 분리해 보존한다. 시간 기대효과는
 [Microsoft Work Trend Index](https://www.microsoft.com/en-us/worklab/work-trend-index/will-ai-fix-work)와
 [McKinsey Global Institute](https://www.mckinsey.com/mgi/media-center/social-media-productivity-payoff)의
@@ -243,7 +244,12 @@ Plain Text 답장 1건을 보낸다. 발송 성공 뒤 `SET_WAITING`과 History�
 실행과 Outlook/Microsoft Graph는 후속 사내 적용 단계다.
 실제 Gmail Live E2E 증적은 `evidence/gmail_live_e2e_2026-08-27.json`에 저장한다.
 사용자 승인 발송 증적은 `evidence/gmail_approved_send_evaluation_2026-09-06.json`에 저장한다.
-코드·Live·Gmail·DB·문서 최종 Gate는 `evidence/final_mvp_acceptance_2026-09-08.json`에 통합했다.
+최신 제출 Gate는 `evidence/final_submission_audit_2026-09-13_final.json`이며,
+Gmail E2E 직후 감사 결과는 `evidence/final_submission_audit_2026-09-13_after_gmail_e2e.json`에 보존한다.
+2026-09-08 코드·Live·Gmail·DB·문서 통합 Gate는 `evidence/final_mvp_acceptance_2026-09-08.json`에
+과거 최종 MVP 기준선으로 보존한다.
+2026-09-13 수정 후 새 Gmail Root Mail의 무개입 `CREATE_TASK`와 35/35 중복 재조회 방지는
+`evidence/gmail_fresh_auto_create_2026-09-13.json`에 별도 증적으로 보존한다.
 공식 참고 문서는 [Gmail API Python Quickstart](https://developers.google.com/workspace/gmail/api/quickstart/python)와
 [messages.list](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list)다.
 

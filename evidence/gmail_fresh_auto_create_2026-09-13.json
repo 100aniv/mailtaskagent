@@ -1,0 +1,80 @@
+{
+  "generated_at": "2026-09-13T21:50:17+09:00",
+  "commit": "17d205a64252831fa85de0c1aa43f9a87ee4d6cd",
+  "mode": "GMAIL_LIVE_WITH_COMPANY_LLM",
+  "scenario": "fresh root Gmail automatic task creation after inbound intent guard",
+  "privacy": {
+    "accounts": "two user-approved test accounts only",
+    "real_company_mail_used": false,
+    "raw_mail_body_stored_in_evidence": false,
+    "credentials_or_tokens_stored": false
+  },
+  "input": {
+    "mail_id": "GMAIL-1a09acdbd95521db",
+    "conversation_id": "GMAIL-THREAD-1a09acdbd95521db",
+    "direction": "INBOUND",
+    "subject_marker": "MTA-FINAL-0913-AUTO2",
+    "requested_due_date": "2026-09-16"
+  },
+  "first_sync": {
+    "run_id": "SYNC-3A11A9FC400B",
+    "status": "SUCCESS",
+    "fetched_count": 35,
+    "pending_count": 1,
+    "succeeded_count": 1,
+    "failed_count": 0,
+    "duplicate_count": 34
+  },
+  "llm_analysis": {
+    "provider": "company LLM API",
+    "model": "gpt-4.1-mini",
+    "intent": "NEW_TASK",
+    "is_task_request": true,
+    "due_date": "2026-09-16",
+    "reply_required": true,
+    "self_reported_confidence": 1.0
+  },
+  "workflow_result": {
+    "action": "CREATE_TASK",
+    "task_id": "TASK-010",
+    "task_status": "TODO",
+    "task_due_date": "2026-09-16",
+    "history_action": "CREATE_TASK",
+    "history_saved": true,
+    "user_review_required": false,
+    "execution_observation_matches_expected": true,
+    "processing_completed": true,
+    "result": "PASS"
+  },
+  "duplicate_recheck": {
+    "run_id": "SYNC-B89687309F1F",
+    "status": "SUCCESS",
+    "fetched_count": 35,
+    "pending_count": 0,
+    "succeeded_count": 0,
+    "failed_count": 0,
+    "duplicate_count": 35,
+    "task_id_after": "TASK-010",
+    "task_history_count_after": 1,
+    "result": "PASS"
+  },
+  "verified_trace": [
+    "MAIL_INPUT",
+    "SCHEMA_VALIDATION",
+    "DUPLICATE_CHECK",
+    "M-01 LLM_ANALYSIS",
+    "M-02 TASK_MATCHING",
+    "M-03 ACTION_DECISION",
+    "ACTION_VALIDATION",
+    "M-04 DB_TRANSACTION",
+    "M-04 EXECUTION_OBSERVATION",
+    "PROCESS_COMPLETED",
+    "FINAL_OUTPUT"
+  ],
+  "interpretation": "A newly received Gmail root message was automatically analyzed and materialized as a Task without user intervention. This closes the earlier evidence limitation where the pre-fix root message had required ASK_USER.",
+  "limits": [
+    "This evidence covers one scoped synthetic Gmail root message on the current local environment.",
+    "LLM confidence is self-reported and is not a calibrated accuracy probability.",
+    "The result does not prove Outlook deployment or error-free behavior for every possible mail."
+  ]
+}

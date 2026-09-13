@@ -1,0 +1,14 @@
+---
+description: Route work by task difficulty and report only actual model or reasoning changes
+alwaysApply: true
+---
+
+# Model and Effort Routing
+
+- Use a low-cost model with low reasoning for simple lookups and repetitive verification.
+- Use `gpt-5.6-sol` with `medium` reasoning for ordinary implementation work.
+- Use `gpt-5.6-sol` with `high` reasoning, or `gpt-6-astra` with at least `medium` reasoning, for structural decisions, complex debugging, important design changes, and final audits.
+- Return to the ordinary implementation default after an elevated task is complete.
+- Say that the model or effort changed only when a task or subagent actually runs with that exact model and effort. Never describe an internal increase in attention as a model change.
+- At every actual escalation or demotion, report one line in this exact format: `실제 실행 모델 / 추론 수준 / 승격 이유: <model> / <effort> / <reason>`.
+- Model routing never overrides project scope, safety rules, source-of-truth documents, or test and evidence gates.
