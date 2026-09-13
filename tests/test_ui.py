@@ -14,6 +14,15 @@ from mailtaskagent.workflow import MailTaskWorkflow, load_mails
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_pending_completion_history_is_not_shown_as_applied_or_deleted():
+    before = {"task_id": "TASK-001", "title": "업무", "status": "TODO"}
+    after = {"processing": "MARK_COMPLETED"}
+    assert ui_module._history_change_rows(before, after) == []
+    assert ui_module._user_decision_label(None, after) == "사용자 확인 요청 · 미반영 기록"
+    assert ui_module._user_decision_label(None, before) == "자동 반영"
+    assert ui_module._user_decision_label({"decision": "APPROVE_PROPOSAL"}, before) == "Agent 제안 승인"
+
+
 def test_history_change_rows_show_only_business_field_changes() -> None:
     rows = ui_module._history_change_rows(
         {
@@ -48,6 +57,24 @@ def test_agentic_trace_separates_agent_proposal_and_python_guard() -> None:
         "Agent Action Proposal"
     )
     assert ui_module._agentic_trace_phase("M-03 PYTHON_GUARD")[0] == "Python Guard"
+
+
+def test_health_bar_does_not_hide_source_auth_failure_with_zero_mail_failures() -> None:
+    class FakeStorage:
+        def get_operation_settings(self):
+            return {"gmail_auto_sync_enabled": True, "gmail_sync_interval_minutes": 1}
+
+        def list_sync_runs(self, **kwargs):
+            return [{"status": "FAILED", "failed_count": 0, "error_type": "RefreshError",
+                     "finished_at": "2026-09-13T08:00:00+00:00"}]
+
+    snapshot = ui_module._operation_health_snapshot(FakeStorage(), gmail_connected=True)
+    assert snapshot["gmail"] == "Gmail 재인증 필요"
+    assert snapshot["sync_failed"]
+    assert snapshot["tone"] == "danger"
+    assert "수집 실패" in snapshot["error_label"]
+    assert "0건" not in snapshot["error_label"]
+    assert snapshot["checked_label"] == "마지막 확인 시도"
 
 
 def test_task_history_rows_include_changes_reason_and_user_decision(tmp_path) -> None:
@@ -433,6 +460,41 @@ def test_task_detail_mail_flow_opens_one_mail_at_a_time(tmp_path, monkeypatch) -
     assert escape(last.body) not in switched
 
 
+def test_operational_task_edit_saves_nested_result_and_shows_success(tmp_path, monkeypatch) -> None:
+    """Regression: update_task_by_user returns after.title, not top-level title."""
+    database_path = tmp_path / "edit-success.db"
+    storage = SQLiteStorage(database_path)
+    storage.initialize()
+    task = storage.create_task_by_user(title="편집 회귀 검증", due_date="2026-09-17", importance=2)
+    monkeypatch.setenv("DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("COMPANY_LLM_USE_MOCK", "true")
+    monkeypatch.setenv("GMAIL_CREDENTIALS_PATH", str(tmp_path / "missing-credentials.json"))
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(tmp_path / "missing-token.json"))
+    def render_edit(path, task_id):
+        from pathlib import Path
+        import streamlit as st
+        from mailtaskagent.storage import SQLiteStorage
+        from mailtaskagent.ui import _render_task_edit_form
+        store = SQLiteStorage(Path(path))
+        message = st.session_state.pop("task_edit_flash", None)
+        if message:
+            st.success(message)
+        _render_task_edit_form(store, store.get_task(task_id), form_key="edit_regression")
+
+    app = AppTest.from_function(render_edit, args=(str(database_path), task["task_id"])).run(timeout=60)
+    next(field for field in app.text_input if field.label == "업무 제목").set_value("저장된 변경 제목")
+    next(field for field in app.selectbox if field.label == "상태").set_value("COMPLETED")
+    app = next(b for b in app.button if b.label == "변경 내용 저장").click().run(timeout=60)
+    assert not app.exception
+    assert any("저장된 변경 제목 변경을 저장했습니다." in item.value for item in app.success)
+    saved = storage.get_task(task["task_id"])
+    assert saved["title"] == "저장된 변경 제목"
+    assert saved["status"] == "COMPLETED"
+    history = ui_module._task_history_rows(storage, task["task_id"])
+    assert history[0]["사용자 결정"] == "사용자 직접 수정"
+    assert "저장된 변경 제목" in history[0]["변경 후"]
+
+
 def test_gmail_readonly_source_empty_state(tmp_path, monkeypatch) -> None:
     credentials_path = tmp_path / "gmail_credentials.json"
     token_path = tmp_path / "gmail_token.json"
@@ -451,7 +513,7 @@ def test_gmail_readonly_source_empty_state(tmp_path, monkeypatch) -> None:
 
     assert not app.exception
     empty_text = _rendered_text(app)
-    assert "Gmail 연결됨" in empty_text
+    assert "Gmail 연결 설정됨" in empty_text
     assert "현재 입력 Source에서 가져온 메일이 없습니다." in empty_text
 
 

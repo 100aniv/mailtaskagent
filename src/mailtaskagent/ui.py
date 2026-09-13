@@ -220,6 +220,9 @@ def _display_value(value, field: str | None = None) -> str:
 def _history_change_rows(before: dict | None, after: dict | None) -> list[dict]:
     before = before or {}
     after = after or {}
+    # Processing-only audit records are not an empty/deleted Task snapshot.
+    if "processing" in after and "task_id" not in after:
+        return []
     rows = []
     for field, label in HISTORY_FIELD_LABELS.items():
         before_value = before.get(field)
@@ -236,8 +239,12 @@ def _history_change_rows(before: dict | None, after: dict | None) -> list[dict]:
     return rows
 
 
-def _user_decision_label(user_decision: dict | None) -> str:
+def _user_decision_label(user_decision: dict | None, after: dict | None = None) -> str:
     if not user_decision:
+        if after and "processing" in after:
+            if after["processing"] in {"MARK_COMPLETED", "ASK_USER", "UPDATE_TASK"}:
+                return "사용자 확인 요청 · 미반영 기록"
+            return "처리 기록 · 업무 필드 미변경"
         return "자동 반영"
     decision = user_decision.get("decision")
     return USER_DECISION_LABELS.get(decision, decision or "사용자 확인")
@@ -271,7 +278,7 @@ def _task_history_rows(storage, task_id: str, *, limit: int = 20) -> list[dict]:
                 "변경 전": before_summary or "-",
                 "변경 후": after_summary or "메일 연결·처리 기록",
                 "판단 근거": history["reason"],
-                "사용자 결정": _user_decision_label(user_decision),
+                "사용자 결정": _user_decision_label(user_decision, after),
             }
         )
     return rows
@@ -727,6 +734,22 @@ def _operation_health_snapshot(storage, *, gmail_connected: bool) -> dict:
     sync_runs = storage.list_sync_runs(source="GMAIL", limit=1)
     latest = sync_runs[0] if sync_runs else None
     enabled = bool(operation_settings["gmail_auto_sync_enabled"])
+    sync_failed = bool(latest and latest["status"] in {"FAILED", "PARTIAL"})
+    auth_failed = bool(sync_failed and latest.get("error_type") == "RefreshError")
+    failed_count = int(latest["failed_count"]) if latest else 0
+    if auth_failed:
+        gmail_label = "Gmail 재인증 필요"
+    elif sync_failed:
+        gmail_label = "Gmail 동기화 실패" if latest["status"] == "FAILED" else "Gmail 일부 처리 실패"
+    else:
+        gmail_label = "Gmail 연결 설정됨" if gmail_connected else "Gmail 연결 필요"
+    # A source/API failure occurs before individual mails can be counted.
+    # Do not report that as zero errors or as a successful mailbox check.
+    error_label = (
+        "최근 수집 실패 · 운영 상태 확인"
+        if sync_failed and failed_count == 0
+        else f"최근 처리 오류 {failed_count}건"
+    )
     if latest and latest["status"] in {"FAILED", "PARTIAL"}:
         tone = "danger"
     elif not enabled or not gmail_connected:
@@ -745,9 +768,12 @@ def _operation_health_snapshot(storage, *, gmail_connected: bool) -> dict:
             if enabled
             else "Agent 일시정지"
         ),
-        "gmail": "Gmail 연결됨" if gmail_connected else "Gmail 연결 필요",
+        "gmail": gmail_label,
         "last_checked": last_checked_text,
-        "failed_count": int(latest["failed_count"]) if latest else 0,
+        "failed_count": failed_count,
+        "sync_failed": sync_failed,
+        "error_label": error_label,
+        "checked_label": "마지막 확인 시도" if sync_failed else "마지막 확인",
         "latest": latest,
     }
 
@@ -759,11 +785,11 @@ def _render_operation_status_bar(storage, *, gmail_connected: bool) -> None:
     items = [
         (tone, health["agent"], True),
         ("neutral", health["gmail"], False),
-        ("neutral", f"마지막 확인 {health['last_checked']}", False),
+        ("neutral", f"{health['checked_label']} {health['last_checked']}", False),
         (
-            "danger" if health["failed_count"] else "neutral",
-            f"최근 오류 {health['failed_count']}건",
-            bool(health["failed_count"]),
+            "danger" if health["sync_failed"] else "neutral",
+            health["error_label"],
+            health["sync_failed"],
         ),
     ]
     cells = []
@@ -978,7 +1004,10 @@ def _render_product_dashboard(
                             else "메일 처리"
                         ),
                         ui.badge(
-                            "사용자 확인" if history["user_decision"] else "자동 반영",
+                            _user_decision_label(
+                                _parse_json(history["user_decision"]),
+                                _parse_json(history["after_json"]),
+                            ),
                             "review" if history["user_decision"] else "neutral",
                         ),
                     )
@@ -2331,7 +2360,7 @@ def _render_tasks_and_histories(storage, settings=None, *, show_history: bool = 
                 ui.facts(
                     [
                         ("Action", _action_badge(selected_history["action"])),
-                        ("처리 방식", ui.strong(_user_decision_label(user_decision))),
+                        ("처리 방식", ui.strong(_user_decision_label(user_decision, after))),
                         (
                             "신뢰도",
                             ui.num(f"{selected_history['confidence']:.2f}")
@@ -3893,10 +3922,16 @@ def _render_operations_monitoring(storage, settings, mails, selected_source: str
                 + _fact("중복 제외", f"{latest['duplicate_count']}건")
                 + _fact("재시도", f"{latest['retry_count']}회")
                 + "</div>",
-                tone="danger" if failed else "accent",
+                tone="danger" if latest["status"] in {"FAILED", "PARTIAL"} else "accent",
             ),
             unsafe_allow_html=True,
         )
+        if latest["status"] == "FAILED" and not failed:
+            st.warning(
+                "메일 수집 단계에서 실패했습니다. 처리 실패 0건은 정상 수집을 의미하지 않습니다. "
+                + ("Gmail 읽기 권한을 다시 인증해 주세요." if latest.get("error_type") == "RefreshError"
+                   else "연결 상태와 시스템 로그를 확인해 주세요.")
+            )
 
     if sync_runs:
         ui.section("Gmail 자동 실행 기록", aside=f"최근 {len(sync_runs)}회")

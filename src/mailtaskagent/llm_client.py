@@ -87,7 +87,16 @@ def _normalize_explicit_due_date(mail: MailInput, analysis: MailAnalysis) -> Mai
     inferred = _infer_explicit_relative_weekday_due_date(mail)
     if inferred is None:
         return analysis
-    return analysis.model_copy(update={"due_date": inferred})
+    return analysis.model_copy(update={
+        "due_date": inferred,
+        "reason": (
+            f"LLM 원래 판단: {analysis.reason}\n"
+            "Python 날짜 정규화: 원문에 명시된 상대 주·요일을 "
+            f"메일 발생일({mail.occurred_at.date().isoformat()}) 기준으로 계산하여 "
+            f"비어 있던 기한을 {inferred.isoformat()}로 보완했습니다. "
+            "최종 반영 여부는 기존 안전성 검증과 사용자 승인 정책을 따릅니다."
+        ),
+    })
 
 
 class AzureMailAnalyzer:

@@ -5,6 +5,8 @@ from mailtaskagent.config import PROJECT_ROOT, Settings
 from mailtaskagent.llm_client import (
     AzureMailAnalyzer,
     _infer_explicit_relative_weekday_due_date,
+    _normalize_explicit_due_date,
+    MockMailAnalyzer,
 )
 from mailtaskagent.models import MailIntent
 from mailtaskagent.workflow import load_mails
@@ -124,3 +126,21 @@ def test_explicit_relative_weekday_is_normalized_but_approximate_date_is_not() -
     assert _infer_explicit_relative_weekday_due_date(mails[0]).isoformat() == "2026-08-21"
     assert _infer_explicit_relative_weekday_due_date(mails[1]).isoformat() == "2026-08-24"
     assert _infer_explicit_relative_weekday_due_date(mails[14]) is None
+
+
+def test_date_normalization_explains_python_correction_without_rewriting_llm_reason():
+    mails = load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
+    mail = mails[1]
+    original = MockMailAnalyzer().analyze(mail).model_copy(update={
+        "due_date": None, "reason": "상대 날짜이므로 기한을 null로 반환함",
+    })
+    result = _normalize_explicit_due_date(mail, original)
+    assert result.due_date.isoformat() == "2026-08-24"
+    assert f"LLM 원래 판단: {original.reason}" in result.reason
+    assert "Python 날짜 정규화" in result.reason
+    assert "2026-08-24" in result.reason
+    assert result.confidence == original.confidence
+    assert result.intent == original.intent
+    assert original.due_date is None
+    assert _normalize_explicit_due_date(mail, result) is result
+    assert _normalize_explicit_due_date(mails[14], original) is original

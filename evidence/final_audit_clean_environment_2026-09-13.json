@@ -1,0 +1,22 @@
+{
+  "recorded_at": "2026-09-13T11:52:31Z",
+  "baseline_commit": "8ab54d56429fa5cdb6981c0fcf36f23d7c8dd57a",
+  "branch": "codex/final-submission-audit-20260913",
+  "uncommitted_changes_included": true,
+  "method": "Fresh venv without system site packages, editable install from current workspace",
+  "install_command": "python -m pip install -r requirements-gmail.txt",
+  "install_exit_code": 0,
+  "pip_check": "No broken requirements found.",
+  "test_command": "python -X utf8 -m pytest -q -p no:cacheprovider",
+  "pytest": {"exit_code": 0, "passed": 178, "duration_seconds": 56.89},
+  "versions": {
+    "python": "3.12.14", "streamlit": "1.63.0", "pydantic": "2.13.5",
+    "openai": "1.109.1", "pytest": "8.4.2", "google-api-python-client": "2.200.0"
+  },
+  "limits": [
+    "Fresh dependencies, but same machine and current workspace source",
+    "Not an extracted submission archive or independent machine reproduction",
+    "No new Gmail messages sent by this test run",
+    "Browser visual verification under Streamlit 1.63.0 remains separate"
+  ]
+}

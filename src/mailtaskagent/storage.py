@@ -377,6 +377,28 @@ class SQLiteStorage:
             result.append(item)
         return result
 
+    def list_task_mails(self, task_id: str, *, limit: int = 100) -> list[dict]:
+        """Only explicitly linked mails, including those linked from other threads."""
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT m.mail_id, m.conversation_id, m.direction, m.sender,
+                       m.recipients_json, m.occurred_at, m.subject, m.body, m.processed_at
+                FROM mails AS m
+                JOIN mail_task_links AS l ON l.mail_id = m.mail_id
+                WHERE l.task_id = ?
+                ORDER BY m.occurred_at DESC, m.mail_id DESC
+                LIMIT ?
+                """,
+                (task_id, limit),
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["recipients"] = json.loads(item.pop("recipients_json"))
+            result.append(item)
+        return result
+
     def list_mails(self, *, limit: int | None = None) -> list[dict]:
         query = """
             SELECT mail_id, conversation_id, direction, sender, recipients_json,
@@ -1966,7 +1988,15 @@ class SQLiteStorage:
                 before = self._fetch_task(connection, send["task_id"])
                 if before is None:
                     raise ValueError(f"Task not found: {send['task_id']}")
-                if outbound_mail.conversation_id != before["conversation_id"]:
+                source = connection.execute(
+                    """SELECT m.conversation_id FROM mails m
+                       JOIN mail_task_links l ON l.mail_id = m.mail_id
+                       WHERE m.mail_id = ? AND l.task_id = ?""",
+                    (send["source_mail_id"], send["task_id"]),
+                ).fetchone()
+                expected_thread = f"GMAIL-THREAD-{send['gmail_thread_id']}"
+                if (source is None or source["conversation_id"] != expected_thread
+                        or outbound_mail.conversation_id != expected_thread):
                     raise ValueError("Sent Gmail thread does not match the Task")
                 validate_status_transition(
                     before["status"], TaskStatus.WAITING_REPLY

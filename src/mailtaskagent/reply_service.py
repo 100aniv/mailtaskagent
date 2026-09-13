@@ -81,9 +81,7 @@ class MailToActionDraftService:
         context = self.storage.get_task_context(task_id, history_limit=5)
         if context is None:
             raise ValueError(f"Task not found: {task_id}")
-        rows = self.storage.list_thread_mails(
-            context["task"]["conversation_id"], limit=20
-        )
+        rows = self.storage.list_task_mails(task_id, limit=100)
         if source_mail_id:
             row = next((item for item in rows if item["mail_id"] == source_mail_id), None)
         else:

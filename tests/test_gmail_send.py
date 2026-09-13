@@ -245,6 +245,62 @@ def test_approved_send_requires_explicit_confirmation(tmp_path) -> None:
     assert storage.get_reply_send(draft["reply_id"]) is None
 
 
+def test_cross_thread_linked_mail_is_used_for_reply_and_send(tmp_path):
+    from mailtaskagent.reply_service import MailToActionDraftService
+
+    storage, mail, task, _, settings = _draft_fixture(tmp_path)
+    other = mail.model_copy(update={
+        "mail_id": "GMAIL-source-2", "conversation_id": "GMAIL-THREAD-thread-2",
+        "received_at": mail.received_at.replace(day=7), "subject": "후속 일정 문의",
+    })
+    analysis = MailAnalysis(is_task_request=True, intent=MailIntent.TASK_UPDATE,
+                            reason="연결된 후속 업무", confidence=0.95)
+    storage.apply("CROSS-THREAD", other, analysis, ActionProposal(
+        action=AgentAction.LINK_TO_TASK, target_task_id=task["task_id"],
+        reason="동일 업무 연결", confidence=0.95,
+    ), [])
+    draft_service = MailToActionDraftService(storage, None)
+    _, source = draft_service._task_context_and_mail(task["task_id"])
+    assert source.mail_id == other.mail_id
+    draft = storage.create_reply_plan(
+        task_id=task["task_id"], source_mail_id=other.mail_id,
+        reply_action="SIMPLE_ACK", question=None, draft_body="확인했습니다.",
+        reason="후속 문의 확인", confidence=0.95,
+    )
+    sender = _FakeSender()
+    service = GmailApprovedSendService(storage, sender, settings)
+    preview = service.preview(draft["reply_id"])
+    assert preview["thread_id"] == "thread-2"
+    assert preview["source_message_id"] == "source-2"
+    assert preview["subject"] == "Re: 후속 일정 문의"
+    service.send(draft["reply_id"], user_confirmed=True)
+    assert sender.calls[0]["thread_id"] == "thread-2"
+
+
+def test_unlinked_mail_cannot_be_used_for_approved_reply(tmp_path):
+    from mailtaskagent.reply_service import MailToActionDraftService
+
+    storage, mail, task, _, settings = _draft_fixture(tmp_path)
+    unrelated = mail.model_copy(update={"mail_id": "GMAIL-unrelated"})
+    storage.apply("UNRELATED", unrelated,
+        MailAnalysis(is_task_request=False, intent=MailIntent.NON_TASK,
+                     reason="업무 외", confidence=0.99),
+        ActionProposal(action=AgentAction.IGNORE, reason="업무 외", confidence=0.99), [])
+    with pytest.raises(ValueError, match="inbound mail"):
+        MailToActionDraftService(storage, None)._task_context_and_mail(
+            task["task_id"], unrelated.mail_id)
+    draft = storage.create_reply_plan(
+        task_id=task["task_id"], source_mail_id=unrelated.mail_id,
+        reply_action="SIMPLE_ACK", question=None, draft_body="확인했습니다.",
+        reason="잘못 연결된 초안 방어", confidence=0.95,
+    )
+    sender = _FakeSender()
+    with pytest.raises(ValueError, match="원본 Gmail"):
+        GmailApprovedSendService(storage, sender, settings).send(
+            draft["reply_id"], user_confirmed=True)
+    assert sender.calls == []
+
+
 def test_approved_send_requires_allowlisted_original_sender(tmp_path) -> None:
     storage, _, _, draft, _ = _draft_fixture(tmp_path)
     sender = _FakeSender()
@@ -341,3 +397,22 @@ def test_terminal_task_is_blocked_before_gmail_api(tmp_path) -> None:
         )
 
     assert sender.calls == []
+
+
+def test_wrong_provider_thread_is_not_recorded_as_success(tmp_path):
+    storage, _, task, draft, settings = _draft_fixture(tmp_path)
+
+    class WrongThreadSender:
+        def send_reply(self, **kwargs):
+            return GmailSendResult(message_id="wrong-thread-message",
+                                   thread_id="unrelated-thread", sender="worker@example.test")
+
+    before = storage.get_task(task["task_id"])
+    with pytest.raises(ValueError, match="로컬 반영에 실패"):
+        GmailApprovedSendService(storage, WrongThreadSender(), settings).send(
+            draft["reply_id"], user_confirmed=True)
+    assert storage.get_task(task["task_id"]) == before
+    assert storage.get_processing_result("GMAIL-wrong-thread-message") is None
+    assert storage.get_reply_send(draft["reply_id"])["status"] != "SENT"
+    with pytest.raises(ValueError, match="이미 발송을 시도"):
+        GmailApprovedSendService(storage, WrongThreadSender(), settings).preview(draft["reply_id"])

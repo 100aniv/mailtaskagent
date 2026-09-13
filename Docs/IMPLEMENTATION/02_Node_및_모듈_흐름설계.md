@@ -12,7 +12,9 @@ START
      -> low confidence/ambiguous: rewrite query and retrieve exactly once
      -> Observe Retry Result: 재검색 후보로 다시 판단
      -> still uncertain/error: ASK_USER fail-closed
-  -> Act: M-03 Python policy decides exactly one final Action
+  -> Proposal: STRUCTURED_RAG에서는 Task Context Agent가 Action 선택·제안
+     -> Python Materializer가 실행 Payload 구성, Safety Guard가 승인 또는 ASK_USER 이관
+     -> THREAD_EXACT/명확한 신규·비업무/RAG 비활성은 기존 decide_action 경로 유지
   -> Guard: Action Validation
      -> IGNORE: M-04 처리 이력 -> M-05 결과
      -> ASK_USER/중요 변경: M-05 사용자 확인
@@ -85,6 +87,11 @@ Prompt Injection과 오탐 위험 때문에 자동 제외 조건으로 사용하
 - `analyze_mail(mail)` -> `MailAnalysis`
 - LLM Client는 URL, Key, Model, Timeout을 환경 변수로 받는다.
 
+위 분석/중복 확인은 개념적 함수 계약이다. 실제 진입점은 `MailAnalyzer.analyze(mail)`과
+`SQLiteStorage.is_processed(mail_id)`다. 동일 Thread라도 새 Mail의 M-01 의미 분석은 수행한다.
+`THREAD_EXACT`에서 생략하는 것은 추가 Task Context Agent/RAG 판단이며, 모든 LLM 호출이 아니다.
+중복 Mail과 명시적 사용자 제외 Rule 일치는 별도로 M-01 LLM 호출을 생략할 수 있다.
+
 ## 4. M-02 Task Context Matcher
 
 ### 검색 우선순위
@@ -106,7 +113,7 @@ Metadata로 관계가 명확하면 Rule 결과를 우선한다. 현재 기준선
 
 ### 주요 함수 계약
 
-- `search_candidate_tasks(conversation_id, subject, sender, request_summary, open_only, limit)`
+- `search_candidate_tasks(conversation_id, query_text, *, include_related, limit=5)`
 - `get_task_context(task_id, history_limit)`
 - 구현 완료: `retrieve_task_contexts(query, requester, top_k, conversation_id, mail_limit, history_limit, body_limit)`
 
@@ -118,8 +125,9 @@ Metadata로 관계가 명확하면 Rule 결과를 우선한다. 현재 기준선
 
 후보별 `task_id`, 상태, Match 근거, Match 점수를 반환한다. 동일 `conversation_id`는
 점수 1.0과 명시적인 근거를 부여하고, 그 외 후보는 제목·요청자·요청 요약에서 일치한
-Token 비율과 실제 일치 항목을 함께 표시한다. 후보가 복수이거나 근거가 부족하면
-M-03이 `ASK_USER`를 선택한다. 현재 점수는 설명 가능한 1차 Rule 점수이며 LLM 확률값이
+Token 비율과 실제 일치 항목을 함께 표시한다. 기존 결정론적 경로는 복수 후보를 자동 확정하지 않는다.
+STRUCTURED_RAG에서는 top-k 중 관계가 분명한 후보 하나를 Agent가 선택할 수 있고, 구분 근거가
+부족하거나 신뢰도가 낮으면 재검색 후 `ASK_USER`로 이관한다. 현재 점수는 설명 가능한 순위 점수이며 LLM 확률값이
 아니다.
 
 구현된 Retrieval은 최고 동점만이 아니라 top-k 순위 전체와 점수·근거를 반환한다.

@@ -64,7 +64,7 @@ class GmailApprovedSendService:
         if task is None:
             raise ValueError(f"Task not found: {draft['task_id']}")
         validate_status_transition(task["status"], TaskStatus.WAITING_REPLY)
-        mails = self.storage.list_thread_mails(task["conversation_id"], limit=100)
+        mails = self.storage.list_task_mails(task["task_id"], limit=100)
         source = next(
             (item for item in mails if item["mail_id"] == draft["source_mail_id"]),
             None,
