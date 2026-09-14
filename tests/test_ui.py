@@ -389,6 +389,13 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
     assert "즉시 처리" in home_text
     assert "기한" in home_text
     assert "일 초과" in home_text
+    home_detail_button = next(
+        button for button in app.button if button.label == "업무 상세 보기"
+    )
+    app = home_detail_button.click().run(timeout=60)
+    assert not app.exception
+    assert any(tab.label.startswith("메일 흐름") for tab in app.tabs)
+    assert "AI 회신 준비" in [tab.label for tab in app.tabs]
     complete_button = next(button for button in app.button if button.label == "완료 처리")
     app = complete_button.click().run(timeout=60)
     assert not app.exception

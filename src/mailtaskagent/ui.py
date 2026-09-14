@@ -729,6 +729,13 @@ def _go_to_operation_page(page: str) -> None:
     st.session_state["operation_page"] = page
 
 
+def _open_operational_task(task_id: str) -> None:
+    """Open one Task from any operational list, including the home summary."""
+
+    st.session_state["selected_operational_task_id"] = task_id
+    st.session_state["operation_page"] = TASKS_PAGE
+
+
 def _operation_health_snapshot(storage, *, gmail_connected: bool) -> dict:
     operation_settings = storage.get_operation_settings()
     sync_runs = storage.list_sync_runs(source="GMAIL", limit=1)
@@ -883,11 +890,21 @@ def _render_task_rows(
                 content_col, action_col = st.columns(
                     [8.2, 1.25], vertical_alignment="top"
                 )
-                content_col.markdown(_task_row_html(task, decision), unsafe_allow_html=True)
-                if task.get("description") and detail_button:
-                    content_col.markdown(
-                        f'<div class="ui-row__desc">{ui.esc(task["description"])}</div>',
-                        unsafe_allow_html=True,
+                with content_col.container(
+                    key=f"ui-taskrow-{list_key}-{task['task_id']}"
+                ):
+                    st.markdown(_task_row_html(task, decision), unsafe_allow_html=True)
+                    if task.get("description") and detail_button:
+                        st.markdown(
+                            f'<div class="ui-row__desc">{ui.esc(task["description"])}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    st.button(
+                        "업무 상세 보기",
+                        key=f"open_task_row_{list_key}_{task['task_id']}",
+                        on_click=_open_operational_task,
+                        args=(task["task_id"],),
+                        width="stretch",
                     )
                 if detail_button and action_col.button(
                     "상세 보기",

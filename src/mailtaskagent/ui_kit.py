@@ -786,6 +786,21 @@ div[data-testid="stStatusWidget"]{border-radius:var(--ui-r-lg);}
   background:var(--ui-surface); border:1px solid var(--ui-line);
   border-radius:var(--ui-r-lg); padding:20px 22px; box-shadow:var(--ui-shadow);
 }
+
+/* Operational Task rows are direct navigation targets. The invisible native
+   button covers only the content column, so the separate completion action
+   remains independent and keyboard focus still has a visible outline. */
+[class*="st-key-ui-taskrow"]{position:relative; border-radius:var(--ui-r-md); cursor:pointer;}
+[class*="st-key-ui-taskrow"]:hover{background:var(--ui-surface-2);}
+[class*="st-key-ui-taskrow"]:has(:focus-visible){box-shadow:0 0 0 2px var(--ui-ring);}
+[class*="st-key-ui-taskrow"] [data-testid="stElementContainer"]:last-child{
+  position:absolute; inset:0; margin:0; z-index:2;
+}
+[class*="st-key-ui-taskrow"] [data-testid="stButton"],
+[class*="st-key-ui-taskrow"] [data-testid^="stBaseButton-"]{
+  width:100%; height:100%; min-height:0; padding:0; border:0;
+  background:transparent; opacity:0; cursor:pointer;
+}
 .ui-card--accent{border-left:3px solid var(--ui-accent);}
 .ui-card--warning{border-left:3px solid var(--ui-warning);}
 .ui-card--danger{border-left:3px solid var(--ui-danger);}

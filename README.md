@@ -247,7 +247,7 @@ Plain Text 답장 1건을 보낸다. 발송 성공 뒤 `SET_WAITING`과 History�
 최신 제출 Gate는 `evidence/final_submission_audit_2026-09-13_final.json`이며,
 Gmail E2E 직후 감사 결과는 `evidence/final_submission_audit_2026-09-13_after_gmail_e2e.json`에 보존한다.
 2026-09-14 코드·문서·제출자료 정합성 재감사는
-`evidence/final_submission_consistency_audit_2026-09-14_final_v3.json`에 별도 보존한다.
+`evidence/final_submission_consistency_audit_2026-09-14_final_v4.json`에 별도 보존한다.
 2026-09-08 코드·Live·Gmail·DB·문서 통합 Gate는 `evidence/final_mvp_acceptance_2026-09-08.json`에
 과거 최종 MVP 기준선으로 보존한다.
 2026-09-13 수정 후 새 Gmail Root Mail의 무개입 `CREATE_TASK`와 35/35 중복 재조회 방지는
