@@ -2,14 +2,14 @@
 
 ## 제출 전 확인
 
-- [ ] 최종 제출 커밋과 GitHub `main`이 동일
+- [x] 최종 제출 커밋과 GitHub `main`이 동일
 - [x] 전체 pytest 179개 재실행 통과
 - [x] SQLite 운영·시연 DB `integrity_check=ok`
 - [x] 회사 LLM Live 15/15 Case, 28/28 Action 결과 확인
 - [x] 실제 Gmail 신규 업무 자동 생성과 35/35 중복 방지 증적 확인
 - [x] Reply Planning 3/3, 사용자 입력 기반 Draft 1/1과 승인 Gmail 발송 증적 확인
 - [x] 발송 전 사용자 승인·원본 Thread·Allowlist 수신자·중복 방지 Guard 확인
-- [ ] `.env`, OAuth Token, 실제 DB, 개인 메일 본문, 임시 파일이 제출본에서 제외됨
+- [x] `.env`, OAuth Token, 실제 DB, 개인 메일 본문, 임시 파일이 제출본에서 제외됨
 - [x] README의 설치·실행·검증 명령을 깨끗한 환경에서 재현
 - [x] AI_MASTER 01~07의 공식 제목·항목 순서 유지
 - [x] 문서의 Python 3.12.14, 179 passed, 60.852초가 최신 증적과 일치
