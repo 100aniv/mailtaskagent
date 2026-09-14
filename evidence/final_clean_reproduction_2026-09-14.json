@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-09-14T23:45:30+09:00",
+  "source_commit": "b2b442a00ff6419925e34cc75d4067142fde4624",
+  "source_method": "git archive HEAD",
+  "environment": {
+    "python": "3.12.14",
+    "venv": "new isolated virtual environment",
+    "package_import_path": "isolated archive workspace/src/mailtaskagent"
+  },
+  "checks": {
+    "dependency_install": "PASS",
+    "pytest": "179 passed in 53.14s",
+    "streamlit_health": "HTTP 200 ok on isolated port 8599",
+    "gmail_connected": false,
+    "tracked_secret_or_database_paths": 0
+  },
+  "limits": [
+    "The clean reproduction did not call the company LLM or Gmail APIs.",
+    "Live LLM and Gmail E2E results are recorded in separate evidence files.",
+    "Only Git-tracked files were used; local .env, OAuth tokens, databases and temporary files were excluded."
+  ]
+}
