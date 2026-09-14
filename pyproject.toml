@@ -16,3 +16,6 @@ mailtaskagent-ops = "mailtaskagent.operations_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

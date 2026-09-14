@@ -5,7 +5,7 @@
 - `2. 최종/09285_백준현_AI_Master_최종발표자료_v7.pptx`: 코드·Evidence와 동기화한 4장 최종 발표자료와 발표자 노트
 - `2. 최종/09285_백준현_AI_Master_최종발표자료.pdf`: 제출용 4장 PDF
 - `2. 최종/09285_백준현_최종시연_스크립트.md`: 실제 Gmail 중심 5분 시연 대사와 장애 대응
-- `../../output/submission/09285_백준현_시연영상.mp4`: 실제 Gmail 업무·RAG Trace·Human-in-the-loop·품질 증적을 담은 3분 59초 자막형 제출 영상
+- `../../output/submission/09285_백준현_시연영상.mp4`: 실제 Gmail 업무·RAG Trace·Human-in-the-loop·품질 증적을 담은 2분 50.72초 자막·한국어 Neural 음성 제출 영상
 - `../../output/submission/09285_백준현_시연영상_검수.json`: 시간·해상도·용량·전체 디코딩·개인정보·시각 QA 기록
 - `AI_MASTER_최종_이해_및_시연가이드.md`: 최종 MVP 구현 범위와 사용자 학습·시연 설명 자료
 - `2026-09-02_멘토시연_이해자료_및_스크립트.md`: 2026-09-02 당시 멘토 시연 기록
@@ -25,3 +25,8 @@ Draft 1/1이다. 각 수치는 서로 다른 검증 분모이며 실제 회사 M
 - MVP 시연 모드: 실제 업무 DB와 분리된 합성 시나리오·품질 검증 화면
 
 과거 멘토 보고자료와 Prototype은 개발 이력으로 보존하며 현재 최종 제출본으로 사용하지 않는다.
+
+최종 제출 영상은 공식 가이드의 필수 구간을 `1. 시나리오 소개`, `2. Agent 추론 로그 (핵심)`,
+`3. 최종 결과 확인` 전면 타이틀로 구분한다. Agent 구간에는 실제 Gmail `processing_events`의
+RAG 검색·Context 관찰·Action Proposal·Python Guard·사용자 결정·승인 발송 로그와, 합성·비식별
+회사 LLM Live Case의 Query Rewrite 1회 결과를 출처가 섞이지 않도록 구분해 표시한다.
