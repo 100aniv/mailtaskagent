@@ -3118,17 +3118,30 @@ def _render_quality_evaluation(settings) -> None:
     else:
         live_col.caption("최대 27회 LLM 분석 호출이 발생하며 Mock 결과와 별도로 기록됩니다.")
 
-    saved_live_paths = list(
-        (PROJECT_ROOT / "evidence").glob("live_evaluation_*.json")
+    saved_live_paths = sorted(
+        {
+            path
+            for pattern in (
+                "live_evaluation_*.json",
+                "final_live_evaluation_*.json",
+                "final_audit_live_*.json",
+            )
+            for path in (PROJECT_ROOT / "evidence").glob(pattern)
+        }
     )
-    if "live_evaluation" not in st.session_state and saved_live_paths:
+    if saved_live_paths:
         saved_live_reports = [
             load_saved_evaluation_report(path) for path in saved_live_paths
         ]
-        st.session_state["live_evaluation"] = max(
+        latest_saved_live_report = max(
             saved_live_reports,
             key=lambda item: item.get("generated_at", ""),
         )
+        current_live_report = st.session_state.get("live_evaluation") or {}
+        if current_live_report.get("generated_at", "") < latest_saved_live_report.get(
+            "generated_at", ""
+        ):
+            st.session_state["live_evaluation"] = latest_saved_live_report
 
     report_options = []
     if st.session_state.get("mock_evaluation"):

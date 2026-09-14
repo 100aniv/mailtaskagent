@@ -313,6 +313,8 @@ def test_product_dashboard_and_full_mock_mail_flow(tmp_path, monkeypatch) -> Non
     assert any(item.label == "Trace를 확인할 Mail" for item in app.selectbox)
     quality_text = _rendered_text(app)
     assert "Task Context Agent · RAG/ReAct Live 검증" in quality_text
+    assert "2026-09-13T21:22" in quality_text
+    assert "총 60.85초" in quality_text
     assert any(metric.label == "동일 업무 판단 신뢰도" for metric in app.metric)
 
 
