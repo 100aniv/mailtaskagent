@@ -1,0 +1,34 @@
+{
+  "method": "sample at 2 fps and count scene-score changes above 0.08",
+  "interpretation_limit": "This is a pacing heuristic, not a quality or accuracy score.",
+  "final_video": {
+    "duration_seconds": 170.72,
+    "scene_changes": 11,
+    "seconds_per_change": 15.5,
+    "visible_pointer": true,
+    "click_ripple": true,
+    "full_screen_section_cards": 3,
+    "neural_voice_narration": true
+  },
+  "references": [
+    {
+      "name": "시연영상1.mov",
+      "duration_seconds": 283.26,
+      "scene_changes": 2,
+      "seconds_per_change": 141.6
+    },
+    {
+      "name": "시연영상2.mp4",
+      "duration_seconds": 90.79,
+      "scene_changes": 1,
+      "seconds_per_change": 90.8
+    },
+    {
+      "name": "시연영상3.mov",
+      "duration_seconds": 291.85,
+      "scene_changes": 59,
+      "seconds_per_change": 4.9
+    }
+  ],
+  "decision": "The final video sits between the mostly continuous reference recordings and the highly edited third reference. Long static holds were reduced, three full-screen section cards and Korean Neural narration were added, and the total duration is 2 minutes 50.72 seconds."
+}
