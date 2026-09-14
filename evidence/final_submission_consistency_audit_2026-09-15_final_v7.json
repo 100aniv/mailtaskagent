@@ -1,0 +1,125 @@
+{
+  "generated_at": "2026-09-14T23:29:45.299514+00:00",
+  "baseline_commit": "02f036f05038387ae96bbc1ea435b6e41fc3a0ee",
+  "branch": "main",
+  "tracked_changes": [],
+  "code_sha256": {
+    "app.py": "282ad5dfe6d3e879e2ae576b5470a7461ced8debe548b3b8b73ec78f6d0e3cad",
+    "pyproject.toml": "28520f08ea34cbc1f77aac1de9d2d97938b2b2c83f1d8ed229ccdba4220696af",
+    "requirements-gmail.txt": "97accb3f211c5160ae9b3d2d7f44dd471276e12d4d2f82f0bb462389ade2ea6c",
+    "requirements.txt": "1266ed16f30adda54d74b379c157597f74a33f0554763d70da63f3f9e2ae8d80",
+    "scripts/final_submission_audit.py": "b2ec821e166716a1925591f8002e6a98c5ecd99a0c57f126c16a8b99198666c3",
+    "scripts/manage_scheduler.ps1": "28c2b535ba5ddb4561f2a808f235ba57495e34a43b008cf426b8726ede3edc62",
+    "scripts/run_dashboard.ps1": "7202bd940fbf85b263859b9d51c12cc150fa89d346113d05ba3d82e30f5db573",
+    "scripts/run_gmail_sync.ps1": "880d8c381a8488d34d699fe9f60871b82c9f695a9657d38df07f05527fc3b935",
+    "scripts/run_health.ps1": "e7205f71295808bd13a867b65e79a1ec36abbbb96236f0567067d5b899e61bb9",
+    "scripts/run_status.ps1": "8edf9ea6a17f9038e93f90e61cf30e039d796da0a70619c22fd42402089059c9",
+    "src/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "src/mailtaskagent/__init__.py": "e43f9c1d6be3dc9ad343b2daee2b1e9b03d029e9019e3e8355b047e408618002",
+    "src/mailtaskagent/approved_send_service.py": "0de03a3c436039e31141739068b4cfa54c06f912d5ef38b2a65ed9962bc15c36",
+    "src/mailtaskagent/config.py": "b809314241f75816dc0ad776f47928e0badd5159722d5159a6d868ff46c1a005",
+    "src/mailtaskagent/decision.py": "c7ea68f1e0f700c032b810895b7dd8db3d74526b862435637ec1a44a0d1c6ab9",
+    "src/mailtaskagent/evaluation.py": "cc995363c90de5d64bd38b2b78445a573eacbf523318e2da3a51c1758c4d7a56",
+    "src/mailtaskagent/evaluation_cli.py": "da4547c165daf41c910098c95d12c98386198ef876c2cc694e238fa7b754af86",
+    "src/mailtaskagent/gmail_cli.py": "b8cc3b3bb15fbc5cd954f543664634093a9f64035bf0026c2f143a2c873f01e3",
+    "src/mailtaskagent/gmail_pilot.py": "f61b46c4b9b2469f1ba5f3b23f4157f97a4aa1be2114e58303587391995dbc83",
+    "src/mailtaskagent/gmail_send.py": "b42c9e8e8508705590ae5421b285ed9fe05cf4c0f11a998bfb184ccc18350d4d",
+    "src/mailtaskagent/gmail_source.py": "4dacfd6759b63adc6b83963041c9686c75816e7c697deb55a045ca68d0513230",
+    "src/mailtaskagent/llm_client.py": "c90ef49cc5fd584fb80d03f42ddffd2606637311ac6dd647bc2d70637c25d702",
+    "src/mailtaskagent/mail_filters.py": "5a43a1d47646a4e6e128ab8c601f56178bea1818c8c5f4ce5d04a6c1898e3cb4",
+    "src/mailtaskagent/manual_benchmark.py": "a0d544cb7bc4d5af2c6d5b32b90a75348aa6eaf0dd70af85fad9c894d80e1d1a",
+    "src/mailtaskagent/models.py": "e2ebc4f4f902b75cf10f5d17a872499192a752193e371093a04cd17a6961a8f4",
+    "src/mailtaskagent/operations.py": "d526c39dbc8a71c61e3347f9bb3e6f152f0e5107a608f1fc32cf7aaae5226e9d",
+    "src/mailtaskagent/operations_cli.py": "1fe6c3f2c682a1783293d40e4721ff95ab0899ed90c4eeb3bd308f0ece06039c",
+    "src/mailtaskagent/outlook_source.py": "c778e4d03edc2081cfe3530e36986b719bd2c6d2ba613e645ddc1c4edacb46bd",
+    "src/mailtaskagent/policy.py": "dc28c45c6bacec252cca84c601efa9b756cda60a8c6e7a2223797f7865987dc9",
+    "src/mailtaskagent/priority.py": "0b27ffd255d705fedc074bd62df96f60376b91974991ecb78e37b37a18e3848c",
+    "src/mailtaskagent/process_lock.py": "6cd25fcfd64eb22a2224487b7afdbd02c8f3857a78ae4a9a098dfbbfb4e47c6c",
+    "src/mailtaskagent/reply_assistant.py": "a766ab735e6ba8651ac4d497738c3411c031ea48e369bd36c1bdc24a1683216e",
+    "src/mailtaskagent/reply_service.py": "08ebdd97f175ad375f584e533325d98537397f1bbccc7e0f87b3f1c4846305c1",
+    "src/mailtaskagent/slack_notifications.py": "1dd2fc439e87d4b7f9557132ed74a6d0ed6d137e61c07243b62e801eeaef0b82",
+    "src/mailtaskagent/storage.py": "75be83fc3e891eb19b872ff84ba59a1f6bc1026e76e933d8f502d5da85380c92",
+    "src/mailtaskagent/task_context_agent.py": "af2da6275d0274a7b9ba3b42c51466bfeffac39e818b6fad88a166a6749ab465",
+    "src/mailtaskagent/ui.py": "216efbb62cb2407f64d35f70460493fbcb6ec3c64b58b62e6869aa0642e82555",
+    "src/mailtaskagent/ui_kit.py": "e3002cbd63fa0a8cdf6aa358f02028a19199b13d467502da5f3d92f70166b829",
+    "src/mailtaskagent/workflow.py": "880956c5c35e6382a428a93f23e8f66f09aa9bcc36b2682d38e2e6bc4a471496",
+    "tests/.gitkeep": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "tests/conftest.py": "b9d7d3cb22cb7c62071bea73ecb717fe58d32b77dbbd32446203138cd69de13c",
+    "tests/test_agent_action_guard.py": "58ad91d4225a50a03fa515a41871c61f5c68f3407fd213e7b459f20b1931feab",
+    "tests/test_gmail_live_pilot_plan.py": "48a28d97bc5647ce76e4ef8ff51e659a253016245ee10ce7890cc398a2785fb3",
+    "tests/test_gmail_send.py": "f61b75397322d4345d61e291394cdf36607e1ed8f03662123056c1cdff32e4dd",
+    "tests/test_gmail_source.py": "741bd061714b0ad30abd28834f23656e14db479000bfc396baddae104d193f4a",
+    "tests/test_llm_client.py": "3e260c7670d6094dc1a2c7d52bad633959da7a0dc2c64b0554cf3bc8e935af95",
+    "tests/test_mail_filters.py": "0e23f32116dc6430c1a4990ef5aaff0d9063076b322398ec592cd466e517037b",
+    "tests/test_manual_benchmark.py": "7790e402e9512196865d59665fae362e0e781322c66cfff98faa7e5114bb55fd",
+    "tests/test_models.py": "72220dbec54eeca94899a4d5c858c18e85b199d4e5332838a8cf4f5cfb3d1831",
+    "tests/test_operations.py": "550c1c330802c2fb543a68ee7416c505f75edff7920694df2eab5cd5af50e690",
+    "tests/test_outlook_source.py": "2ee529af773c77db18492b5690f228707841d82db861b4c6fdbd86d868e9bdec",
+    "tests/test_priority.py": "9af9f1750500b4b9413fc028ea89ce586d8f2f0c25ca088f354e39b1619dbe2b",
+    "tests/test_reply_assistant.py": "ca6a4363b79b9ed1b94a30f1d0f39e19c08f7f3c64b33797e304af75449e8d0a",
+    "tests/test_slack_notifications.py": "9ae0179dc481671c68fc2fdb6868ed0314125e08b272cdf9d29e1b8674dd228c",
+    "tests/test_task_context_agent.py": "87d6967f8c746f66431bebb62b192b1f8e58c74b564c1bd69f0438f9210067e7",
+    "tests/test_task_context_rag.py": "1dc6182cac6670c39eae104e94f93ab1685e084b7ed3457f165874fe7f8bfb9e",
+    "tests/test_ui.py": "18afc52a898837382cac62f43dfb3baee7aaedcc2fa5481c63346c91df4349c0",
+    "tests/test_workflow.py": "7e377abef1a0a5ae888ab75068cb79d54d27a3b2f0d7d92bd92b7e38ef9dc16a"
+  },
+  "python": "3.12.14",
+  "pytest": {
+    "exit_code": 0,
+    "summary": [
+      "179 passed in 50.16s"
+    ]
+  },
+  "llm_mode": "LIVE",
+  "llm_model": "gpt-4.1-mini",
+  "rag_enabled": true,
+  "rag_max_retries": 1,
+  "approved_send_enabled": true,
+  "databases": {
+    "operation": {
+      "exists": true,
+      "integrity": [
+        "ok"
+      ],
+      "journal_mode": "wal",
+      "task_count": 10,
+      "history_count": 42
+    },
+    "demo": {
+      "exists": true,
+      "integrity": [
+        "ok"
+      ],
+      "journal_mode": "wal",
+      "task_count": 1,
+      "history_count": 3
+    }
+  },
+  "gmail": {
+    "checked_in_this_run": false,
+    "reason": "This run intentionally made no network call. Gmail OAuth readiness is carried from the v6 audit.",
+    "carried_from": "evidence/final_submission_consistency_audit_2026-09-15_final_v6.json",
+    "gmail_related_source_unchanged_since_v6": true,
+    "read": {
+      "ready": true,
+      "check": "credential_refresh_only_not_send_or_mail_fetch"
+    },
+    "send": {
+      "ready": true,
+      "check": "credential_refresh_only_not_send_or_mail_fetch"
+    }
+  },
+  "limits": [
+    "No new Gmail messages fetched or sent by this audit script",
+    "pytest uses isolated synthetic inputs, not a fresh Gmail E2E run",
+    "Existing evidence is not regenerated by this script",
+    "Gmail OAuth was not contacted in this run; see the gmail block for provenance."
+  ],
+  "scope": {
+    "change_under_audit": "demo video re-encoded to H.264, presenter notes expanded, submission docs corrected",
+    "source_code_changed": false,
+    "slide_bodies_changed": false,
+    "demo_video_sha256": "AAA5F5C5CF9D5965E109AF5B592A4EA78EDA16EC8EEDE6193BBD23DAC6677EB9",
+    "deck_pptx_sha256": "41D95EC716225C75A62C5D864476A5C1133B1CE24F29A052E434DBCAF7F74E3A"
+  }
+}
