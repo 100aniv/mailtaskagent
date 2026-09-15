@@ -105,6 +105,21 @@ REPLY_ACTION_LABELS = {
 }
 
 
+def _guard_override_label(decision_details: dict) -> str:
+    """Name what the Guard did instead of the proposal.
+
+    "교정" suggested the Guard substituted a different judgement of its own. It
+    does not judge; when it disagrees it hands the decision to the user, and in
+    every other case it simply names the action it settled on.
+    """
+    action = decision_details.get("python_guard_action")
+    if action == "ASK_USER":
+        return "사용자 확인으로 이관"
+    if action:
+        return f"{ACTION_LABELS.get(action, action)}으로 변경"
+    return "제안과 다른 Action으로 확정"
+
+
 def _initialize_storage_or_stop(storage: SQLiteStorage) -> None:
     """Fail closed with recovery guidance when the local SQLite file is damaged."""
 
@@ -1992,7 +2007,7 @@ def _render_agentic_trace(
         rows.append(
             (
                 "Guard 개입",
-                ui.badge("제안과 다른 Action으로 교정", "warning")
+                ui.badge(_guard_override_label(decision_details), "warning")
                 if guard_override
                 else ui.badge("제안 그대로 유지", "neutral"),
             )

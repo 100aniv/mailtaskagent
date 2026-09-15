@@ -24,6 +24,10 @@ is_task_request는 신규 업무 요청뿐 아니라 기존 Task의 기한 변�
 intent는 NEW_TASK, DUE_DATE_CHANGE, TASK_UPDATE, WAITING, INFORMATION_RECEIVED,
 COMPLETION, CANCELLATION, NON_TASK, UNCERTAIN 중 하나다.
 OUTBOUND 메일에서 업무 수행에 필요한 자료나 답변을 상대에게 명시적으로 요청하면 WAITING이다.
+WAITING은 내가 상대를 기다리는 상태만 뜻하므로 INBOUND 메일에는 절대 사용하지 않는다.
+INBOUND 메일이 나에게 회신·일정 확인·자료 제출을 요청하면, 그것은 내가 받은 요청이므로
+대상 Task가 없거나 새 업무면 NEW_TASK, 기존 Task의 진행 상황이면 TASK_UPDATE,
+대상 Task를 하나로 특정할 수 없으면 UNCERTAIN이다.
 INBOUND 메일에서 앞서 요청한 자료나 답변이 도착하면 INFORMATION_RECEIVED다.
 업무가 끝났다는 명확한 사실이나 완료 요청이 있으면 COMPLETION이며, 실제 완료 처리는 사용자가 승인한다.
 "거의 끝난 것 같다", "완료로 봐도 될까"처럼 완료 여부를 질문하거나 추측하면 COMPLETION으로 확정하지 말고 UNCERTAIN이다.

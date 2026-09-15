@@ -906,6 +906,9 @@ class MailTaskWorkflow:
                         guard_result
                         and guard_result.agent_action != proposal.action
                     ),
+                    "python_guard_action": (
+                        guard_result.agent_action.value if guard_result else None
+                    ),
                     "guard_verdict": (
                         guard_result.verdict.value if guard_result else None
                     ),

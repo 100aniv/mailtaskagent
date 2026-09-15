@@ -206,3 +206,19 @@ def test_date_normalization_explains_python_correction_without_rewriting_llm_rea
     assert original.due_date is None
     assert _normalize_explicit_due_date(mail, result) is result
     assert _normalize_explicit_due_date(mails[14], original) is original
+
+
+def test_prompt_forbids_waiting_on_inbound_mail():
+    """An inbound reply request is a request received, not a wait.
+
+    The prompt said when WAITING applies but never that INBOUND excludes it, so
+    the model read "회신 대기" and classified mail asking *us* to reply as
+    WAITING. Two of three live Gmail seed mails failed this way on 2026-09-15.
+    """
+    from mailtaskagent.llm_client import SYSTEM_PROMPT
+
+    assert "INBOUND 메일에는 절대 사용하지 않는다" in SYSTEM_PROMPT
+    # The rule is only useful if it also says what to choose instead.
+    assert "내가 받은 요청이므로" in SYSTEM_PROMPT
+    for alternative in ("NEW_TASK", "TASK_UPDATE", "UNCERTAIN"):
+        assert alternative in SYSTEM_PROMPT
