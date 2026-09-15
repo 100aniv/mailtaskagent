@@ -403,6 +403,33 @@ def audit_repo() -> None:
             ", ".join(sorted(n for n in names if n.endswith(".zip"))),
         )
 
+    # --- git이 바이너리를 텍스트로 오인하면 체크아웃마다 파일이 깨진다 ---
+    eol = subprocess.run(
+        ["git", "ls-files", "--eol"],
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        check=True,
+    ).stdout
+    binary_suffixes = (
+        ".pdf", ".pptx", ".potx", ".docx", ".dotx", ".xlsx", ".zip", ".mp4",
+        ".mov", ".webm", ".mp3", ".wav", ".png", ".jpg", ".jpeg", ".gif",
+        ".ico", ".ttf", ".otf", ".woff", ".woff2", ".db",
+    )
+    converted = []
+    for row in eol.splitlines():
+        parts = row.split("\t", 1)
+        if len(parts) != 2:
+            continue
+        flags, name = parts
+        if name.lower().rstrip('"').endswith(binary_suffixes) and not (
+            "i/-text" in flags or "attr/-text" in flags
+        ):
+            converted.append(name)
+    check(
+        "바이너리 파일에 줄바꿈 변환 없음",
+        not converted,
+        ", ".join(converted[:3]),
+    )
+
     dirty = subprocess.run(
         ["git", "status", "--porcelain", "--untracked-files=no"],
         cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
