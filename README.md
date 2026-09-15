@@ -200,6 +200,34 @@ Graph는 Inbox/Sent Items 합성 Payload를 공통 Mail Schema로 바꾸는 읽�
 Contract까지 구현했으며, 실제 회사 Tenant OAuth와 Live 호출은 권한 승인 후 진행한다.
 n8n과 iCloud Mail은 현재 구현 완료 범위에 포함하지 않는다.
 
+## 제출 영상 재생성
+
+시연 영상은 손으로 편집하지 않고 저장소의 두 스크립트로 다시 만든다. 앱을 먼저 띄운 뒤
+녹화하고, 녹화가 남긴 시점 기록에 맞춰 자막과 내레이션을 합성한다.
+
+```powershell
+# 1) 실행 중인 화면을 녹화한다. 메일 발송도, Task DB 쓰기도 하지 않는다.
+.venv\Scripts\python.exe -m scripts.record_demo_tour `
+    --trace-mail-id GMAIL-xxxxxxxxxxxx `
+    --task-title "<업무 홈에 보이는 Task 제목>"
+
+# 2) 내레이션·자막·구간 카드를 입힌다. 기존 제출본은 --force 없이는 덮어쓰지 않는다.
+.venv\Scripts\python.exe -m scripts.build_demo_video --force
+```
+
+1단계가 `output/submission/raw/tour_marks.json`에 각 화면이 나타난 초를 기록하고 2단계가
+그 값으로 자막 위치를 계산한다. 재녹화해도 자막이 영상과 어긋나지 않는다. 콘솔 오버레이는
+녹화한 Mail의 `processing_events` 행을 그대로 그리므로 손으로 적은 값이 들어가지 않는다.
+
+필요한 외부 도구와 지정 방법:
+
+| 도구 | 용도 | 지정 |
+| --- | --- | --- |
+| Playwright + Chromium | 화면 녹화 | `playwright install chromium` |
+| ffmpeg | 합성·인코딩 | `imageio-ffmpeg` 설치, PATH 등록, 또는 `MTA_FFMPEG` |
+| edge-tts | 한국어 내레이션 | 설치된 인터프리터를 `MTA_VOICE_PYTHON`으로 지정 |
+| 한국어 글꼴 | 자막·카드 | 기본 맑은 고딕, 다르면 `MTA_FONT` / `MTA_FONT_BOLD` |
+
 ## 선택적 테스트 Gmail Adapter
 
 읽기 전용 Gmail Adapter의 코드와 합성 Gmail API Payload 테스트를 구현했다. 2026-08-27
