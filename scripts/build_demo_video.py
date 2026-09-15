@@ -95,7 +95,10 @@ TITLE_CARD_SECONDS = 4.0
 
 # The console overlay replays the real processing_events for the mail above, so
 # the reasoning is legible as text rather than as a screenshot of a table.
-CONSOLE_WINDOW = (MARKS["comparison"] + 13.0, MARKS["guard_handoff"] - 0.5)
+# The console renders this mail's own processing_events, so it is the most
+# legible reasoning evidence in the recording; it gets most of the stretch
+# between the comparison table appearing and the guard rows coming into view.
+CONSOLE_WINDOW = (MARKS["comparison"] + 4.0, MARKS["guard_handoff"] - 0.5)
 
 SECTIONS = [
     Caption(0.0, TITLE_CARD_SECONDS, "1. 시나리오 소개"),
@@ -126,11 +129,11 @@ CAPTIONS = [
     Caption(*_flow[0], "M-01 | 회사 gpt-4.1-mini가 요청·기한·Intent·회신 필요 여부를 구조화합니다."),
     Caption(*_reply[0], "Reply Agent | DATE_REPLY를 제안했습니다. 0.95는 검증 정확도가 아닌 LLM 자기보고 신뢰도입니다."),
     Caption(*_reply[1], "안전 실행 | 날짜 입력 후 초안을 만들지만, 사용자 승인 전에는 발송하지 않습니다."),
-    Caption(*_open[0], "핵심 | 고정 순서가 아니라 Mail·Task·History에 따라 다음 Action이 달라집니다."),
+    Caption(*_open[0], "핵심 | Workflow는 실행 뼈대이고, 규칙으로 확정할 수 없는 관계·대상·Action은 Agent가 판단합니다."),
     Caption(*_rag[0], "M-02 Retrieve | SQLite RAG가 관련 Task·최근 Mail 3건·History 5건·사용자 결정을 검색합니다."),
-    Caption(*_cmp[0], "M-03 | 표의 \"생성 근거\"는 생성 단계가, \"지지도·평가 근거\"는 별도 평가 단계가 만들었습니다."),
+    Caption(*_cmp[0], "Bounded Multi-Hypothesis Deliberation | 후보 생성과 평가를 분리했습니다. Tree of Thoughts 아이디어를 참고했지만 Full ToT는 아닙니다."),
     Caption(*_cmp[1], "M-03 Evaluate | 지지도 0.70 대 0.60, 상위 두 점수의 차이 0.10은 LLM이 아니라 Python이 계산합니다."),
-    Caption(*_cmp[2], "실제 판단 | 차이 0.10이 기준 0.15에 미달해 Query Rewrite 후 재판단했지만 여전히 0.10이었습니다."),
+    Caption(*_cmp[2], "Self-Correction | 저신뢰·작은 선택 차이에서 Query Rewrite 후 최대 1회 재검색합니다. 차이 0.10은 재판단 후에도 그대로였습니다."),
     Caption(*_hitl[0], "Guard | PYTHON_GUARD가 WAITING으로 기록되고 ASK_USER로 이관됩니다. 실제 저장된 이벤트입니다."),
     Caption(*_hitl[1], "Human-in-the-loop | ASK_USER로 이관하고, 사용자 결정 전까지 Task DB를 바꾸지 않습니다."),
     Caption(*_final[0], "반복 검증 | 회사 LLM Live 15/15 · Action 28/28 · pytest 227 passed"),
@@ -146,11 +149,11 @@ NARRATION = [
     Narration(MARKS["reply_agent"] + 0.3, "회신 에이전트는 날짜 회신이 필요하다고 제안했습니다. 영 점 구오는 검증 정확도가 아닌, 모델의 자기보고 신뢰도입니다."),
     Narration(_reply[1][0] + 0.3, "날짜를 입력하면 초안을 만들지만, 수신자와 본문을 확인하고 승인하기 전에는 실제 메일을 발송하지 않습니다."),
     Narration(MARKS["trace"] + 0.4, "두 번째, 에이전트 추론 로그입니다."),
-    Narration(MARKS["trace"] + TITLE_CARD_SECONDS + 0.3, "고정 워크플로우와 달리, 입력에 따라 호출되는 단계가 달라집니다."),
+    Narration(MARKS["trace"] + TITLE_CARD_SECONDS + 0.3, "워크플로우는 실행 뼈대이고, 규칙으로 확정할 수 없는 관계와 행동만 에이전트가 판단합니다."),
     Narration(MARKS["retrieval"] + 0.3, "에스큐엘라이트 검색이 관련 업무와 최근 메일, 변경 이력과 사용자 결정을 함께 가져옵니다."),
-    Narration(MARKS["comparison"] + 0.3, "표의 생성 근거는 생성 단계가, 지지도는 별도 평가 단계가 만든 것입니다."),
+    Narration(MARKS["comparison"] + 0.3, "후보 생성과 평가를 분리한 제한적 다중 가설 숙고입니다. 트리 오브 소트 아이디어를 참고했지만 전체 구현은 아닙니다."),
     Narration(_cmp[1][0] + 0.3, "지지도 영 점 칠 대 영 점 육, 그 차이는 엘엘엠이 아니라 파이썬이 계산합니다."),
-    Narration(_cmp[2][0] + 0.3, "차이가 기준에 못 미쳐 검색어를 바꿔 다시 판단했지만, 결과는 같았습니다."),
+    Narration(_cmp[2][0] + 0.3, "차이가 기준에 못 미치면 검색어를 바꿔 최대 한 번 다시 찾는 셀프 커렉션이 돕니다. 결과는 같았습니다."),
     Narration(MARKS["guard_handoff"] + 0.3, "근거가 부족하다고 판단해, 파이썬 가드가 자동 실행을 중단했습니다."),
     Narration(_hitl[1][0] + 0.3, "모호하거나 위험한 변경은 사용자 확인으로 이관하며, 승인 전에는 업무 데이터베이스를 바꾸지 않습니다."),
     Narration(MARKS["quality"] + 0.4, "세 번째, 최종 결과 확인입니다."),

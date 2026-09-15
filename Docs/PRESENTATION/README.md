@@ -2,10 +2,14 @@
 
 ## 파일 구성
 
-- `2. 최종/09285_백준현_AI_Master_최종발표자료_v9.pptx`: 코드·Evidence와 동기화한 4장 최종 발표자료와 발표자 노트
-- `2. 최종/09285_백준현_AI_Master_최종발표자료_v9.pdf`: 제출용 4장 PDF
+- **제출본**: `2. 최종/09285_백준현_AI_Master_최종발표자료_v11.pptx` / `_v11.pdf`
+  4장 발표자료와 발표자 노트. 같은 폴더의 v3·v6·v7·v9는 작업 이력이며 제출하지 않는다.
+- `build_final_deck.mjs`: v11을 다시 만드는 Builder. 장표 문구와 발표자 노트의 단일 출처이며,
+  PPTX를 직접 편집하면 다음 빌드에서 조용히 되돌아간다.
+  `PRESENTATION_SKILL_DIR`, `PRESENTATION_PYTHON`, `RUNTIME_NODE_MODULES`가 필요하다.
+- `build_presentation_pdf.py`: 내보낸 슬라이드 PNG 4장을 제출용 PDF로 합친다.
 - `2. 최종/09285_백준현_최종시연_스크립트.md`: 실제 Gmail 중심 5분 시연 대사와 장애 대응
-- `../../output/submission/09285_백준현_시연영상.mp4`: 실제 Gmail 업무·RAG Trace·Human-in-the-loop·품질 증적을 담은 2분 44.4초 자막·한국어 Neural 음성 제출 영상
+- `../../output/submission/09285_백준현_시연영상.mp4`: 실제 Gmail 업무·후보 비교·Self-Correction·Guard 증적을 담은 2분 33.6초 자막·한국어 Neural 음성 제출 영상
 - `../../output/submission/09285_백준현_시연영상_검수.json`: 시간·해상도·용량·전체 디코딩·개인정보·시각 QA 기록
 - `AI_MASTER_최종_이해_및_시연가이드.md`: 최종 MVP 구현 범위와 사용자 학습·시연 설명 자료
 - `2026-09-02_멘토시연_이해자료_및_스크립트.md`: 2026-09-02 당시 멘토 시연 기록
