@@ -202,6 +202,18 @@ def run_scenario_evaluation(
     suite: str = "core",
 ) -> dict:
     """Run every scenario in an isolated DB and compare it with checked-in expectations."""
+    normalized_mode = mode.strip().upper()
+    if normalized_mode not in {"MOCK", "LIVE"}:
+        raise ValueError(f"unknown evaluation mode: {mode}")
+    if normalized_mode == "MOCK":
+        # This function is called by both the CLI and Streamlit.  Enforce the
+        # isolation here, at the workflow construction boundary, so a caller
+        # cannot accidentally pair a mock MailAnalyzer with the company Task
+        # Context Agent just because the process was started with LIVE settings.
+        settings = replace(settings, use_mock=True)
+    elif settings.use_mock:
+        raise ValueError("LIVE evaluation requires company LLM settings")
+
     if suite not in SUITES:
         raise ValueError(f"unknown suite: {suite}")
     files = SUITES[suite]
@@ -279,7 +291,7 @@ def run_scenario_evaluation(
         actual_task_links,
     )
     return {
-        "mode": mode,
+        "mode": normalized_mode,
         "suite": suite,
         "case_count": case_count,
         "passed_count": passed_count,

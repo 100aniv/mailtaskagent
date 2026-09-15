@@ -59,6 +59,7 @@ VOICE_DIR = SUBMISSION / "voice"
 VOICE_PYTHON = Path(os.environ.get("MTA_VOICE_PYTHON", sys.executable))
 DB_PATH = ROOT / "data" / "mailtaskagent.db"
 RAG_EVIDENCE = ROOT / "evidence" / "task_context_rag_evaluation_2026-09-01.json"
+VIDEO_ENCODER = os.environ.get("MTA_VIDEO_ENCODER", "libx264").strip()
 
 
 @dataclass(frozen=True)
@@ -132,7 +133,7 @@ CAPTIONS = [
     Caption(*_cmp[2], "실제 판단 | 차이 0.10이 기준 0.15에 미달해 Query Rewrite 후 재판단했지만 여전히 0.10이었습니다."),
     Caption(*_hitl[0], "Guard | PYTHON_GUARD가 WAITING으로 기록되고 ASK_USER로 이관됩니다. 실제 저장된 이벤트입니다."),
     Caption(*_hitl[1], "Human-in-the-loop | ASK_USER로 이관하고, 사용자 결정 전까지 Task DB를 바꾸지 않습니다."),
-    Caption(*_final[0], "반복 검증 | 회사 LLM Live 15/15 · Action 28/28 · pytest 224 passed"),
+    Caption(*_final[0], "반복 검증 | 회사 LLM Live 15/15 · Action 28/28 · pytest 227 passed"),
     Caption(*_final[1], "Gmail E2E | 실제 계정으로 받은 새 메일 4건 처리 · 2건 Task 생성, 2건 ASK_USER"),
     Caption(*_final[2], "결론 | AI Master MVP 완료 · Outlook·사내 운영 전환은 Post-MVP"),
 ]
@@ -559,12 +560,18 @@ def build_video(ffmpeg: Path, voice_files: list[Path], title_cards: list[Path]) 
     # top of it, but the section title cards go on last: the ASS script also carries
     # Section/SectionSub lines, and without this order those render on top of the
     # cards as duplicated titles.
-    temp_target = FINAL_VIDEO.with_suffix(".building.mp4")
+    # Some Windows ffmpeg builds do not preserve non-ASCII command-line paths.
+    # Keep the encoder-facing temporary paths ASCII-only, then let Python move
+    # the completed artifact to its required Korean submission filename.
+    filter_ass = SUBMISSION / "qa" / "captions.ass"
+    filter_ass.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(FINAL_ASS, filter_ass)
+    temp_target = SUBMISSION / "demo-building.mp4"
     temp_target.unlink(missing_ok=True)
-    ass_path = escape_filter_path(FINAL_ASS)
+    ass_path = escape_filter_path(filter_ass)
     filters = [
         f"[0:v][1:v]overlay=0:0:enable='between(t,{CONSOLE_WINDOW[0]},{CONSOLE_WINDOW[1]})'[console]",
-        f"[console]ass='{ass_path}'[captioned]",
+        f"[console]ass=filename='{ass_path}'[captioned]",
         f"[captioned][2:v]overlay=0:0:enable='between(t,{SECTIONS[0].start},{SECTIONS[0].end})'[title1]",
         f"[title1][3:v]overlay=0:0:enable='between(t,{SECTIONS[1].start},{SECTIONS[1].end})'[title2]",
         f"[title2][4:v]overlay=0:0:enable='between(t,{SECTIONS[2].start},{SECTIONS[2].end})'[vout]",
@@ -582,6 +589,24 @@ def build_video(ffmpeg: Path, voice_files: list[Path], title_cards: list[Path]) 
         "".join(audio_labels)
         + f"amix=inputs={len(audio_labels)}:duration=longest:normalize=0,alimiter=limit=0.92[aout]"
     )
+    if VIDEO_ENCODER == "libx264":
+        video_encoder_args = [
+            "-c:v", "libx264", "-preset", "slow", "-crf", "20",
+            "-profile:v", "high", "-level", "4.0",
+        ]
+    elif VIDEO_ENCODER == "h264_nvenc":
+        # CapCut ships a reduced ffmpeg without libx264 on some Windows hosts.
+        # NVENC still produces a browser-compatible AVC stream and keeps the
+        # submission build reproducible without changing project dependencies.
+        video_encoder_args = [
+            "-c:v", "h264_nvenc", "-preset", "p5", "-cq", "20",
+            "-profile:v", "high", "-level", "4.0",
+        ]
+    else:
+        raise ValueError(
+            "MTA_VIDEO_ENCODER must be libx264 or h264_nvenc"
+        )
+
     command.extend(
         [
             "-filter_complex",
@@ -592,16 +617,7 @@ def build_video(ffmpeg: Path, voice_files: list[Path], title_cards: list[Path]) 
             "[aout]",
             "-t",
             f"{VIDEO_END:.2f}",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "slow",
-            "-crf",
-            "20",
-            "-profile:v",
-            "high",
-            "-level",
-            "4.0",
+            *video_encoder_args,
             "-pix_fmt",
             "yuv420p",
             "-c:a",

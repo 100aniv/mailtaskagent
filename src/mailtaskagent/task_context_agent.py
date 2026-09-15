@@ -154,7 +154,12 @@ class AzureTaskContextAgent:
             api_key=settings.api_key,
             api_version=settings.api_version,
             timeout=settings.timeout_seconds,
-            max_retries=1,
+            # Deliberation owns its retry policy and one shared per-mail
+            # deadline. SDK-level retries would reuse the per-request timeout
+            # and can therefore outlive that deadline before control returns
+            # to the application. Fail closed instead; schema correction and
+            # the one bounded query-rewrite pass remain application-managed.
+            max_retries=0,
         )
         # Set once per mail by the workflow; None means "no mail in progress".
         self._deadline: float | None = None

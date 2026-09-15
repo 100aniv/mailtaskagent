@@ -10,11 +10,14 @@ deterministic nor free.
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 
 import pytest
 
 from mailtaskagent import evaluation_cli
 from mailtaskagent.config import load_settings
+from mailtaskagent.evaluation import run_scenario_evaluation
+from mailtaskagent.llm_client import MockMailAnalyzer
 from mailtaskagent.task_context_agent import (
     AzureTaskContextAgent,
     MockTaskContextAgent,
@@ -74,6 +77,40 @@ def test_mock_mode_never_constructs_the_company_agent(monkeypatch, tmp_path):
     assert captured["use_mock"] is True, (
         "MOCK mode handed the workflow settings that still allow the company agent"
     )
+
+
+def test_direct_mock_evaluation_never_constructs_the_company_agent(monkeypatch):
+    """The Streamlit/direct-call path must be as isolated as the CLI path."""
+
+    def refuse(self, settings):
+        raise AssertionError(
+            "direct MOCK evaluation constructed AzureTaskContextAgent"
+        )
+
+    monkeypatch.setattr(AzureTaskContextAgent, "__init__", refuse)
+    live_settings = replace(load_settings(), use_mock=False)
+
+    report = run_scenario_evaluation(
+        live_settings,
+        MockMailAnalyzer(),
+        mode="MOCK",
+        suite="deliberation",
+    )
+
+    assert report["mode"] == "MOCK"
+    assert report["passed_count"] == report["case_count"] == 4
+
+
+def test_direct_live_evaluation_rejects_mock_settings():
+    settings = replace(load_settings(), use_mock=True)
+
+    with pytest.raises(ValueError, match="LIVE evaluation requires"):
+        run_scenario_evaluation(
+            settings,
+            MockMailAnalyzer(),
+            mode="LIVE",
+            suite="deliberation",
+        )
 
 
 def test_live_mode_keeps_the_company_agent(monkeypatch):

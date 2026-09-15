@@ -425,6 +425,16 @@ def _azure_agent(settings: Settings, bodies: list[str]) -> tuple[AzureTaskContex
     return agent, calls
 
 
+def test_task_context_agent_disables_sdk_retries_for_shared_deadline(
+    base_settings: Settings,
+) -> None:
+    agent = AzureTaskContextAgent(
+        replace(base_settings, api_key="test-key", use_mock=False)
+    )
+
+    assert agent.client.max_retries == 0
+
+
 _GOOD_GENERATION = json.dumps(
     {
         "hypotheses": [

@@ -3,7 +3,7 @@
 ## 제출 전 확인
 
 - [x] 최종 제출 커밋과 GitHub `main`이 동일
-- [x] 전체 pytest 224개 재실행 통과
+- [x] 전체 pytest 227개 재실행 통과
 - [x] SQLite 운영·시연 DB `integrity_check=ok`
 - [x] 회사 LLM Live 15/15 Case, 28/28 Action 결과 확인
 - [x] 실제 Gmail 신규 업무 자동 생성과 35/35 중복 방지 증적 확인
@@ -12,7 +12,7 @@
 - [x] `.env`, OAuth Token, 실제 DB, 개인 메일 본문, 임시 파일이 제출본에서 제외됨
 - [x] README의 설치·실행·검증 명령을 깨끗한 환경에서 재현
 - [x] AI_MASTER 01~07의 공식 제목·항목 순서 유지
-- [x] 문서의 Python 3.12.14, 224 passed, 60.852초가 최신 증적과 일치
+- [x] 문서의 Python 3.12.14, 227 passed, 60.852초가 최신 증적과 일치
 - [x] 발표자료가 표지+3장, 총 4장으로 구성됨
 - [ ] 발표 대사를 직접 읽어 10분 이내인지 최종 리허설 (노트 실측 3,902자 · 분당 330~360자 기준 약 10.8~11.8분)
 - [x] 시연영상 5분 이하, 500MB 이하, MP4
@@ -22,7 +22,7 @@
 - [x] `시나리오 소개`·`Agent 추론 로그 (핵심)`·`최종 결과 확인` 전면 타이틀과 본문 자막 구분
 - [x] 실제 `processing_events` 콘솔과 합성·비식별 Query Rewrite Live Case를 구분해 표시
 - [x] 한국어 Neural AI 음성 해설 포함
-- [x] Git 추적 파일만 사용한 깨끗한 Python 3.12.14 환경에서 224개 테스트와 Gmail 미연결 Streamlit 기동 재현
+- [x] Git 추적 파일만 사용한 깨끗한 Python 3.12.14 환경에서 227개 테스트와 Gmail 미연결 Streamlit 기동 재현
 - [ ] 사용자가 다른 플레이어와 웹 브라우저에서 영상 전체·음성·삽입 자막을 최종 재생 확인
 - [ ] 7기 최신 업로드 위치·마감·면접 방식은 최종 공지에서 별도 확인
 
@@ -100,9 +100,9 @@ LLM은 Mail 의미와 Task 관계·Action을 제안한다. Python은 후보 ID, 
 
 실제 Gmail 신규 요청을 회사 LLM이 INBOUND인데 WAITING으로 구조화한 사례를 발견했다. Python Guard가 ASK_USER로 차단해 DB 오변경은 없었다. 이후 direction과 intent의 의미 계약을 재검증하는 재시도를 추가했고, 새 Gmail Root Mail이 사용자 개입 없이 CREATE_TASK 되는 것을 다시 확인했다.
 
-### 224 passed와 Live 15/15는 무엇을 의미하는가
+### 227 passed와 Live 15/15는 무엇을 의미하는가
 
-224 passed는 코드 계약과 회귀 테스트 범위를, Live 15/15와 Action 28/28은 정의한 합성 Case에서 회사 LLM 출력이 기대 구조와 단계를 충족했음을 뜻한다. 실제 회사 Mailbox 전체 정확도 100%를 의미하지 않는다.
+227 passed는 코드 계약과 회귀 테스트 범위를, Live 15/15와 Action 28/28은 정의한 합성 Case에서 회사 LLM 출력이 기대 구조와 단계를 충족했음을 뜻한다. 실제 회사 Mailbox 전체 정확도 100%를 의미하지 않는다.
 
 ### AI 도구의 도움과 본인의 역할은 무엇인가
 
