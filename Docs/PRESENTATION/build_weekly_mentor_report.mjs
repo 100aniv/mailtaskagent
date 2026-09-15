@@ -8,7 +8,12 @@ const artifactSpecifier = process.env.RUNTIME_NODE_MODULES
   : "@oai/artifact-tool";
 const { Presentation, PresentationFile } = await import(artifactSpecifier);
 
-const ROOT = "C:/Users/bback/Desktop/AI Master/MailTaskAgent";
+// Derived from this file's own location so the build does not depend on where
+// the repository was cloned.
+const HERE = path.dirname(
+  decodeURIComponent(new URL(import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, "$1"),
+);
+const ROOT = path.resolve(HERE, "../..");
 const OUT = path.join(ROOT, "Docs/PRESENTATION/MailTaskAgent_주간멘토보고_2026-08-27.pptx");
 const RENDER = path.join(ROOT, "tmp/weekly_mentor_report/rendered");
 const W = 1280;
