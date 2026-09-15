@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+HYPOTHESIS_ID_PATTERN = r"^H[1-3]$"
+# Bounded so an over-long model response cannot break the trace log or the UI.
+EvidenceText = Annotated[str, Field(min_length=1, max_length=300)]
 
 
 class MailDirection(StrEnum):
@@ -137,6 +141,71 @@ class ActionProposal(BaseModel):
     needs_user_confirmation: bool = False
 
 
+class HypothesisDraft(BaseModel):
+    """One candidate relation the generation Agent proposes.
+
+    Carries no score: scoring belongs to the separate evaluation stage, otherwise
+    the selection margin would only reflect the generator's own self-assessment.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    relation: TaskRelation
+    selected_task_id: str | None = None
+    action: AgentAction
+    supporting_evidence: list[EvidenceText] = Field(min_length=1, max_length=3)
+    counter_evidence: list[EvidenceText] = Field(default_factory=list, max_length=2)
+    risk: EvidenceText | None = None
+
+
+class HypothesisGeneration(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    hypotheses: list[HypothesisDraft] = Field(min_length=2, max_length=3)
+
+
+class TaskHypothesis(HypothesisDraft):
+    """A draft after Python assigned it a stable id."""
+
+    hypothesis_id: str = Field(pattern=HYPOTHESIS_ID_PATTERN)
+
+
+class HypothesisEvaluation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    hypothesis_id: str = Field(pattern=HYPOTHESIS_ID_PATTERN)
+    support_score: float = Field(ge=0, le=1)
+    evaluation_reason: str = Field(min_length=1, max_length=500)
+
+
+class HypothesisSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evaluations: list[HypothesisEvaluation] = Field(min_length=2, max_length=3)
+    selected_hypothesis_id: str = Field(pattern=HYPOTHESIS_ID_PATTERN)
+    confidence: float = Field(ge=0, le=1)
+    reason: str = Field(min_length=1, max_length=500)
+    rewritten_query: str | None = Field(default=None, max_length=300)
+
+
+class ContractViolation(StrEnum):
+    OUTSIDE_CANDIDATE = "OUTSIDE_CANDIDATE"
+    INVALID_RELATION_ACTION = "INVALID_RELATION_ACTION"
+    MISSING_TASK_ID = "MISSING_TASK_ID"
+    DUPLICATE_HYPOTHESIS = "DUPLICATE_HYPOTHESIS"
+    INCOMPLETE_EVALUATION = "INCOMPLETE_EVALUATION"
+    UNKNOWN_HYPOTHESIS = "UNKNOWN_HYPOTHESIS"
+    SELECTION_SCORE_MISMATCH = "SELECTION_SCORE_MISMATCH"
+    TOO_FEW_HYPOTHESES = "TOO_FEW_HYPOTHESES"
+
+
+class RejectedHypothesis(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    hypothesis_id: str | None = None
+    violation: ContractViolation
+
+
 class TaskContextDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -146,6 +215,8 @@ class TaskContextDecision(BaseModel):
     confidence: float = Field(ge=0, le=1)
     reason: str = Field(min_length=1)
     rewritten_query: str | None = None
+    hypotheses: list[TaskHypothesis] = Field(default_factory=list, max_length=3)
+    selection_margin: float | None = Field(default=None, ge=0, le=1)
 
     @model_validator(mode="after")
     def validate_relation_contract(self) -> "TaskContextDecision":
@@ -153,7 +224,36 @@ class TaskContextDecision(BaseModel):
             raise ValueError("SAME_TASK requires selected_task_id")
         if self.rewritten_query is not None:
             self.rewritten_query = self.rewritten_query.strip() or None
+        if self.hypotheses:
+            chosen = (self.relation, self.selected_task_id, self.recommended_action)
+            if not any(
+                (item.relation, item.selected_task_id, item.action) == chosen
+                for item in self.hypotheses
+            ):
+                raise ValueError("decision does not match any generated hypothesis")
         return self
+
+
+class TaskContextAgentResult(BaseModel):
+    """Everything the workflow needs to trace a two-stage deliberation.
+
+    The decision alone would lose the rejected candidates, the per-stage retries
+    and the timings, so the generation and evaluation events could not be written.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision: TaskContextDecision
+    generated_hypotheses: list[TaskHypothesis] = Field(default_factory=list)
+    evaluations: list[HypothesisEvaluation] = Field(default_factory=list)
+    rejected_hypotheses: list[RejectedHypothesis] = Field(default_factory=list)
+    generation_schema_retries: int = 0
+    evaluation_schema_retries: int = 0
+    llm_request_count: int = 0
+    generation_duration_ms: int = 0
+    evaluation_duration_ms: int = 0
+    total_duration_ms: int = 0
+    is_redecision: bool = False
 
 
 class GuardedActionResult(BaseModel):

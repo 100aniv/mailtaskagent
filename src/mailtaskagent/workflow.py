@@ -18,6 +18,7 @@ from mailtaskagent.models import (
     MailIntent,
     ReviewDecision,
     TaskCandidate,
+    TaskContextAgentResult,
     TaskContextDecision,
     TaskRelation,
     WorkflowResult,
@@ -82,8 +83,31 @@ def _validate_task_context_decision(
         raise ValueError("NEW_TASK must not select an existing Task ID")
 
 
-def _needs_rag_retry(decision: TaskContextDecision, threshold: float) -> bool:
-    return decision.relation == TaskRelation.AMBIGUOUS or decision.confidence < threshold
+def _needs_rag_retry(
+    decision: TaskContextDecision, threshold: float, min_margin: float
+) -> bool:
+    """Whether the decision is too weak to act on without looking again.
+
+    A small margin means the evaluation stage could not separate the top two
+    hypotheses, which is the same kind of uncertainty as a low confidence score
+    and routes through the same single query-rewrite retry.
+    """
+    if decision.relation == TaskRelation.AMBIGUOUS or decision.confidence < threshold:
+        return True
+    return decision.selection_margin is not None and decision.selection_margin < min_margin
+
+
+def _normalize_agent_result(
+    result: TaskContextDecision | TaskContextAgentResult,
+) -> TaskContextAgentResult:
+    """Accept either return shape from a Task Context Agent.
+
+    Production agents return the full result so the deliberation stages can be
+    traced; the contract test stubs return a bare decision.
+    """
+    if isinstance(result, TaskContextAgentResult):
+        return result
+    return TaskContextAgentResult(decision=result)
 
 
 def _validate_proposal(proposal: ActionProposal, candidates: list[TaskCandidate]) -> None:
@@ -168,6 +192,85 @@ class MailTaskWorkflow:
             status=status,
             message=message,
             **kwargs,
+        )
+
+    def _emit_deliberation_events(
+        self,
+        case_id: str,
+        mail_id: str,
+        result: TaskContextAgentResult,
+        candidates: list[TaskCandidate],
+    ) -> None:
+        """Record the two deliberation stages, on the first pass and on the retry.
+
+        Only the violation code and hypothesis id are stored, never the raw model
+        response.
+        """
+        if not result.generated_hypotheses:
+            return
+
+        suffix = "RE" if result.is_redecision else ""
+        decision = result.decision
+        self._event(
+            case_id,
+            mail_id,
+            f"M-03 HYPOTHESIS_{suffix}GENERATION",
+            "SUCCESS",
+            f"Agent가 가능한 업무 관계 가설 {len(result.generated_hypotheses)}개를 생성",
+            details={
+                "hypotheses": [
+                    item.model_dump(mode="json") for item in result.generated_hypotheses
+                ],
+                "candidate_task_ids": [item.task_id for item in candidates],
+                "schema_retries": result.generation_schema_retries,
+            },
+            duration_ms=result.generation_duration_ms,
+        )
+        self._event(
+            case_id,
+            mail_id,
+            f"M-03 HYPOTHESIS_{suffix}VALIDATION",
+            "SUCCESS",
+            "Python이 후보 ID·관계·Action 계약을 검증",
+            details={
+                "accepted_hypothesis_ids": [
+                    item.hypothesis_id for item in result.generated_hypotheses
+                ],
+                "rejected": [
+                    item.model_dump(mode="json") for item in result.rejected_hypotheses
+                ],
+            },
+        )
+        self._event(
+            case_id,
+            mail_id,
+            f"M-03 HYPOTHESIS_{suffix}EVALUATION",
+            "SUCCESS",
+            "별도 평가 단계가 가설별 지지도를 산출",
+            details={
+                "evaluations": [
+                    item.model_dump(mode="json") for item in result.evaluations
+                ],
+                "schema_retries": result.evaluation_schema_retries,
+            },
+            duration_ms=result.evaluation_duration_ms,
+        )
+        self._event(
+            case_id,
+            mail_id,
+            f"M-03 DELIBERATION_{suffix}DECISION",
+            "SUCCESS",
+            "Python이 선택 차이를 계산하고 최종 가설을 확정",
+            details={
+                "selected_relation": decision.relation.value,
+                "selected_task_id": decision.selected_task_id,
+                "selected_action": decision.recommended_action.value,
+                "selection_margin": decision.selection_margin,
+                "min_margin": self.settings.agent_deliberation_min_margin,
+                "confidence": decision.confidence,
+                "llm_request_count": result.llm_request_count,
+            },
+            duration_ms=result.total_duration_ms,
         )
 
     def process(self, mail: MailInput) -> WorkflowResult:
@@ -407,11 +510,17 @@ class MailTaskWorkflow:
                 )
                 try:
                     decision_started = perf_counter()
-                    task_context_decision = self.task_context_agent.judge(
-                        mail,
-                        analysis,
-                        retrieved_task_contexts,
-                        retry_count=0,
+                    agent_result = _normalize_agent_result(
+                        self.task_context_agent.judge(
+                            mail,
+                            analysis,
+                            retrieved_task_contexts,
+                            retry_count=0,
+                        )
+                    )
+                    task_context_decision = agent_result.decision
+                    self._emit_deliberation_events(
+                        case_id, mail.mail_id, agent_result, candidates
                     )
                     _validate_task_context_decision(
                         task_context_decision, retrieved_task_contexts
@@ -433,6 +542,7 @@ class MailTaskWorkflow:
                     if _needs_rag_retry(
                         task_context_decision,
                         self.settings.task_context_rag_confidence_threshold,
+                        self.settings.agent_deliberation_min_margin,
                     ) and task_context_decision.rewritten_query:
                         rag_retry_count = 1
                         retrieval_query = task_context_decision.rewritten_query
@@ -491,11 +601,17 @@ class MailTaskWorkflow:
                             },
                         )
                         redecision_started = perf_counter()
-                        task_context_decision = self.task_context_agent.judge(
-                            mail,
-                            analysis,
-                            retrieved_task_contexts,
-                            retry_count=rag_retry_count,
+                        agent_result = _normalize_agent_result(
+                            self.task_context_agent.judge(
+                                mail,
+                                analysis,
+                                retrieved_task_contexts,
+                                retry_count=rag_retry_count,
+                            )
+                        )
+                        task_context_decision = agent_result.decision
+                        self._emit_deliberation_events(
+                            case_id, mail.mail_id, agent_result, candidates
                         )
                         _validate_task_context_decision(
                             task_context_decision, retrieved_task_contexts
@@ -517,15 +633,29 @@ class MailTaskWorkflow:
                     if _needs_rag_retry(
                         task_context_decision,
                         self.settings.task_context_rag_confidence_threshold,
+                        self.settings.agent_deliberation_min_margin,
                     ):
+                        margin = task_context_decision.selection_margin
+                        if (
+                            margin is not None
+                            and margin < self.settings.agent_deliberation_min_margin
+                            and task_context_decision.relation != TaskRelation.AMBIGUOUS
+                        ):
+                            cause = (
+                                "상위 두 가설의 평가 점수 차이가 "
+                                f"{margin:.2f}로 기준 "
+                                f"{self.settings.agent_deliberation_min_margin:.2f} 미만: "
+                            )
+                        else:
+                            cause = "관계가 모호하거나 신뢰도가 기준 미만: "
                         rag_fallback_reason = (
                             (
                                 "Task Context 재판단 후에도 "
                                 if rag_retry_count
                                 else "Task Context 판단 결과 "
                             )
-                            + "관계가 모호하거나 신뢰도가 기준 미만: "
-                            f"{task_context_decision.reason}"
+                            + cause
+                            + f"{task_context_decision.reason}"
                         )
                     elif task_context_decision.relation == TaskRelation.SAME_TASK:
                         selected = task_context_decision.selected_task_id

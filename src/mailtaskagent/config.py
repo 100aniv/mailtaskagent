@@ -33,6 +33,10 @@ class Settings:
     task_context_rag_max_retries: int = 1
     mail_to_action_draft_enabled: bool = True
     gmail_approved_send_enabled: bool = False
+    agent_deliberation_enabled: bool = True
+    agent_deliberation_max_hypotheses: int = 3
+    agent_deliberation_min_margin: float = 0.15
+    agent_deliberation_budget_ms: int = 45_000
 
     @property
     def llm_mode(self) -> str:
@@ -72,5 +76,17 @@ def load_settings(env_file: Path | None = None) -> Settings:
         ),
         gmail_approved_send_enabled=_as_bool(
             os.getenv("GMAIL_APPROVED_SEND_ENABLED"), default=False
+        ),
+        agent_deliberation_enabled=_as_bool(
+            os.getenv("AGENT_DELIBERATION_ENABLED"), default=True
+        ),
+        agent_deliberation_max_hypotheses=max(
+            2, min(3, int(os.getenv("AGENT_DELIBERATION_MAX_HYPOTHESES", "3")))
+        ),
+        agent_deliberation_min_margin=max(
+            0.0, min(1.0, float(os.getenv("AGENT_DELIBERATION_MIN_MARGIN", "0.15")))
+        ),
+        agent_deliberation_budget_ms=max(
+            1_000, int(os.getenv("AGENT_DELIBERATION_BUDGET_MS", "45000"))
         ),
     )

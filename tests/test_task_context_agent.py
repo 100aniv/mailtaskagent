@@ -20,6 +20,7 @@ def test_live_task_context_agent_sanitizes_retry_query_after_limit(tmp_path) -> 
         confidence_threshold=0.75,
         task_context_rag_enabled=True,
         task_context_rag_max_retries=1,
+        agent_deliberation_enabled=False,
     )
     response_content = json.dumps(
         {
