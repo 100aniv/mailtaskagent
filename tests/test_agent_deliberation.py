@@ -550,3 +550,111 @@ def test_live_agent_stops_when_the_time_budget_is_gone(
         agent.judge(*_judge_args(), retry_count=0)
 
     assert len(calls) == 1, "the evaluation call must not be made after the budget is gone"
+
+
+_LISTED_RISK_GENERATION = json.dumps(
+    {
+        "hypotheses": [
+            {
+                "relation": "SAME_TASK",
+                "selected_task_id": "TASK-001",
+                "action": "UPDATE_TASK",
+                "supporting_evidence": ["요청자와 대상이 일치"],
+                "counter_evidence": [],
+                "risk": ["잘못된 업무를 갱신할 수 있음", "요청자가 다를 수 있음"],
+            },
+            {
+                "relation": "NEW_TASK",
+                "selected_task_id": None,
+                "action": "CREATE_TASK",
+                "supporting_evidence": ["제목이 다름"],
+                "counter_evidence": [],
+                "risk": None,
+            },
+        ]
+    },
+    ensure_ascii=False,
+)
+
+_OUTSIDE_CANDIDATE_GENERATION = json.dumps(
+    {
+        "hypotheses": [
+            {
+                "relation": "SAME_TASK",
+                "selected_task_id": "TASK-999",
+                "action": "UPDATE_TASK",
+                "supporting_evidence": ["검색 결과에 없는 Task"],
+                "counter_evidence": [],
+                "risk": None,
+            },
+            {
+                "relation": "NEW_TASK",
+                "selected_task_id": None,
+                "action": "CREATE_TASK",
+                "supporting_evidence": ["제목이 다름"],
+                "counter_evidence": [],
+                "risk": None,
+            },
+        ]
+    },
+    ensure_ascii=False,
+)
+
+
+def test_a_listed_risk_is_joined_rather_than_costing_a_retry(
+    base_settings: Settings,
+) -> None:
+    """The model returns a list for `risk` because its neighbours are lists."""
+    agent, calls = _azure_agent(base_settings, [_LISTED_RISK_GENERATION, _GOOD_SELECTION])
+
+    result = agent.judge(*_judge_args(), retry_count=0)
+
+    assert len(calls) == 2
+    assert result.generation_schema_retries == 0
+    assert result.generated_hypotheses[0].risk == (
+        "잘못된 업무를 갱신할 수 있음 / 요청자가 다를 수 있음"
+    )
+
+
+def test_a_contract_breach_is_retried_before_failing_closed(
+    base_settings: Settings,
+) -> None:
+    """A broken contract must reach the correction attempt.
+
+    Validating outside the retry loop meant these went straight to the
+    fail-closed path, so a single bad field cost the whole decision.
+    """
+    agent, calls = _azure_agent(
+        base_settings,
+        [_OUTSIDE_CANDIDATE_GENERATION, _GOOD_GENERATION, _GOOD_SELECTION],
+    )
+
+    result = agent.judge(*_judge_args(), retry_count=0)
+
+    assert len(calls) == 3
+    assert result.generation_schema_retries == 1
+    assert result.decision.selected_task_id == "TASK-001"
+
+
+def test_a_broken_evaluation_contract_is_also_retried(base_settings: Settings) -> None:
+    incomplete = json.dumps(
+        {
+            "evaluations": [
+                {"hypothesis_id": "H1", "support_score": 0.9, "evaluation_reason": "a"},
+                {"hypothesis_id": "H1", "support_score": 0.2, "evaluation_reason": "b"},
+            ],
+            "selected_hypothesis_id": "H1",
+            "confidence": 0.9,
+            "reason": "H2를 평가하지 않음",
+            "rewritten_query": None,
+        },
+        ensure_ascii=False,
+    )
+    agent, calls = _azure_agent(
+        base_settings, [_GOOD_GENERATION, incomplete, _GOOD_SELECTION]
+    )
+
+    result = agent.judge(*_judge_args(), retry_count=0)
+
+    assert len(calls) == 3
+    assert result.evaluation_schema_retries == 1

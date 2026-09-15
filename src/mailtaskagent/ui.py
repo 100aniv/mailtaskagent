@@ -3553,6 +3553,10 @@ def _render_manual_time_benchmark(live_report: dict | None) -> None:
             st.caption(f"측정 증적 저장: {evidence_path}")
 
 
+#: Allowance for jitter in the browser timer that drives the sync fragment.
+_SYNC_TIMER_TOLERANCE_SECONDS = 3
+
+
 @st.fragment(run_every="60s")
 def _render_automatic_gmail_sync(storage, settings) -> None:
     operation_settings = storage.get_operation_settings()
@@ -3562,7 +3566,11 @@ def _render_automatic_gmail_sync(storage, settings) -> None:
     interval_minutes = int(operation_settings["gmail_sync_interval_minutes"])
     now = datetime.now()
     last_check = st.session_state.get("gmail_auto_sync_last_check")
-    if last_check and (now - last_check).total_seconds() < interval_minutes * 60:
+    # The fragment timer and this gate are both a minute, so a browser timer that
+    # fires a fraction early skips the cycle and the next one only comes a minute
+    # later, making a "1분 주기" run every two. The tolerance absorbs that jitter.
+    due_after = interval_minutes * 60 - _SYNC_TIMER_TOLERANCE_SECONDS
+    if last_check and (now - last_check).total_seconds() < due_after:
         return
 
     try:

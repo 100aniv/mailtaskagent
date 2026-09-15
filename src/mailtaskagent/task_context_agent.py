@@ -61,6 +61,7 @@ relation이 AMBIGUOUS면 selected_task_id는 null이고 action은 ASK_USER다.
 반드시 hypotheses 키만 포함한 JSON object를 반환한다. 각 항목은 relation,
 selected_task_id, action, supporting_evidence, counter_evidence, risk 키만 가진다.
 supporting_evidence는 1~3개, counter_evidence는 0~2개의 문자열 배열이며 각 문장은 300자 이하다.
+risk는 배열이 아니라 문자열 하나이며 위험이 없으면 null이다.
 relation은 SAME_TASK, NEW_TASK, AMBIGUOUS 중 하나다.
 action은 CREATE_TASK, UPDATE_TASK, LINK_TO_TASK, SET_WAITING, MARK_COMPLETED,
 ASK_USER, IGNORE 중 하나다.
@@ -126,12 +127,14 @@ class AzureTaskContextAgent:
             max_retries=1,
         )
 
-    def _chat_json(self, prompt: str, payload: dict, correction: str) -> tuple[dict, int]:
-        """Call the model until the body parses, returning (json, extra_requests).
+    def _chat_json(self, prompt: str, payload: dict, correction: str, build):
+        """Call the model until `build` accepts the body, returning (value, retries).
 
-        Mirrors MailAnalyzer.analyze: the caller validates the parsed body and
-        raises on a contract breach, and this loop feeds a correction message back
-        for one more attempt before giving up.
+        `build` parses and contract-checks the response. It runs inside the loop
+        on purpose: a malformed field or a broken contract is exactly the kind of
+        thing a corrected second attempt fixes, and validating outside meant those
+        escaped straight to the fail-closed path without ever retrying.
+        Pydantic's ValidationError and HypothesisContractError are both ValueError.
         """
         last_error: Exception | None = None
         for attempt in range(self.settings.schema_retries + 1):
@@ -140,7 +143,9 @@ class AzureTaskContextAgent:
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ]
             if attempt > 0:
-                messages.append({"role": "system", "content": correction})
+                messages.append(
+                    {"role": "system", "content": f"{correction} 직전 오류: {last_error}"}
+                )
             response = self.client.chat.completions.create(
                 model=self.settings.model,
                 messages=messages,
@@ -151,7 +156,7 @@ class AzureTaskContextAgent:
             try:
                 if not content:
                     raise ValueError("Task Context Agent returned an empty response")
-                return _extract_json(content), attempt
+                return build(_extract_json(content)), attempt
             except (json.JSONDecodeError, ValueError) as exc:
                 last_error = exc
                 if attempt >= self.settings.schema_retries:
@@ -215,20 +220,25 @@ class AzureTaskContextAgent:
 
         max_hypotheses = self.settings.agent_deliberation_max_hypotheses
         generation_started = time.monotonic()
-        body, generation_retries = self._chat_json(
+        def build_hypotheses(body: dict) -> list:
+            drafted = deliberation.assign_hypothesis_ids(
+                HypothesisGeneration.model_validate(body)
+            )
+            deliberation.validate_generation(
+                drafted, candidate_ids, max_hypotheses=max_hypotheses
+            )
+            return drafted
+
+        hypotheses, generation_retries = self._chat_json(
             HYPOTHESIS_GENERATION_PROMPT,
             payload,
             "이전 응답이 가설 생성 계약을 위반했다. 후보에 없는 Task ID를 쓰지 말고, "
-            "relation별 selected_task_id와 action 규칙을 다시 확인하라. 서로 구분되는 "
-            f"가설을 2개 이상 {max_hypotheses}개 이하로 반환하고 JSON object만 응답한다.",
+            "relation별 selected_task_id와 action 규칙을 다시 확인하라. risk는 문자열 "
+            "하나 또는 null이고 배열이 아니다. 서로 구분되는 가설을 2개 이상 "
+            f"{max_hypotheses}개 이하로 반환하고 JSON object만 응답한다.",
+            build_hypotheses,
         )
         generation_ms = int((time.monotonic() - generation_started) * 1000)
-        hypotheses = deliberation.assign_hypothesis_ids(
-            HypothesisGeneration.model_validate(body)
-        )
-        deliberation.validate_generation(
-            hypotheses, candidate_ids, max_hypotheses=max_hypotheses
-        )
         check_budget("generation")
 
         evaluation_payload = {
@@ -236,16 +246,19 @@ class AzureTaskContextAgent:
             "hypotheses": [item.model_dump(mode="json") for item in hypotheses],
         }
         evaluation_started = time.monotonic()
-        body, evaluation_retries = self._chat_json(
+        def build_selection(body: dict):
+            parsed = HypothesisSelection.model_validate(body)
+            return parsed, deliberation.validate_selection(parsed, hypotheses)
+
+        (selection, winner), evaluation_retries = self._chat_json(
             HYPOTHESIS_EVALUATION_PROMPT,
             evaluation_payload,
             "이전 응답이 가설 평가 계약을 위반했다. 주어진 모든 hypothesis_id를 정확히 "
             "한 번씩 평가하고, selected_hypothesis_id는 support_score가 가장 높은 "
             "가설이어야 한다. JSON object만 응답한다.",
+            build_selection,
         )
         evaluation_ms = int((time.monotonic() - evaluation_started) * 1000)
-        selection = HypothesisSelection.model_validate(body)
-        winner = deliberation.validate_selection(selection, hypotheses)
         check_budget("evaluation")
 
         rewritten_query = selection.rewritten_query

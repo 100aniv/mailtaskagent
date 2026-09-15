@@ -1,0 +1,95 @@
+{
+  "evidence_type": "real_gmail_replay_after_deliberation",
+  "generated_at": "2026-09-15",
+  "baseline_commit": "83a3e5522d2964b0df224a6cfe30c10037581574",
+  "method": "운영 DB에 저장된 실제 Gmail Mail 35건을 읽기 전용으로 꺼내 격리된 새 DB에서 Workflow에 다시 흘려보냈다. Gmail API를 호출하지 않고 메일을 보내지도 않았으며, 운영 DB는 사전 백업했다.",
+  "purpose": "숙고 도입이 이미 검증된 실제 Gmail 흐름을 훼손하지 않는지 확인한다.",
+  "runs": {
+    "deliberation_off": {
+      "mails": 35,
+      "processed": 35,
+      "tasks": 10,
+      "routes": {
+        "STRUCTURED_RAG": 5,
+        "THREAD_EXACT": 14,
+        "LEGACY": 16
+      },
+      "actions": {
+        "ASK_USER": 10,
+        "CREATE_TASK": 10,
+        "IGNORE": 7,
+        "LINK_TO_TASK": 1,
+        "MARK_COMPLETED": 1,
+        "SET_WAITING": 3,
+        "UPDATE_TASK": 3
+      },
+      "review_count": 11,
+      "deliberation_runs": 0,
+      "deliberation_reruns": 0,
+      "query_rewrites": 0,
+      "rag_fallbacks": 0
+    },
+    "deliberation_on_before_fix": {
+      "mails": 35,
+      "processed": 34,
+      "tasks": 9,
+      "routes": {
+        "STRUCTURED_RAG": 5,
+        "THREAD_EXACT": 14,
+        "LEGACY": 15
+      },
+      "actions": {
+        "ASK_USER": 11,
+        "CREATE_TASK": 9,
+        "IGNORE": 6,
+        "LINK_TO_TASK": 1,
+        "MARK_COMPLETED": 1,
+        "SET_WAITING": 3,
+        "UPDATE_TASK": 3
+      },
+      "review_count": 12,
+      "deliberation_runs": 2,
+      "deliberation_reruns": 1,
+      "query_rewrites": 2,
+      "rag_fallbacks": 4
+    },
+    "deliberation_on_after_fix": {
+      "mails": 35,
+      "processed": 34,
+      "tasks": 10,
+      "routes": {
+        "STRUCTURED_RAG": 5,
+        "THREAD_EXACT": 13,
+        "LEGACY": 16
+      },
+      "actions": {
+        "ASK_USER": 10,
+        "CREATE_TASK": 10,
+        "IGNORE": 6,
+        "LINK_TO_TASK": 1,
+        "MARK_COMPLETED": 1,
+        "SET_WAITING": 3,
+        "UPDATE_TASK": 3
+      },
+      "review_count": 11,
+      "deliberation_runs": 5,
+      "deliberation_reruns": 4,
+      "query_rewrites": 4,
+      "rag_fallbacks": 0
+    }
+  },
+  "defects_found_and_fixed": [
+    {
+      "symptom": "숙고 ON에서 RAG_FALLBACK 4건, 생성 Task 10개에서 9개로 감소",
+      "cause": "모델이 risk를 문자열 대신 배열로 반환했고, Pydantic 검증과 계약 검증을 스키마 재시도 루프 밖에서 수행해 재시도가 전혀 일어나지 않았다.",
+      "fix": "검증을 재시도 루프 안으로 옮기고 직전 오류를 교정 메시지에 실어 보낸다. risk는 배열로 와도 문자열로 합치고 Prompt에도 형태를 명시했다.",
+      "after": "RAG_FALLBACK 0건, Task 10개로 OFF와 동일."
+    }
+  ],
+  "verdict": "수정 후 숙고 ON과 OFF의 생성 Task 수·Action 분포·사용자 확인 건수가 모두 같다. 숙고는 기존 실제 Gmail 흐름의 결과를 바꾸지 않고 판단 단계만 추가한다.",
+  "unrelated_observation": "회차마다 서로 다른 Mail 1건에서 M-01이 INBOUND Mail에 WAITING Intent를 반환해 실패했다. 이 프로젝트가 이미 문서화한 기존 의미 계약 이슈이며 숙고와 무관하다.",
+  "limits": [
+    "재생이므로 Gmail 수신·발송 자체를 새로 검증하지 않는다.",
+    "LIVE 실행은 회차마다 결과가 달라질 수 있다."
+  ]
+}

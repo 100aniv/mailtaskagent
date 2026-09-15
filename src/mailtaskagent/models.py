@@ -4,7 +4,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 HYPOTHESIS_ID_PATTERN = r"^H[1-3]$"
 # Bounded so an over-long model response cannot break the trace log or the UI.
@@ -156,6 +156,20 @@ class HypothesisDraft(BaseModel):
     supporting_evidence: list[EvidenceText] = Field(min_length=1, max_length=3)
     counter_evidence: list[EvidenceText] = Field(default_factory=list, max_length=2)
     risk: EvidenceText | None = None
+
+    @field_validator("risk", mode="before")
+    @classmethod
+    def join_listed_risks(cls, value):
+        """Accept the list the model tends to return for a field named `risk`.
+
+        Its neighbours are lists, so a single-string field invites a list back.
+        Joining is kinder than spending a retry on a difference that carries no
+        meaning.
+        """
+        if isinstance(value, (list, tuple)):
+            joined = " / ".join(str(item).strip() for item in value if str(item).strip())
+            return joined or None
+        return value
 
 
 class HypothesisGeneration(BaseModel):
