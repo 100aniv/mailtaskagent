@@ -172,7 +172,7 @@ function notes(slide, text, sources=[]) {
   box(s,60,228,1160,2,C.line,"none");
   txt(s,"실제 Agent 판단 흐름",60,246,260,28,20,C.navy,true);
   // Two explicit lines rather than one that wraps and orphans a syllable.
-  txt(s,"적용 기법  |  Bounded Deliberation + 제한적 ReAct Self-Correction",60,268,1160,20,13,"#7657D6",true);
+  txt(s,"적용 기법  |  Bounded Multi-Hypothesis Deliberation + 제한적 ReAct Self-Correction",60,268,1160,20,13,"#7657D6",true);
   txt(s,"Deliberation은 한 번의 Reason 안에서 후보를 견주는 단계이고, ReAct는 그 판단을 Retrieve·Act·Observe로 감싸는 바깥 Loop입니다. Tree of Thoughts(Yao et al., NeurIPS 2023)의 후보 생성·평가 분리를 참고하되 후보 2~3개·평가 1회·재검색 1회로 제한했고, Full Tree of Thoughts 구현은 아닙니다.",60,288,1160,20,12.5,C.muted,false);
   const agentRows=[
     ["Observe · Retrieve", "현재 Mail 관찰 + SQLite Task Context RAG로 활성 Task·최근 Mail 3건·History 5건 검색"],
