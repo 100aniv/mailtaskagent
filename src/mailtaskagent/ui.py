@@ -1747,6 +1747,20 @@ def _agentic_trace_phase(step: str) -> tuple[str, str]:
         return "Act / Retrieve", "🔍"
     if step in {"M-02 CONTEXT_OBSERVATION", "M-02 CONTEXT_REOBSERVATION"}:
         return "Observe Context", "👀"
+    if step in {
+        "M-03 HYPOTHESIS_GENERATION",
+        "M-03 HYPOTHESIS_REGENERATION",
+    }:
+        return "Generate Hypotheses", "🌱"
+    if step in {
+        "M-03 HYPOTHESIS_VALIDATION",
+        "M-03 HYPOTHESIS_REVALIDATION",
+        "M-03 HYPOTHESIS_EVALUATION",
+        "M-03 HYPOTHESIS_REEVALUATION",
+        "M-03 DELIBERATION_DECISION",
+        "M-03 DELIBERATION_REDECISION",
+    }:
+        return "Deliberate / Compare", "⚖️"
     if step in {"M-03 RAG_DECISION", "M-03 RAG_REDECISION"}:
         return "Re-evaluate / Decide", "🧠"
     if step == "M-03 QUERY_REWRITE":
@@ -1866,6 +1880,18 @@ def _render_agentic_trace(
     final_details = latest_details("FINAL_OUTPUT", "M-04 EXECUTION_OBSERVATION")
     reply_details = latest_details("REPLY_ACTION_DECISION")
     handoff_details = latest_details("ASK_USER", "RAG_FALLBACK")
+    generation_details = latest_details(
+        "M-03 HYPOTHESIS_REGENERATION", "M-03 HYPOTHESIS_GENERATION"
+    )
+    evaluation_details = latest_details(
+        "M-03 HYPOTHESIS_REEVALUATION", "M-03 HYPOTHESIS_EVALUATION"
+    )
+    deliberation_details = latest_details(
+        "M-03 DELIBERATION_REDECISION", "M-03 DELIBERATION_DECISION"
+    )
+    rewrite_details = latest_details(
+        "M-03 RAG_REDECISION", "M-03 QUERY_REWRITE"
+    )
 
     route = route_details.get("route") or guard_details.get("match_route") or "-"
     route_label = _ROUTE_LABELS.get(route, route)
@@ -1884,8 +1910,22 @@ def _render_agentic_trace(
     )
     verdict = guard_details.get("verdict") or decision_details.get("guard_verdict")
     proposal_confidence = proposal_details.get("confidence")
-    retry_count = int(handoff_details.get("retry_count") or 0)
+    # A successful rewrite never reaches ASK_USER or RAG_FALLBACK, so reading the
+    # count only from those left the badge saying "없음" after a retry that worked.
+    retry_count = int(
+        handoff_details.get("retry_count")
+        or rewrite_details.get("retry_count")
+        or 0
+    )
     guard_override = bool(decision_details.get("python_guard_override"))
+    generated_hypotheses = generation_details.get("hypotheses") or []
+    evaluation_rows = evaluation_details.get("evaluations") or []
+    evaluation_by_id = {
+        row.get("hypothesis_id"): row
+        for row in evaluation_rows
+        if isinstance(row, dict)
+    }
+    selection_margin = deliberation_details.get("selection_margin")
 
     ui.section("이번 판단 한눈에 보기", "LLM이 반환한 구조화 결과와 Python 검증 결과를 연결해 보여줍니다.")
     st.markdown(
@@ -1908,12 +1948,19 @@ def _render_agentic_trace(
                     "accent" if route == "STRUCTURED_RAG" else "neutral",
                 ),
                 (
-                    "3 · Agent 제안",
+                    "3 · 후보 비교",
+                    ui.strong(f"{len(generated_hypotheses)}개 검토")
+                    if generated_hypotheses
+                    else ui.badge("미수행", "neutral"),
+                    "accent" if generated_hypotheses else "neutral",
+                ),
+                (
+                    "4 · Agent 제안",
                     _action_badge(proposed_action),
                     "accent" if proposed_action else "neutral",
                 ),
                 (
-                    "4 · Python Guard",
+                    "5 · Python Guard",
                     _guard_badge(verdict),
                     "success"
                     if verdict == GuardVerdict.ACCEPTED.value
@@ -1922,7 +1969,7 @@ def _render_agentic_trace(
                     else "neutral",
                 ),
                 (
-                    "5 · 최종 실행",
+                    "6 · 최종 실행",
                     _action_badge(final_action if final_action != "-" else None),
                     "success"
                     if final_action not in {"-", AgentAction.ASK_USER.value}
@@ -1987,6 +2034,61 @@ def _render_agentic_trace(
             )
         else:
             ui.empty_state("신뢰도 기록 없음", "이 경로에서는 Task Context Agent를 호출하지 않았습니다.")
+
+    if generated_hypotheses:
+        margin_text = (
+            f" · 선택 차이 {selection_margin:.2f}"
+            if isinstance(selection_margin, (int, float))
+            else ""
+        )
+        ui.section(
+            "검토한 후보",
+            "생성 단계가 만든 후보를 별도 평가 단계가 비교한 결과입니다." + margin_text,
+        )
+        selected_id = None
+        if evaluation_by_id:
+            selected_id = max(
+                evaluation_by_id.values(),
+                key=lambda row: row.get("support_score") or 0,
+            ).get("hypothesis_id")
+        comparison = []
+        for item in generated_hypotheses:
+            if not isinstance(item, dict):
+                continue
+            hypothesis_id = item.get("hypothesis_id")
+            evaluation = evaluation_by_id.get(hypothesis_id, {})
+            score = evaluation.get("support_score")
+            relation_text = _RELATION_LABELS.get(
+                item.get("relation"), item.get("relation") or "-"
+            )
+            target = item.get("selected_task_id")
+            comparison.append(
+                {
+                    "선택": "●" if hypothesis_id == selected_id else "",
+                    "가설": hypothesis_id or "-",
+                    "관계·대상": f"{relation_text} · {target}" if target else relation_text,
+                    "Action": ACTION_LABELS.get(
+                        item.get("action"), item.get("action") or "-"
+                    ),
+                    "지지도": f"{score:.2f}" if isinstance(score, (int, float)) else "-",
+                    # The evaluation rationale sits next to the score it explains,
+                    # ahead of the generation evidence, because it is the column
+                    # that shows the second stage actually compared the candidates.
+                    "평가 근거": evaluation.get("evaluation_reason") or "-",
+                    "생성 근거": " / ".join(item.get("supporting_evidence") or []) or "-",
+                    "반대 근거·위험": " / ".join(
+                        list(item.get("counter_evidence") or [])
+                        + ([item["risk"]] if item.get("risk") else [])
+                    )
+                    or "-",
+                }
+            )
+        st.dataframe(comparison, hide_index=True, width="stretch")
+        st.caption(
+            "지지도는 검증된 정확도가 아니라 평가 단계 LLM이 매긴 후보 간 상대적 "
+            "지지도입니다. 생성 근거는 그 가설이 가능한 이유이고, 평가 근거는 다른 "
+            "가설과 비교해 택하거나 배제한 이유입니다."
+        )
 
     if verdict == GuardVerdict.ESCALATED.value:
         ui.note(

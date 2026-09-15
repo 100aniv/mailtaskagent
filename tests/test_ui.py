@@ -52,6 +52,22 @@ def test_display_value_localizes_status_and_boolean() -> None:
     assert ui_module._display_value(None) == "-"
 
 
+def test_agentic_trace_labels_the_two_deliberation_stages() -> None:
+    assert ui_module._agentic_trace_phase("M-03 HYPOTHESIS_GENERATION")[0] == (
+        "Generate Hypotheses"
+    )
+    assert ui_module._agentic_trace_phase("M-03 HYPOTHESIS_REGENERATION")[0] == (
+        "Generate Hypotheses"
+    )
+    for step in (
+        "M-03 HYPOTHESIS_VALIDATION",
+        "M-03 HYPOTHESIS_EVALUATION",
+        "M-03 DELIBERATION_DECISION",
+        "M-03 DELIBERATION_REDECISION",
+    ):
+        assert ui_module._agentic_trace_phase(step)[0] == "Deliberate / Compare"
+
+
 def test_agentic_trace_separates_agent_proposal_and_python_guard() -> None:
     assert ui_module._agentic_trace_phase("M-03 AGENT_ACTION_PROPOSAL")[0] == (
         "Agent Action Proposal"
@@ -344,9 +360,10 @@ def test_operation_mode_renders_explainable_priority_and_direct_completion(
     # the guard verdict and the final action.
     assert "1 · Mail 분석" in trace_text
     assert "2 · Task Context" in trace_text
-    assert "3 · Agent 제안" in trace_text
-    assert "4 · Python Guard" in trace_text
-    assert "5 · 최종 실행" in trace_text
+    assert "3 · 후보 비교" in trace_text
+    assert "4 · Agent 제안" in trace_text
+    assert "5 · Python Guard" in trace_text
+    assert "6 · 최종 실행" in trace_text
     # An escalation must never be presented as a success.
     assert "사용자 확인으로 이관" in trace_text
     # Confidence is labelled as the model's own score, with its threshold.
