@@ -19,7 +19,7 @@
 최종 제출 기준은 `2. 최종` 폴더의 v9 PPTX·PDF·시연 스크립트다. 최종 MVP에는 Core E2E,
 SQLite Task Context RAG·최대 1회 ReAct 재판단, Agent Action Proposal·Python Safety Guard,
 실행 결과 재조회, Reply Agent의 회신 방식 판단·사용자 입력 기반 LLM Draft·사용자 승인 Gmail
-발송과 `WAITING_REPLY` 전환이 포함된다. 2026-09-15 최종 기준은 pytest `227 passed`, 회사
+발송과 `WAITING_REPLY` 전환이 포함된다. 2026-09-15 최종 기준은 pytest `228 passed`, 회사
 LLM 15/15 실행 단위·28/28 Action 단계, Task Context Agent 3/3, Reply Planning 3/3,
 Draft 1/1이다. 각 수치는 서로 다른 검증 분모이며 실제 회사 Mailbox 전체 정확도가 아니다.
 

@@ -122,7 +122,7 @@ function notes(slide, text, sources=[]) {
   txt(s,"검증 결과",60,445,180,30,21,C.navy,true);
   const metrics=[["28/28","Action 단계"],["3/3","Agent Context Live"],["20/20","Gmail 수용시험"]];
   metrics.forEach(([v,l],i)=>{ const x=60+i*278; txt(s,v,x,481,220,42,32,i===2?C.green:C.blue,true,"center"); txt(s,l,x,523,220,24,15,C.muted,true,"center"); });
-  txt(s,"보조 검증  |  pytest 227 passed  ·  중복 재조회 35/35",840,474,340,24,13,C.navy,true,"right");
+  txt(s,"보조 검증  |  pytest 228 passed  ·  중복 재조회 35/35",840,474,340,24,13,C.navy,true,"right");
   txt(s,"Reply Planning 3/3  ·  Draft 1/1  ·  사용자 승인 실제 Gmail 발송 1건",760,498,420,24,13,C.green,true,"right");
   txt(s,"자동 반영 비율  |  정의된 합성 15 Case에서 자동 반영 8/15(53.3%)  ·  사용자 확인 7/15(46.7%)",60,554,1160,22,14,C.navy,true);
   txt(s,"위 수치는 정의된 Case 범위의 결과이며 실제 Mailbox 전체 성능이 아닙니다. 사용자 체감 시간은 미측정입니다.",60,578,1160,18,11.5,C.muted,false);

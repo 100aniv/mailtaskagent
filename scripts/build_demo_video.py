@@ -135,7 +135,7 @@ CAPTIONS = [
     Caption(*_cmp[2], "Self-Correction | 저신뢰·작은 선택 차이에서 Query Rewrite 후 최대 1회 재검색합니다. 차이 0.10은 재판단 후에도 그대로였습니다."),
     Caption(*_hitl[0], "Guard | PYTHON_GUARD가 WAITING으로 기록되고 ASK_USER로 이관됩니다. 실제 저장된 이벤트입니다."),
     Caption(*_hitl[1], "Human-in-the-loop | ASK_USER로 이관하고, 사용자 결정 전까지 Task DB를 바꾸지 않습니다."),
-    Caption(*_final[0], "반복 검증 | 회사 LLM Live 15/15 · Action 28/28 · pytest 227 passed"),
+    Caption(*_final[0], "반복 검증 | 회사 LLM Live 15/15 · Action 28/28 · pytest 228 passed"),
     Caption(*_final[1], "Gmail E2E | 실제 계정으로 받은 새 메일 4건 처리 · 2건 Task 생성, 2건 ASK_USER"),
     Caption(*_final[2], "결론 | AI Master MVP 완료 · Outlook·사내 운영 전환은 Post-MVP"),
 ]

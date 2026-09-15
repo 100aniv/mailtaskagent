@@ -55,12 +55,9 @@ def _ensure_project_environment() -> None:
     the suite and the audit reports failures that are about the environment
     rather than the submission.
     """
-    try:
-        import mailtaskagent  # noqa: F401
-        import pytest  # noqa: F401
-    except ModuleNotFoundError:
-        pass
-    else:
+    import importlib.util
+
+    if all(importlib.util.find_spec(name) for name in ("mailtaskagent", "pytest")):
         return
 
     venv = _project_python()
