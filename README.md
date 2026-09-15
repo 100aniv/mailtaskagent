@@ -307,5 +307,5 @@ Client 정보는 `.secrets/` 또는 회사 Secret 관리 방식으로만 보관�
 
 내일 시연 설명과 순서는 `Docs/IMPLEMENTATION/08_멘토_시연_브리핑.md`를 참고한다.
 
-멘토 리뷰용 발표자료는 `Docs/PRESENTATION/MailTaskAgent_멘토리뷰_2026-08-26.pptx`,
+과거 멘토 세션 발표자료는 프로젝트 옆 `MailTaskAgent_ARCHIVE_2026-09-15/mentor_sessions/`에 있고,
 운영 UI 콘셉트는 `prototype/final_ui_mockup.html`에서 확인한다.

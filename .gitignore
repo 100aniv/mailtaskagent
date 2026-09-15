@@ -23,3 +23,6 @@ output/
 
 # Editor and agent session config; points at machine-local paths.
 .claude/
+
+# Word writes these while a document is open and removes them on close.
+~$*
