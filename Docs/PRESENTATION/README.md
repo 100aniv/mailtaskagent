@@ -2,8 +2,8 @@
 
 ## 파일 구성
 
-- **제출본**: `2. 최종/09285_백준현_AI_Master_최종발표자료_v11.pptx` / `_v11.pdf`
-  4장 발표자료와 발표자 노트. 같은 폴더의 v3·v6·v7·v9는 작업 이력이며 제출하지 않는다.
+- **제출본**: `2. 최종/09285_백준현_AI_Master_최종발표자료_v12.pptx` / `_v12.pdf`
+  4장 발표자료와 발표자 노트. 같은 폴더의 v3·v6·v7·v9·v10·v11은 작업 이력이며 제출하지 않는다.
 - `build_final_deck.mjs`: v11을 다시 만드는 Builder. 장표 문구와 발표자 노트의 단일 출처이며,
   PPTX를 직접 편집하면 다음 빌드에서 조용히 되돌아간다.
   `PRESENTATION_SKILL_DIR`, `PRESENTATION_PYTHON`, `RUNTIME_NODE_MODULES`가 필요하다.
