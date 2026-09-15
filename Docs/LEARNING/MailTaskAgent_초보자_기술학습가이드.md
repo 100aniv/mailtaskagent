@@ -82,17 +82,26 @@ MailTaskAgent는 **메일 내용을 읽고 끝나는 요약기**가 아니다.
 MailTaskAgent는 다음과 같은 반복 구조를 가진다.
 
 ```text
-관찰 Observe
-  새 메일과 현재 Task 상태를 확인
+Observe 관찰
+  새 메일과 현재 Task 상태를 확인                      M-01
 
-판단 Decide
-  7개 Action 중 다음 행동을 선택
+Retrieve 검색                                        M-02
+  SQLite Task Context RAG로 관련 활성 Task, 최근 Mail 3건,
+  History 5건, 사용자 결정을 가져옴
 
-실행 Act
-  검증된 변경만 DB에 반영
+Reason 판단                                          M-03
+  후보 2~3개를 만들고 별도 평가 단계가 하나를 선택
 
-기억 Remember
-  Mail, Task, Link, History, Event 저장
+Self-Correction 재판단                               M-03
+  확신이 낮거나 상위 두 후보의 차이가 작으면
+  Query Rewrite → Context 재검색 → 재판단, 최대 1회
+
+Act 실행                                             Guard → M-04
+  Python Guard가 검증한 변경만 DB에 반영,
+  위험하거나 모호하면 ASK_USER
+
+Observe 재관찰                                       M-04
+  저장된 결과를 다시 읽어 기대값과 같은지 확인
 
 다음 메일
   저장된 상태와 History를 다시 Context로 사용
@@ -100,6 +109,18 @@ MailTaskAgent는 다음과 같은 반복 구조를 가진다.
 
 즉, 결과를 저장하고 다음 판단에 다시 사용하는 **상태 기반 폐루프**가 있다. 또한 확신이 없거나
 중요한 변경은 `ASK_USER`로 사람에게 넘긴다. 이 점이 단순 분류기나 챗봇과 다르다.
+
+이 루프를 부르는 정확한 이름은 **SQLite Task Context RAG + 제한적 ReAct-style Self-Correction**이고,
+흐름으로 쓰면 `Observe → Retrieve → Reason → Act → Observe`다. 세 용어를 한 줄로 구분하면 이렇다.
+
+| 용어 | 쉬운 뜻 | 이 프로젝트에서 |
+| --- | --- | --- |
+| RAG | 답하기 전에 필요한 자료를 먼저 찾아옴 | M-02가 SQLite에서 Task Context를 검색 |
+| ReAct | 찾아보고 판단하고 실행하고 결과를 다시 확인하는 순환 | M-02 검색부터 M-04 결과 재조회까지 한 바퀴 |
+| Self-Correction | 확신이 없을 때 스스로 다시 해봄 | M-03이 Query Rewrite 후 재검색·재판단 1회 |
+
+아닌 것도 분명히 해 둔다. Vector DB와 외부 Embedding을 쓰지 않는 **Structured Retrieval**이고,
+단계 수에 제한이 없는 Full ReAct가 아니며, Full Tree of Thoughts도 Multi-Agent도 아니다.
 
 다만 이 프로젝트에서 `Agentic`이라는 말은 LLM이 모든 권한을 가진다는 뜻이 아니다.
 

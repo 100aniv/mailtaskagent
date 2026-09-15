@@ -138,29 +138,30 @@ function notes(slide, text, sources=[]) {
   const xs=[60,250,440,630,820,1010];
   const ns=[
     ["M-01","Mail Analyzer","의미·Intent·기한"],
-    ["M-02","Task Retriever","SQLite Context top-k"],
+    ["M-02","Task Context RAG","SQLite top-k 검색"],
     ["M-03","Context Agent","가설 생성·검증·평가"],
     ["Guard","Python Policy","Payload·전이 검증"],
     ["M-04","DB Tool","저장·상태 재조회"],
     ["M-05","Review·Trace","사용자 확인 화면"]
   ];
   ns.forEach(([id,t,d],i)=>{ box(s,xs[i],190,160,132,i===2?"#F3EFFF":C.white,i===2?"#7657D6":C.line,true); pill(s,id,xs[i]+18,204,90,i===2?"#7657D6":C.blue,i===2?"#EDE6FF":C.pale); txt(s,t,xs[i]+14,246,136,28,17,C.navy,true); txt(s,d,xs[i]+14,276,136,36,13,C.muted,false); if(i<5) arrow(s,xs[i]+166,242,20); });
-  box(s,60,342,1160,88,C.pale,"none",true);
-  txt(s,"Task 관계",82,350,120,28,16,C.navy,true);
-  txt(s,"동일 Thread는 Metadata 규칙",205,350,260,28,15,C.muted,false);
-  txt(s,"다른 Thread·다른 표현은 후보 2~3개를 비교해 관계·대상·Action 선택",475,350,710,28,15,"#7657D6",true);
-  txt(s,"회신 실행",82,390,120,28,16,C.navy,true);
-  txt(s,"Reply Agent 판단  →  사용자 입력  →  LLM 초안  →  승인 Gmail 발송  →  WAITING_REPLY",205,390,980,28,15,C.green,true);
+  txt(s,"제한적 ReAct  |  Observe → Retrieve → Reason → Act → Observe   (저신뢰·모호하면 Query Rewrite 후 재검색·재판단 최대 1회)",60,330,1160,20,13,"#7657D6",true);
+  box(s,60,354,1160,80,C.pale,"none",true);
+  txt(s,"Task 관계",82,360,120,28,16,C.navy,true);
+  txt(s,"동일 Thread는 Metadata 규칙",205,360,260,28,15,C.muted,false);
+  txt(s,"다른 Thread·다른 표현은 후보 2~3개를 비교해 관계·대상·Action 선택",475,360,710,28,15,"#7657D6",true);
+  txt(s,"회신 실행",82,398,120,28,16,C.navy,true);
+  txt(s,"Reply Agent 판단  →  사용자 입력  →  LLM 초안  →  승인 Gmail 발송  →  WAITING_REPLY",205,398,980,28,15,C.green,true);
   txt(s,"기술 선택 이유",60,450,180,28,20,C.navy,true);
   const choices=[
     ["gpt-4.1-mini","메일 의미와 관계를 Pydantic Schema로 구조화\n모델 간 우월성 비교는 수행하지 않음"],
-    ["SQLite Task Context","개인 MVP의 활성 Task·최근 Mail·History만 제한 검색\nVector DB와 외부 Embedding은 사용하지 않음"],
+    ["SQLite Task Context RAG","개인 MVP의 활성 Task·최근 Mail 3건·History 5건·사용자 결정만 제한 검색\nVector DB와 외부 Embedding은 사용하지 않는 Structured Retrieval"],
     ["Python + Pydantic Guard","LangGraph 없이 단일 Agent + 결정론 Guard 구성\n후보 ID·상태 전이·중요 변경을 Python이 검증"]
   ];
   choices.forEach(([t,d],i)=>{ const x=60+i*386; txt(s,t,x,486,348,26,17,i===1?"#7657D6":C.blue,true); txt(s,d,x,518,348,54,14,C.muted,false); });
   box(s,60,590,1160,44,"#EEF9F5","none",true);
   txt(s,"M-01은 모든 Mail 의미를 LLM으로 구조화하고, 관계·Action 선택은 STRUCTURED_RAG 경로에만 적용합니다.",82,598,1110,27,16,C.navy,true);
-  notes(s,"가장 중요한 설계 결정부터 말씀드리겠습니다. 모든 메일을 Agent에게 맡기지 않았습니다. 경로가 셋으로 갈립니다. 같은 Thread에 활성 업무가 정확히 하나면 규칙이 바로 연결하고 검색과 Agent 판단을 아예 호출하지 않습니다. 관련 업무를 찾아야 할 때만 RAG 경로로 가고, 업무 요청이 아니면 기존 규칙 경로로 처리합니다. 입력에 따라 호출 자체가 달라지는 것이 고정 Workflow와의 차이입니다.\n\nM-03을 한 번의 호출로 두지 않은 이유가 중요합니다. 후보와 승자를 한 응답에서 같이 받으면, 모델이 실제로 후보를 견주었는지 결론을 먼저 정하고 설명을 붙였는지 구분할 방법이 없습니다. 그래서 생성과 평가를 다른 호출로 나눴습니다. 생성 단계는 후보 두세 개를 근거와 함께 내고 점수는 매기지 않습니다. Python이 후보 ID와 관계 계약을 검증하고, 통과한 후보만 평가 단계로 넘어가 지지도를 받습니다. 상위 두 지지도의 차이는 Python이 계산합니다.\n\nM-02 검색은 외부 문서가 아니라 제 SQLite를 봅니다. 활성 업무 다섯 건, 각 업무의 최근 메일 세 건과 변경 이력 다섯 건, 그리고 사용자가 과거에 확정한 결정을 함께 가져옵니다. 지난 결정이 다음 판단의 근거로 다시 들어갑니다.\n\n기술 선택 이유입니다. Vector DB와 외부 Embedding은 쓰지 않았습니다. 개인의 활성 업무는 수십 건 규모라 SQLite 조회만으로 충분했고, 구성요소를 늘리는 비용이 더 컸습니다. 대신 검색이 어휘 겹침에 의존한다는 한계가 남습니다. 모델 간 비교 실험은 하지 않았으므로 최적이라고 주장하지 않습니다.\n\n랭그래프도 쓰지 않았습니다. 에이전트가 하나이고 상태가 Task 다섯 개와 Action 일곱 개로 닫혀 있어, 파이썬 상태와 가드만으로 검증이 더 쉬웠습니다. 분기와 중단, 재개가 복잡해지는 시점에 다시 검토하겠습니다.\n\n세 번째가 가장 오래 고민한 Python Guard입니다. LLM은 제안만 하고 데이터베이스를 직접 바꾸지 않습니다. Guard는 고른 업무 ID가 검색 후보 안에 있는지, 메일 의도와 Action이 맞는지, 생성에 필요한 값이 있는지를 확인하고, 하나라도 어긋나면 사용자 확인으로 올립니다. 완료·취소·기한 단축은 신뢰도와 무관하게 항상 승인을 거칩니다.",["Docs/AI_MASTER/04_상세설계및개발환경.md","src/mailtaskagent/workflow.py","src/mailtaskagent/task_context_agent.py","src/mailtaskagent/deliberation.py","src/mailtaskagent/decision.py"]);
+  notes(s,"가장 중요한 설계 결정부터 말씀드리겠습니다. 모든 메일을 Agent에게 맡기지 않았습니다. 경로가 셋으로 갈립니다. 같은 Thread에 활성 업무가 정확히 하나면 규칙이 바로 연결하고 검색과 Agent 판단을 아예 호출하지 않습니다. 관련 업무를 찾아야 할 때만 RAG 경로로 가고, 업무 요청이 아니면 기존 규칙 경로로 처리합니다. 입력에 따라 호출 자체가 달라지는 것이 고정 Workflow와의 차이입니다.\n\n엠 영이가 이 프로젝트의 알에이지입니다. 외부 문서를 찾는 지식 알에이지가 아니라, 판단에 필요한 과거 업무 맥락을 제 에스큐엘라이트에서 찾아오는 태스크 컨텍스트 알에이지입니다. 활성 업무 다섯 건, 각 업무의 최근 메일 세 건과 변경 이력 다섯 건, 사용자가 과거에 확정한 결정을 함께 가져옵니다. 지난 결정이 다음 판단의 근거로 다시 들어갑니다.\n\n네 용어의 역할이 다릅니다. 알에이지는 맥락을 가져오는 단계, 리액트는 그 맥락을 관찰해 행동을 정하고 실행 결과를 다시 관찰하는 바깥 루프, 셀프 커렉션은 그 루프 안에서 확신이 부족할 때 검색어를 바꿔 한 번 다시 찾고 다시 판단하는 부분입니다. 파이썬 가드는 에이전트의 판단을 대신하는 자리가 아니라 그 판단을 실행해도 되는지 확인하는 경계입니다. 흐름으로 읽으면 관찰, 검색, 판단, 실행, 재관찰입니다.\n\n벡터 디비를 쓰지 않은 이유는 개인의 활성 업무가 수십 건 규모라 에스큐엘라이트 조회만으로 충분했고 구성요소를 늘리는 비용이 더 컸기 때문입니다. 대신 검색이 어휘 겹침에 의존한다는 한계가 남습니다. 모델 간 비교 실험은 하지 않았으므로 최적이라고 주장하지 않습니다.\n\n랭그래프도 쓰지 않았습니다. 에이전트가 하나이고 상태가 Task 다섯 개와 Action 일곱 개로 닫혀 있어, 파이썬 상태와 가드만으로 검증이 더 쉬웠습니다. 분기와 중단, 재개가 복잡해지는 시점에 다시 검토하겠습니다.\n\n세 번째가 가장 오래 고민한 Python Guard입니다. LLM은 제안만 하고 데이터베이스를 직접 바꾸지 않습니다. Guard는 고른 업무 ID가 검색 후보 안에 있는지, 메일 의도와 Action이 맞는지, 생성에 필요한 값이 있는지를 확인하고, 하나라도 어긋나면 사용자 확인으로 올립니다. 완료·취소·기한 단축은 신뢰도와 무관하게 항상 승인을 거칩니다.",["Docs/AI_MASTER/04_상세설계및개발환경.md","src/mailtaskagent/workflow.py","src/mailtaskagent/task_context_agent.py","src/mailtaskagent/deliberation.py","src/mailtaskagent/decision.py"]);
 }
 
 // 4. Challenge and proof
@@ -171,16 +172,18 @@ function notes(slide, text, sources=[]) {
   box(s,60,228,1160,2,C.line,"none");
   txt(s,"실제 Agent 판단 흐름",60,246,260,28,20,C.navy,true);
   // Two explicit lines rather than one that wraps and orphans a syllable.
-  txt(s,"적용 기법  |  Bounded Multi-Hypothesis Deliberation",60,268,1160,20,13,"#7657D6",true);
-  txt(s,"Tree of Thoughts(Yao et al., NeurIPS 2023)의 후보 생성·평가 분리 아이디어를 참고하되, 후보 2~3개·평가 1회·재검색 1회로 제한했습니다. Full Tree of Thoughts 구현은 아닙니다.",60,288,1160,20,12.5,C.muted,false);
+  txt(s,"적용 기법  |  Bounded Deliberation + 제한적 ReAct Self-Correction",60,268,1160,20,13,"#7657D6",true);
+  txt(s,"Deliberation은 한 번의 Reason 안에서 후보를 견주는 단계이고, ReAct는 그 판단을 Retrieve·Act·Observe로 감싸는 바깥 Loop입니다. Tree of Thoughts(Yao et al., NeurIPS 2023)의 후보 생성·평가 분리를 참고하되 후보 2~3개·평가 1회·재검색 1회로 제한했고, Full Tree of Thoughts 구현은 아닙니다.",60,288,1160,20,12.5,C.muted,false);
   const agentRows=[
-    ["입력·검색", "현재 Mail + 활성 Task + 최근 Mail 3건 + History 5건"],
-    ["가설 생성", "가능한 관계·대상·Action 후보 2~3개를 근거와 함께 제시 (점수는 매기지 않음)"],
-    ["검증·평가", "Python이 후보 계약을 검증하고, 별도 평가 단계가 지지도를 매겨 하나를 선택"],
-    ["재판단 · Self-Correction", "모호·저신뢰이거나 선택 차이가 작으면 Query Rewrite 후 재검색을 최대 1회 수행"],
-    ["실행·관찰", "Python Guard 승인 또는 ASK_USER → DB 실행 → 실제 저장 상태 재조회"]
+    ["Observe · Retrieve", "현재 Mail 관찰 + SQLite Task Context RAG로 활성 Task·최근 Mail 3건·History 5건 검색"],
+    ["Reason · 가설 생성", "가능한 관계·대상·Action 후보 2~3개를 근거와 함께 제시 (점수는 매기지 않음)"],
+    ["Reason · 검증·평가", "Python이 후보 계약을 검증하고, 별도 평가 단계가 지지도를 매겨 하나를 선택"],
+    ["Self-Correction", "모호·저신뢰이거나 선택 차이가 작으면 Query Rewrite → Context 재검색 → 재판단, 최대 1회"],
+    ["Act · Observe", "Python Guard 검증 → DB 실행 또는 ASK_USER → 실제 저장 결과를 다시 조회해 확인"]
   ];
-  agentRows.forEach(([a,b],i)=>{ const y=318+i*40; pill(s,String(i+1),60,y,38,C.white,i===2?"#7657D6":C.blue); txt(s,a,116,y,120,34,16,C.navy,true); txt(s,b,246,y,920,34,16,C.muted,false); });
+  // The label column is wider and a size down: the renamed steps are longer
+  // words than the ones it was measured for.
+  agentRows.forEach(([a,b],i)=>{ const y=318+i*40; pill(s,String(i+1),60,y,38,C.white,i===2?"#7657D6":C.blue); txt(s,a,116,y,196,34,14,C.navy,true); txt(s,b,322,y,844,34,16,C.muted,false); });
   txt(s,"같은 Case·같은 코드에서 숙고만 껐다 켠 비교",60,520,860,28,19,"#7657D6",true);
   const live=[
     ["기존 15 Case", "15/15 · Action 28/28", "숙고 On·Off 동일, 시간만 증가"],
@@ -191,7 +194,7 @@ function notes(slide, text, sources=[]) {
   txt(s,"Next Step  |  Gmail 검증 결과를 바탕으로 Outlook·Graph Adapter와 사내 인증·운영 서버로 전환",60,636,1160,22,14,C.blue,true);
   txt(s,"실패  |  계약 위반 응답을 재시도 없이 실패 처리해 판단 4건 유실",60,662,620,22,14,C.red,true);
   txt(s,"개선  |  검증을 재시도 루프 안으로 이동, 유실 0건",760,662,460,22,14,C.green,true);
-  notes(s,"이 슬라이드의 난제부터 말씀드리겠습니다. 저는 이미 Agent를 쓰고 있었는데, 그 Agent가 결론을 하나만 돌려줬습니다. 관계 하나, 대상 하나, 행동 하나에 설명 한 줄입니다. 이러면 모델이 후보를 실제로 견줬는지, 결론을 먼저 정하고 설명을 붙였는지 밖에서 구분할 방법이 없습니다. 멘토님 피드백도 매번 같았습니다. 룰 베이스처럼 보인다, 어떤 후보를 검토했는지 보여 달라. 막힌 곳은 판단의 품질이 아니라 검증 가능성이었습니다.\n\n그래서 적용한 기법이 화면에 적힌 제한적 다중 가설 숙고입니다. 트리 오브 소트를 구현한 것이 아니라, 후보 생성과 평가를 분리한다는 아이디어만 참고했습니다. 메일 한 건을 업무로 옮기는 판단은 단계가 깊지 않은 대신 틀렸을 때 비용이 업무 데이터 오변경이라, 후보 두세 개, 평가 한 번, 재검색 한 번으로 묶고 결정론적 가드와 사용자 승인으로 막는 쪽을 택했습니다. 핵심은 생성과 평가를 서로 다른 호출로 나눈 것입니다. 생성 단계는 점수를 매기지 않고, 평가 단계는 새로 만들지 못합니다. 그래서 화면에 남는 후보 목록이 사후 설명이 아니라 실제로 비교된 기록이 됩니다.\n\n효과는 같은 코드에서 기능만 껐다 켜서 측정했습니다. 기존 열다섯 개 Case는 양쪽이 똑같이 15/15, Action 28/28이고 소요시간만 약 삼십 퍼센트 늘었습니다. 숙고가 실제 발동하는 전용 네 개 케이스는 회차마다 출력이 달라져 각 설정을 세 번씩 돌렸고, 통과 수는 켠 쪽이 삼, 삼, 이, 끈 쪽이 이, 이, 이입니다. 세 번 모두 재현되는 차이는 한 건입니다. 요청자가 같고 대상 시스템만 다른 유사 업무가 둘 있을 때, 단일 결론 경로는 세 번 모두 둘 중 하나에 그대로 연결했고 두 단계 경로는 세 번 모두 사용자 확인으로 닫았습니다. 제가 개선했다고 말하는 범위는 이 한 건이고, 엘엘엠을 호출하지 않는 목 경로에서는 양쪽 모두 사 대 사로 차이가 없습니다.\n\n실패도 말씀드리겠습니다. 처음 구현에서 응답 검증을 재시도 루프 밖에 두었습니다. 모델이 필드 하나를 배열로 돌려준 것만으로 판단 전체가 실패했고, 저장해 둔 실제 Gmail 서른다섯 건을 다시 흘려보냈을 때 판단 네 건이 사라졌습니다. 합성 테스트가 아니라 실제 데이터 재생에서 잡혔고, 검증을 루프 안으로 옮긴 뒤 유실은 0건입니다.\n\n두 번째는 기대값과 동작 중 어느 쪽이 틀렸는지 따져야 했던 건입니다. 검색 결과 안에 명령을 심어 둔 케이스가 세 번 모두 기대값인 사용자 확인 대신 무시로 끝났습니다. 그 메일은 순수 주입이 아니라 정상 회신 내용과 주입된 명령이 섞인 혼합 메일이고, 정답도 업무 요청 참이었습니다. 원인은 제 프롬프트였습니다. Prompt Injection을 공지·광고와 같은 줄에 두고 업무 요청이 아닌 사유로 제시해서 모델이 메일 전체를 버렸습니다. 원칙은 본문의 명령을 실행하지 않는다이지 명령이 섞인 메일을 버린다가 아닙니다. 기대값은 그대로 두고 규칙만 분리했습니다. 수정 후 이 케이스는 세 번 모두 통과하고 숙고 전용 통과 수는 삼, 사, 사가 되었습니다. 명령만 들어 있는 순수 주입은 그대로 무시로 끝나 둘의 구분이 유지되고, 본문이 지시한 전체 완료 처리와 기록 삭제는 수정 전후 어느 회차에서도 일어나지 않았습니다.\n\n남은 한계도 말씀드리겠습니다. 화면의 신뢰도와 지지도는 모델의 자기보고 값이지 검증된 정답 확률이 아닙니다. 사용자 체감 시간은 신뢰할 Baseline을 얻지 못해 미측정으로 남겼습니다.",["evidence/deliberation_ab_2026-09-15.json","evidence/dlb04_injection_adjudication_2026-09-15.json","evidence/gmail_replay_deliberation_2026-09-15.json","evidence/final_audit_live_2026-09-13_after_inbound_intent_guard.json","tests/test_deliberation.py","tests/test_agent_deliberation.py"]);
+  notes(s,"이 슬라이드의 난제부터 말씀드리겠습니다. 저는 이미 Agent를 쓰고 있었는데, 그 Agent가 결론을 하나만 돌려줬습니다. 관계 하나, 대상 하나, 행동 하나에 설명 한 줄입니다. 이러면 모델이 후보를 실제로 견줬는지, 결론을 먼저 정하고 설명을 붙였는지 밖에서 구분할 방법이 없습니다. 멘토님 피드백도 매번 같았습니다. 룰 베이스처럼 보인다, 어떤 후보를 검토했는지 보여 달라. 막힌 곳은 판단의 품질이 아니라 검증 가능성이었습니다.\n\n그래서 적용한 기법이 화면에 적힌 제한적 다중 가설 숙고입니다. 먼저 앞 장과의 관계를 정리하겠습니다. 숙고는 한 번의 판단 안에서 후보를 견주는 안쪽 단계이고, 리액트는 그 판단을 검색과 실행, 재관찰로 감싸는 바깥 루프입니다. 숙고가 리액트를 대체한 것이 아니라 리액트의 판단 단계를 두 호출로 쪼갠 것입니다. 트리 오브 소트를 구현한 것이 아니라, 후보 생성과 평가를 분리한다는 아이디어만 참고했습니다. 메일 한 건을 업무로 옮기는 판단은 단계가 깊지 않은 대신 틀렸을 때 비용이 업무 데이터 오변경이라, 후보 두세 개, 평가 한 번, 재검색 한 번으로 묶고 결정론적 가드와 사용자 승인으로 막는 쪽을 택했습니다. 핵심은 생성과 평가를 서로 다른 호출로 나눈 것입니다. 생성 단계는 점수를 매기지 않고, 평가 단계는 새로 만들지 못합니다. 그래서 화면에 남는 후보 목록이 사후 설명이 아니라 실제로 비교된 기록이 됩니다.\n\n효과는 같은 코드에서 기능만 껐다 켜서 측정했습니다. 기존 열다섯 개 Case는 양쪽이 똑같이 15/15, Action 28/28이고 소요시간만 약 삼십 퍼센트 늘었습니다. 숙고가 실제 발동하는 전용 네 개 케이스는 회차마다 출력이 달라져 각 설정을 세 번씩 돌렸고, 통과 수는 켠 쪽이 삼, 삼, 이, 끈 쪽이 이, 이, 이입니다. 세 번 모두 재현되는 차이는 한 건입니다. 요청자가 같고 대상 시스템만 다른 유사 업무가 둘 있을 때, 단일 결론 경로는 세 번 모두 둘 중 하나에 그대로 연결했고 두 단계 경로는 세 번 모두 사용자 확인으로 닫았습니다. 제가 개선했다고 말하는 범위는 이 한 건이고, 엘엘엠을 호출하지 않는 목 경로에서는 양쪽 모두 사 대 사로 차이가 없습니다.\n\n실패도 말씀드리겠습니다. 응답 검증을 재시도 루프 밖에 두어서, 모델이 필드 하나를 배열로 돌려준 것만으로 판단 전체가 실패했습니다. 저장해 둔 실제 지메일 서른다섯 건을 다시 흘려보냈을 때 판단 네 건이 사라졌고, 합성 테스트가 아니라 실제 데이터 재생에서 잡혔습니다. 검증을 루프 안으로 옮긴 뒤 유실은 0건입니다.\n\n두 번째는 기대값과 동작 중 어느 쪽이 틀렸는지 따져야 했던 건입니다. 검색 결과 안에 명령을 심어 둔 케이스가 세 번 모두 기대값인 사용자 확인 대신 무시로 끝났습니다. 그 메일은 순수 주입이 아니라 정상 회신 내용과 주입된 명령이 섞인 혼합 메일이고 정답도 업무 요청 참이었는데, 제 프롬프트가 프롬프트 인젝션을 공지·광고와 같은 줄에 두고 업무 요청이 아닌 사유로 제시해서 모델이 메일 전체를 버렸습니다. 원칙은 본문의 명령을 실행하지 않는다이지 명령이 섞인 메일을 버린다가 아닙니다. 기대값은 그대로 두고 규칙만 분리했더니 세 번 모두 통과하고, 숙고 전용 통과 수는 삼, 사, 사가 되었습니다. 명령만 들어 있는 순수 주입은 그대로 무시로 끝나 둘의 구분이 유지되고, 본문이 지시한 전체 완료 처리와 기록 삭제는 수정 전후 어느 회차에서도 일어나지 않았습니다.\n\n남은 한계도 말씀드리겠습니다. 화면의 신뢰도와 지지도는 모델의 자기보고 값이지 검증된 정답 확률이 아닙니다. 사용자 체감 시간은 신뢰할 Baseline을 얻지 못해 미측정으로 남겼습니다.",["evidence/deliberation_ab_2026-09-15.json","evidence/dlb04_injection_adjudication_2026-09-15.json","evidence/gmail_replay_deliberation_2026-09-15.json","evidence/final_audit_live_2026-09-13_after_inbound_intent_guard.json","tests/test_deliberation.py","tests/test_agent_deliberation.py"]);
 }
 
 const { finalizePresentation } = await import(pathToFileURL(path.join(SKILL_DIR,"container_tools/artifact_tool_utils.mjs")).href);
