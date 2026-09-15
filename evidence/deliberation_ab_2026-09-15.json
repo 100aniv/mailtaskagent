@@ -1,0 +1,127 @@
+{
+  "evidence_type": "bounded_deliberation_ab_comparison",
+  "generated_at": "2026-09-15T14:14:15+09:00",
+  "baseline_commit": "6c9c25b9c22ed4dea71e7b21149a652c4bbc9b1f",
+  "model": "gpt-4.1-mini",
+  "what_changed": "Task Context 판단을 가설 생성 LLM과 가설 평가 LLM 두 단계로 나누고, Python이 계약을 검증한 뒤 평가 점수로 selection_margin을 계산한다. margin이 기준 미만이면 기존 Query Rewrite 재시도를 거쳐 사용자 확인으로 닫는다.",
+  "comparison_method": "같은 코드·같은 Case에서 AGENT_DELIBERATION_ENABLED만 바꿔 실행한 수용 비교다. 통계적 성능 향상 실험이 아니며 표본은 정의된 Case로 한정된다.",
+  "core_suite": {
+    "purpose": "기존 15 Case 회귀. 이 분모는 문서·발표·영상의 모든 인용 수치가 걸려 있어 변경하지 않는다.",
+    "deliberation_on": {
+      "suite": "core",
+      "mode": "LIVE",
+      "case_count": 15,
+      "passed_count": 15,
+      "scenario_pass_rate": 1.0,
+      "action_step_accuracy": 1.0,
+      "total_action_steps": 28,
+      "intent_accuracy": 0.8666666666666667,
+      "review_rate": 0.4666666666666667,
+      "duration_ms": 131869
+    },
+    "deliberation_off": {
+      "suite": "core",
+      "mode": "LIVE",
+      "case_count": 15,
+      "passed_count": 15,
+      "scenario_pass_rate": 1.0,
+      "action_step_accuracy": 1.0,
+      "total_action_steps": 28,
+      "intent_accuracy": 0.8666666666666667,
+      "review_rate": 0.4666666666666667,
+      "duration_ms": 101030
+    },
+    "verdict": "동일. 15/15 실행 단위와 28/28 Action 단계, Intent 13/15가 양쪽에서 같다.",
+    "latency_cost_ms": 30839
+  },
+  "deliberation_suite": {
+    "purpose": "숙고가 실제로 발동하는 상황만 담은 전용 Case. Core 분모와 분리한다.",
+    "live_deliberation_on": {
+      "suite": "deliberation",
+      "mode": "LIVE",
+      "case_count": 4,
+      "passed_count": 4,
+      "scenario_pass_rate": 1.0,
+      "action_step_accuracy": 1.0,
+      "total_action_steps": 10,
+      "intent_accuracy": 0.6666666666666666,
+      "review_rate": 0.75,
+      "duration_ms": 69138
+    },
+    "live_deliberation_off": {
+      "suite": "deliberation",
+      "mode": "LIVE",
+      "case_count": 4,
+      "passed_count": 3,
+      "scenario_pass_rate": 0.75,
+      "action_step_accuracy": 0.9,
+      "total_action_steps": 10,
+      "intent_accuracy": 0.6666666666666666,
+      "review_rate": 0.5,
+      "duration_ms": 43079
+    },
+    "mock_deliberation_on": {
+      "suite": "deliberation",
+      "mode": "MOCK",
+      "case_count": 4,
+      "passed_count": 3,
+      "scenario_pass_rate": 0.75,
+      "action_step_accuracy": 0.9,
+      "total_action_steps": 10,
+      "intent_accuracy": 1.0,
+      "review_rate": 0.75,
+      "duration_ms": 61155
+    },
+    "mock_deliberation_off": {
+      "suite": "deliberation",
+      "mode": "MOCK",
+      "case_count": 4,
+      "passed_count": 3,
+      "scenario_pass_rate": 0.75,
+      "action_step_accuracy": 0.9,
+      "total_action_steps": 10,
+      "intent_accuracy": 1.0,
+      "review_rate": 0.75,
+      "duration_ms": 15558
+    },
+    "key_difference": {
+      "case_id": "DLB-02",
+      "situation": "요청자가 같고 대상 시스템만 다른 유사 업무 2건이 있는 상태에서 후속 자료 전달 Mail이 도착",
+      "deliberation_off": "LINK_TO_TASK. 단일 결론 Agent가 두 후보 중 하나에 그대로 연결했다.",
+      "deliberation_on": "ASK_USER. 평가 점수 0.55 대 0.45로 selection_margin 0.10이 기준 0.15에 미달해 Query Rewrite 후 재생성·재평가했고, 여전히 0.10이라 사용자 확인으로 닫았다.",
+      "why_it_matters": "잘못된 업무에 조용히 붙는 대신 사람에게 넘어간다. 이것이 이 기능의 목적이다."
+    },
+    "mock_note": "Mock 경로는 어휘 중첩 점수만 보므로 두 유사 업무를 애초에 분리하지 못하고 on/off가 같다. 숙고의 차이는 LIVE에서만 관측된다."
+  },
+  "measured_costs": {
+    "llm_requests_per_structured_rag_decision": {
+      "off": 1,
+      "on": 2,
+      "with_query_rewrite": 4,
+      "worst_case_with_schema_retries": 8
+    },
+    "core_suite_latency_ms": {
+      "off": 101030,
+      "on": 131869
+    },
+    "deliberation_suite_latency_ms": {
+      "off": 43079,
+      "on": 69138
+    },
+    "review_rate_core": {
+      "off": 0.4666666666666667,
+      "on": 0.4666666666666667
+    },
+    "review_rate_deliberation_suite": {
+      "off": 0.5,
+      "on": 0.75
+    }
+  },
+  "observed_model_behaviour": "gpt-4.1-mini는 평가 점수를 0.5 근처에 모으는 경향이 있다. 근거가 한쪽으로 기운 Case에서도 0.55 대 0.45가 나왔다. 점수 차이를 크게 벌리라고 지시하는 프롬프트를 시험했으나 Prompt Injection Case의 판단이 함께 흔들려 되돌렸다. 현재 기준 0.15는 이 분포에서 '확신이 없으면 사람에게 넘긴다'는 쪽으로 작동한다.",
+  "limits": [
+    "정의된 Case 범위의 수용 비교이며 실제 Mailbox 전체 성능이 아니다.",
+    "LIVE 실행은 회차마다 결과가 달라질 수 있다.",
+    "Deliberation 전용 Case는 4건으로 표본이 작다.",
+    "Mock 경로는 결정론적 검색이라 숙고의 효과를 보여주지 못한다."
+  ]
+}

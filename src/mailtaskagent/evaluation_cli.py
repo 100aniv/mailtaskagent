@@ -7,13 +7,18 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from mailtaskagent.config import PROJECT_ROOT, load_settings
-from mailtaskagent.evaluation import load_kpi_ground_truth, run_scenario_evaluation
+from mailtaskagent.evaluation import (
+    SUITES,
+    load_kpi_ground_truth,
+    run_scenario_evaluation,
+)
 from mailtaskagent.llm_client import MockMailAnalyzer, build_analyzer
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="MailTaskAgent KPI evaluation runner")
     parser.add_argument("--mode", choices=("MOCK", "LIVE"), required=True)
+    parser.add_argument("--suite", choices=tuple(SUITES), default="core")
     parser.add_argument("--output", type=Path)
     return parser.parse_args()
 
@@ -32,18 +37,28 @@ def main() -> None:
         analyzer = MockMailAnalyzer()
         model = "deterministic-mock"
 
-    report = run_scenario_evaluation(settings, analyzer, mode=args.mode)
+    report = run_scenario_evaluation(
+        settings, analyzer, mode=args.mode, suite=args.suite
+    )
     now = datetime.now(ZoneInfo("Asia/Seoul"))
     report["generated_at"] = now.isoformat(timespec="seconds")
     report["model"] = model
-    report["ground_truth_version"] = load_kpi_ground_truth()["version"]
+    report["ground_truth_version"] = load_kpi_ground_truth(
+        PROJECT_ROOT / "data" / SUITES[args.suite]["ground_truth"]
+    )["version"]
 
     output_path = args.output
     if output_path is None:
         output_path = (
             PROJECT_ROOT
             / "evidence"
-            / f"{args.mode.lower()}_evaluation_{now.date().isoformat()}.json"
+            # The core path is quoted in the README, so only a non-core
+            # suite gets a prefix.
+            / (
+                f"{args.mode.lower()}_evaluation_{now.date().isoformat()}.json"
+                if args.suite == "core"
+                else f"{args.suite}_{args.mode.lower()}_evaluation_{now.date().isoformat()}.json"
+            )
         )
     elif not output_path.is_absolute():
         output_path = PROJECT_ROOT / output_path

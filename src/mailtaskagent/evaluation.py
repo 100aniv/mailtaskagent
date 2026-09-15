@@ -177,18 +177,40 @@ def _check_case(case: dict, results: list, storage: SQLiteStorage) -> list[str]:
     return failures
 
 
+#: Core keeps the fifteen cases every published figure is quoted against, so a
+#: deliberation case is never added to that denominator. The suites carry their
+#: own mails, expectations and ground truth.
+SUITES = {
+    "core": {
+        "mails": "dummy_mails.json",
+        "expectations": "scenario_expectations.json",
+        "ground_truth": "kpi_ground_truth.json",
+    },
+    "deliberation": {
+        "mails": "deliberation_mails.json",
+        "expectations": "deliberation_scenarios.json",
+        "ground_truth": "deliberation_ground_truth.json",
+    },
+}
+
+
 def run_scenario_evaluation(
     settings: Settings,
     analyzer: MailAnalyzer,
     *,
     mode: str,
+    suite: str = "core",
 ) -> dict:
     """Run every scenario in an isolated DB and compare it with checked-in expectations."""
-    expectations = load_scenario_expectations()
-    ground_truth = load_kpi_ground_truth()
+    if suite not in SUITES:
+        raise ValueError(f"unknown suite: {suite}")
+    files = SUITES[suite]
+    data_dir = PROJECT_ROOT / "data"
+    expectations = load_scenario_expectations(data_dir / files["expectations"])
+    ground_truth = load_kpi_ground_truth(data_dir / files["ground_truth"])
     mails = {
         mail.mail_id: mail
-        for mail in load_mails(PROJECT_ROOT / "data" / "dummy_mails.json")
+        for mail in load_mails(data_dir / files["mails"])
     }
     rows: list[dict] = []
     total_action_steps = 0
@@ -258,6 +280,7 @@ def run_scenario_evaluation(
     )
     return {
         "mode": mode,
+        "suite": suite,
         "case_count": case_count,
         "passed_count": passed_count,
         "scenario_pass_rate": passed_count / case_count if case_count else 0,

@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "description": "Bounded Multi-Hypothesis Deliberation 전용 정답. Core 15 Case의 분모와 분리해 관리하며, 숙고가 실제로 발동하는 상황만 담는다. 자동 연결이 기대되는 Case가 없으므로 task_links 분모는 비어 있다.",
+  "field_policy": "업무 Mail은 요청사항 핵심 의미 Token Group과 기한을 각각 1개 필드로 평가하며 비업무 Mail은 필드 추출 KPI 분모에서 제외한다.",
+  "mails": [
+    {
+      "mail_id": "DLB-001",
+      "is_task_request": true,
+      "intent": "NEW_TASK",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [
+        [
+          "접근통제"
+        ],
+        [
+          "장애"
+        ],
+        [
+          "점검"
+        ],
+        [
+          "공유"
+        ]
+      ],
+      "due_date": "2026-09-10"
+    },
+    {
+      "mail_id": "DLB-002",
+      "is_task_request": true,
+      "intent": "NEW_TASK",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [
+        [
+          "인증"
+        ],
+        [
+          "장애"
+        ],
+        [
+          "점검"
+        ],
+        [
+          "공유"
+        ]
+      ],
+      "due_date": "2026-09-10"
+    },
+    {
+      "mail_id": "DLB-003",
+      "is_task_request": true,
+      "intent": "UNCERTAIN",
+      "evaluate_fields": false,
+      "request_summary_term_groups": [
+        [
+          "진행",
+          "상황"
+        ]
+      ],
+      "due_date": null
+    },
+    {
+      "mail_id": "DLB-004",
+      "is_task_request": true,
+      "intent": "INFORMATION_RECEIVED",
+      "evaluate_fields": false,
+      "request_summary_term_groups": [
+        [
+          "자료",
+          "분석"
+        ]
+      ],
+      "due_date": null
+    },
+    {
+      "mail_id": "DLB-005",
+      "is_task_request": true,
+      "intent": "NEW_TASK",
+      "evaluate_fields": true,
+      "request_summary_term_groups": [
+        [
+          "백업"
+        ],
+        [
+          "정책"
+        ],
+        [
+          "작성",
+          "수립"
+        ]
+      ],
+      "due_date": "2026-09-12"
+    },
+    {
+      "mail_id": "DLB-006",
+      "is_task_request": true,
+      "intent": "INFORMATION_RECEIVED",
+      "evaluate_fields": false,
+      "request_summary_term_groups": [
+        [
+          "점검",
+          "결과"
+        ]
+      ],
+      "due_date": null
+    }
+  ],
+  "task_links": []
+}
