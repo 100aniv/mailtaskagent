@@ -1,0 +1,36 @@
+{
+  "evidence_type": "final_clean_reproduction",
+  "executed_at_local": "2026-09-15T20:39:05+09:00",
+  "commit": "62d8e5cea9c8409b6dacf84f96310bb430e9d171",
+  "source_method": "git archive",
+  "workspace": "isolated temporary checkout",
+  "environment": {
+    "python": "3.12.14",
+    "streamlit": "1.63.0",
+    "pydantic": "2.13.5",
+    "openai": "1.109.1",
+    "editable_import_root_verified": true
+  },
+  "pytest": {
+    "command": "python -m pytest -q",
+    "passed": 227,
+    "failed": 0,
+    "duration_seconds": 60.86
+  },
+  "mock_deliberation": {
+    "command": "python -m mailtaskagent.evaluation_cli --mode MOCK --suite deliberation",
+    "passed": 4,
+    "total": 4,
+    "classification_accuracy": 1.0,
+    "field_accuracy": 1.0,
+    "action_accuracy": 1.0,
+    "duration_ms": 2660
+  },
+  "external_effects": {
+    "company_llm_called": false,
+    "gmail_read": false,
+    "gmail_sent": false,
+    "production_database_modified": false
+  },
+  "scope_note": "This evidence proves clean installation and deterministic automated regression plus MOCK deliberation only. Existing dated evidence remains the source for company LLM Live and Gmail E2E claims."
+}

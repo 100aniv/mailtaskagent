@@ -2,17 +2,17 @@
 
 ## 파일 구성
 
-- `2. 최종/09285_백준현_AI_Master_최종발표자료_v7.pptx`: 코드·Evidence와 동기화한 4장 최종 발표자료와 발표자 노트
-- `2. 최종/09285_백준현_AI_Master_최종발표자료.pdf`: 제출용 4장 PDF
+- `2. 최종/09285_백준현_AI_Master_최종발표자료_v9.pptx`: 코드·Evidence와 동기화한 4장 최종 발표자료와 발표자 노트
+- `2. 최종/09285_백준현_AI_Master_최종발표자료_v9.pdf`: 제출용 4장 PDF
 - `2. 최종/09285_백준현_최종시연_스크립트.md`: 실제 Gmail 중심 5분 시연 대사와 장애 대응
-- `../../output/submission/09285_백준현_시연영상.mp4`: 실제 Gmail 업무·RAG Trace·Human-in-the-loop·품질 증적을 담은 2분 50.72초 자막·한국어 Neural 음성 제출 영상
+- `../../output/submission/09285_백준현_시연영상.mp4`: 실제 Gmail 업무·RAG Trace·Human-in-the-loop·품질 증적을 담은 2분 44.4초 자막·한국어 Neural 음성 제출 영상
 - `../../output/submission/09285_백준현_시연영상_검수.json`: 시간·해상도·용량·전체 디코딩·개인정보·시각 QA 기록
 - `AI_MASTER_최종_이해_및_시연가이드.md`: 최종 MVP 구현 범위와 사용자 학습·시연 설명 자료
 - `2026-09-02_멘토시연_이해자료_및_스크립트.md`: 2026-09-02 당시 멘토 시연 기록
 - `MailTaskAgent_멘토리뷰_2026-08-26.pptx`: 2026-08-26 멘토 리뷰용 설명 자료
 - `build_mentor_deck.mjs`: 발표자료를 다시 생성하는 소스
 
-최종 제출 기준은 `2. 최종` 폴더의 v7 PPTX·PDF·시연 스크립트다. 최종 MVP에는 Core E2E,
+최종 제출 기준은 `2. 최종` 폴더의 v9 PPTX·PDF·시연 스크립트다. 최종 MVP에는 Core E2E,
 SQLite Task Context RAG·최대 1회 ReAct 재판단, Agent Action Proposal·Python Safety Guard,
 실행 결과 재조회, Reply Agent의 회신 방식 판단·사용자 입력 기반 LLM Draft·사용자 승인 Gmail
 발송과 `WAITING_REPLY` 전환이 포함된다. 2026-09-15 최종 기준은 pytest `227 passed`, 회사
