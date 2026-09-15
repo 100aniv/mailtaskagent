@@ -377,6 +377,26 @@ def audit_repo() -> None:
     junk = [rel for rel in tracked if "~$" in rel or rel.endswith((".mov", ".building.mp4"))]
     check("임시·참고 바이너리 미추적", not junk, ", ".join(junk[:3]))
 
+    # --- guide: 파일명 규칙은 실제로 올리는 파일에 적용된다 ---
+    submit_dir = ROOT / "output/SUBMIT_ONLY"
+    if submit_dir.exists():
+        names = {path.name for path in submit_dir.iterdir() if path.is_file()}
+        check(
+            "제출 폴더 영상 파일명 [사번]_[성명]_시연영상.mp4",
+            "09285_백준현_시연영상.mp4" in names,
+            ", ".join(sorted(n for n in names if n.endswith(".mp4"))),
+        )
+        check(
+            "제출 폴더에 발표자료 PPTX 존재",
+            any(n.endswith(".pptx") for n in names),
+            ", ".join(sorted(n for n in names if n.endswith(".pptx"))),
+        )
+        check(
+            "제출 폴더에 소스 ZIP 존재",
+            any(n.endswith(".zip") for n in names),
+            ", ".join(sorted(n for n in names if n.endswith(".zip"))),
+        )
+
     dirty = subprocess.run(
         ["git", "status", "--porcelain", "--untracked-files=no"],
         cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",

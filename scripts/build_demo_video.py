@@ -142,10 +142,10 @@ CAPTIONS = [
 
 NARRATION = [
     Narration(0.4, "첫 번째, 시나리오 소개입니다."),
-    Narration(TITLE_CARD_SECONDS + 0.3, "실제 지메일 점검 요청을 업무로 만들고, 기존 업무와의 관계를 판단하는 흐름입니다."),
-    Narration(MARKS["task_detail"] + 0.3, "업무 상세에서 원문과 발신자, 지메일 메일 아이디를 확인합니다."),
+    Narration(TITLE_CARD_SECONDS + 0.3, "실제 지메일 요청을 업무로 만들고 관계를 판단합니다."),
+    Narration(MARKS["task_detail"] + 0.3, "업무 상세에서 원문과 발신자를 확인합니다."),
     Narration(MARKS["mail_flow"] + 0.3, "엠 원 메일 분석기는 회사 지피티 사점일 미니로 요청, 기한, 의도와 회신 필요 여부를 구조화합니다."),
-    Narration(MARKS["reply_agent"] + 0.3, "회신 에이전트는 날짜 회신이 필요하다고 제안했습니다. 영 점 구오는 검증 정확도가 아닌, 모델의 자기보고 신뢰도입니다."),
+    Narration(MARKS["reply_agent"] + 0.3, "회신 에이전트가 날짜 회신을 제안했습니다. 영 점 구오는 검증 정확도가 아니라 모델의 자기보고 값입니다."),
     Narration(_reply[1][0] + 0.3, "날짜를 입력하면 초안을 만들지만, 수신자와 본문을 확인하고 승인하기 전에는 실제 메일을 발송하지 않습니다."),
     Narration(MARKS["trace"] + 0.4, "두 번째, 에이전트 추론 로그입니다."),
     Narration(MARKS["trace"] + TITLE_CARD_SECONDS + 0.3, "워크플로우는 실행 뼈대이고, 규칙으로 확정할 수 없는 관계와 행동만 에이전트가 판단합니다."),
@@ -483,10 +483,12 @@ def build_voice_segments(ffmpeg: Path) -> list[Path]:
     for index, item in enumerate(NARRATION):
         text_key = hashlib.sha1(item.text.encode("utf-8")).hexdigest()[:10]
         mp3 = VOICE_DIR / f"segment-{index:02d}-{text_key}.mp3"
+        # The wav carries the speed-up for this slot, and the slot moves every
+        # time the tour is re-recorded. Keying it on the text alone let a clip
+        # timed for a wider slot play over the line after it, so the wav is
+        # always rebuilt from the cached mp3.
         wav = VOICE_DIR / f"segment-{index:02d}-{text_key}.wav"
-        if wav.exists() and wav.stat().st_size > 0:
-            outputs.append(wav)
-            continue
+        wav.unlink(missing_ok=True)
         if mp3.exists() and mp3.stat().st_size > 0:
             # Reuse the cached narration audio so a rebuild needs no network call.
             duration = media_duration(ffmpeg, mp3)
@@ -541,7 +543,34 @@ def build_voice_segments(ffmpeg: Path) -> list[Path]:
             capture_output=True,
         )
         outputs.append(wav)
+
+    _assert_no_narration_overlap(ffmpeg, outputs)
     return outputs
+
+
+def _assert_no_narration_overlap(ffmpeg: Path, clips: list[Path]) -> None:
+    """No finished clip may run into the one after it.
+
+    The tempo guard sizes each clip against its own slot, which is not the same
+    as checking the result: a stale cached clip never went through it. This
+    measures what will actually be mixed.
+    """
+    problems = []
+    for index, clip in enumerate(clips):
+        start = NARRATION[index].start
+        end = start + media_duration(ffmpeg, clip)
+        next_start = (
+            NARRATION[index + 1].start if index + 1 < len(NARRATION) else VIDEO_END
+        )
+        if end > next_start + 0.05:
+            problems.append(
+                f"narration {index} ends at {end:.2f}s but {index + 1} starts at "
+                f"{next_start:.2f}s (overlap {end - next_start:.2f}s)"
+            )
+    if problems:
+        raise AssertionError(
+            "narration overlaps:\n  " + "\n  ".join(problems)
+        )
 
 
 def escape_filter_path(path: Path) -> str:

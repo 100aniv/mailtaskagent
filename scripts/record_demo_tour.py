@@ -226,14 +226,23 @@ def run_tour(
         page.wait_for_timeout(500)
     checks.append("Human-in-the-loop")
     mark("guard_handoff")
-    pause(page, hold(18), None)
+    # 이 구간 설명이 끝난 뒤에 다음 화면으로 넘어가야 한다. 말하는 도중에
+    # 클릭하면 화면이 먼저 바뀌어 설명이 끊겨 보인다.
+    pause(page, hold(23), None)
 
     click_with_cursor(page, page.get_by_role("button", name="MVP 시연·검증 화면", exact=True))
-    wait_app(page, "MVP 시연·검증")
+    # The sidebar relabels itself before Streamlit re-renders the main column, so
+    # waiting on a sidebar caption left the previous trace log on screen under an
+    # already-changed sidebar, with the pointer resting on the reset button. Park
+    # the pointer in the main column, return to the top of the page, and wait for
+    # the new screen's own body to arrive.
+    page.mouse.move(820, 300, steps=10)
+    page.evaluate("window.scrollTo({top:0, behavior:'auto'})")
     quality = page.get_by_text("품질 검증", exact=True)
-    if quality.count():
-        click_with_cursor(page, quality.first)
-        page.wait_for_timeout(550)
+    quality.first.wait_for(state="visible", timeout=30_000)
+    page.wait_for_timeout(900)
+    click_with_cursor(page, quality.first)
+    page.wait_for_timeout(550)
     page.get_by_text("15/15", exact=True).first.wait_for(state="visible", timeout=20_000)
     checks.append("최종 품질 증적")
     mark("quality")
