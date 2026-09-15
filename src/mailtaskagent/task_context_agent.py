@@ -20,6 +20,8 @@ from mailtaskagent.models import (
     TaskContextAgentResult,
     TaskContextDecision,
     TaskRelation,
+    ContractViolation,
+    RejectedHypothesis,
 )
 
 
@@ -114,6 +116,34 @@ def _safe_context_payload(contexts: list[dict]) -> list[dict]:
     return safe
 
 
+class DeliberationBudgetExceeded(TimeoutError):
+    """The budget for this mail ran out.
+
+    Covers the first judgement, the query rewrite and the re-judgement together,
+    so a mail cannot spend the budget twice by going around the loop.
+    """
+
+    def __init__(self, budget_ms: int, stage: str | None = None) -> None:
+        self.budget_ms = budget_ms
+        self.stage = stage
+        where = f" after {stage}" if stage else ""
+        super().__init__(f"deliberation budget {budget_ms}ms exceeded{where}")
+
+
+class DeliberationContractFailure(ValueError):
+    """Every attempt broke the contract.
+
+    Carries the violation codes so the workflow can record what went wrong
+    without storing the model's response or a validation message, either of
+    which can quote the input back into the trace.
+    """
+
+    def __init__(self, violations: list[RejectedHypothesis]) -> None:
+        self.violations = list(violations)
+        codes = ", ".join(sorted({item.violation.value for item in self.violations}))
+        super().__init__(f"deliberation contract not met: {codes or 'UNKNOWN'}")
+
+
 class AzureTaskContextAgent:
     def __init__(self, settings: Settings):
         if not settings.api_key:
@@ -126,9 +156,26 @@ class AzureTaskContextAgent:
             timeout=settings.timeout_seconds,
             max_retries=1,
         )
+        # Set once per mail by the workflow; None means "no mail in progress".
+        self._deadline: float | None = None
+
+    def start_deliberation_budget(self) -> None:
+        """Open one budget for this mail, covering the rewrite and re-judgement."""
+        self._deadline = (
+            time.monotonic() + self.settings.agent_deliberation_budget_ms / 1000
+        )
+
+    def _remaining_seconds(self) -> float:
+        if self._deadline is None:
+            return self.settings.agent_deliberation_budget_ms / 1000
+        return self._deadline - time.monotonic()
 
     def _chat_json(self, prompt: str, payload: dict, correction: str, build):
-        """Call the model until `build` accepts the body, returning (value, retries).
+        """Call the model until `build` accepts the body.
+
+        Returns (value, retries, violations). The violations are what the
+        rejected attempts broke, kept so a judgement that only succeeded on the
+        second try still shows what the first try got wrong.
 
         `build` parses and contract-checks the response. It runs inside the loop
         on purpose: a malformed field or a broken contract is exactly the kind of
@@ -137,6 +184,7 @@ class AzureTaskContextAgent:
         Pydantic's ValidationError and HypothesisContractError are both ValueError.
         """
         last_error: Exception | None = None
+        violations: list[RejectedHypothesis] = []
         for attempt in range(self.settings.schema_retries + 1):
             messages = [
                 {"role": "system", "content": prompt},
@@ -146,21 +194,37 @@ class AzureTaskContextAgent:
                 messages.append(
                     {"role": "system", "content": f"{correction} 직전 오류: {last_error}"}
                 )
+            remaining = self._remaining_seconds()
+            if remaining <= 0:
+                raise DeliberationBudgetExceeded(
+                    self.settings.agent_deliberation_budget_ms
+                )
             response = self.client.chat.completions.create(
                 model=self.settings.model,
                 messages=messages,
                 temperature=0,
                 response_format={"type": "json_object"},
+                # Never let one request outlive the budget for the whole mail.
+                timeout=min(self.settings.timeout_seconds, remaining),
             )
             content = response.choices[0].message.content
             try:
                 if not content:
                     raise ValueError("Task Context Agent returned an empty response")
-                return build(_extract_json(content)), attempt
+                return build(_extract_json(content)), attempt, violations
             except (json.JSONDecodeError, ValueError) as exc:
                 last_error = exc
+                if isinstance(exc, deliberation.HypothesisContractError):
+                    violations.extend(exc.violations)
+                else:
+                    # Malformed JSON or a schema rejection: record that it
+                    # happened without keeping the body or the error text, both
+                    # of which can echo the model's input back into the trace.
+                    violations.append(
+                        RejectedHypothesis(violation=ContractViolation.SCHEMA_INVALID)
+                    )
                 if attempt >= self.settings.schema_retries:
-                    raise
+                    raise DeliberationContractFailure(violations) from exc
         raise RuntimeError("schema retry loop ended unexpectedly") from last_error
 
     def judge(
@@ -208,15 +272,17 @@ class AzureTaskContextAgent:
         ]
         budget = self.settings.agent_deliberation_budget_ms
         started = time.monotonic()
+        if self._deadline is None:
+            # judge() called outside a workflow-managed mail; hold it to one
+            # budget rather than leaving it unbounded.
+            self.start_deliberation_budget()
 
         def elapsed_ms() -> int:
             return int((time.monotonic() - started) * 1000)
 
         def check_budget(stage: str) -> None:
-            if elapsed_ms() > budget:
-                raise TimeoutError(
-                    f"deliberation budget {budget}ms exceeded after {stage}"
-                )
+            if self._remaining_seconds() <= 0:
+                raise DeliberationBudgetExceeded(budget, stage)
 
         max_hypotheses = self.settings.agent_deliberation_max_hypotheses
         generation_started = time.monotonic()
@@ -229,7 +295,7 @@ class AzureTaskContextAgent:
             )
             return drafted
 
-        hypotheses, generation_retries = self._chat_json(
+        hypotheses, generation_retries, generation_violations = self._chat_json(
             HYPOTHESIS_GENERATION_PROMPT,
             payload,
             "이전 응답이 가설 생성 계약을 위반했다. 후보에 없는 Task ID를 쓰지 말고, "
@@ -250,7 +316,7 @@ class AzureTaskContextAgent:
             parsed = HypothesisSelection.model_validate(body)
             return parsed, deliberation.validate_selection(parsed, hypotheses)
 
-        (selection, winner), evaluation_retries = self._chat_json(
+        (selection, winner), evaluation_retries, evaluation_violations = self._chat_json(
             HYPOTHESIS_EVALUATION_PROMPT,
             evaluation_payload,
             "이전 응답이 가설 평가 계약을 위반했다. 주어진 모든 hypothesis_id를 정확히 "
@@ -279,9 +345,12 @@ class AzureTaskContextAgent:
             decision=decision,
             generated_hypotheses=hypotheses,
             evaluations=selection.evaluations,
+            # What the corrected attempts got wrong, so a judgement that only
+            # succeeded on the retry still shows the first response's breach.
+            rejected_hypotheses=[*generation_violations, *evaluation_violations],
             generation_schema_retries=generation_retries,
             evaluation_schema_retries=evaluation_retries,
-            llm_request_count=2 + generation_retries + evaluation_retries,
+            application_llm_call_count=2 + generation_retries + evaluation_retries,
             generation_duration_ms=generation_ms,
             evaluation_duration_ms=evaluation_ms,
             total_duration_ms=elapsed_ms(),
@@ -327,7 +396,7 @@ class MockTaskContextAgent:
             ),
             generated_hypotheses=hypotheses,
             evaluations=evaluations,
-            llm_request_count=0,
+            application_llm_call_count=0,
             is_redecision=retry_count > 0,
         )
 

@@ -268,7 +268,7 @@ class MailTaskWorkflow:
                 "selection_margin": decision.selection_margin,
                 "min_margin": self.settings.agent_deliberation_min_margin,
                 "confidence": decision.confidence,
-                "llm_request_count": result.llm_request_count,
+                "application_llm_call_count": result.application_llm_call_count,
             },
             duration_ms=result.total_duration_ms,
         )
@@ -510,6 +510,14 @@ class MailTaskWorkflow:
                 )
                 try:
                     decision_started = perf_counter()
+                    # One budget for this mail. The rewrite and the second
+                    # judgement below share it, so going around the loop cannot
+                    # buy a second full budget.
+                    start_budget = getattr(
+                        self.task_context_agent, "start_deliberation_budget", None
+                    )
+                    if callable(start_budget):
+                        start_budget()
                     agent_result = _normalize_agent_result(
                         self.task_context_agent.judge(
                             mail,
@@ -663,9 +671,18 @@ class MailTaskWorkflow:
                     elif task_context_decision.relation == TaskRelation.NEW_TASK:
                         candidates = []
                 except Exception as exc:
+                    # Only the violation codes are kept. A Pydantic message or a
+                    # contract error's text can quote the model's input, and the
+                    # trace is not the place for it.
+                    violation_codes = sorted(
+                        {
+                            item.violation.value
+                            for item in getattr(exc, "violations", [])
+                        }
+                    )
+                    summary = ", ".join(violation_codes) if violation_codes else type(exc).__name__
                     rag_fallback_reason = (
-                        "Task Context RAG/Agent 검증 실패로 자동 연결 중단: "
-                        f"{type(exc).__name__}: {exc}"
+                        "Task Context RAG/Agent 검증 실패로 자동 연결 중단: " + summary
                     )
                     task_context_decision = None
                     self._event(
@@ -677,6 +694,11 @@ class MailTaskWorkflow:
                         level="ERROR",
                         details={
                             "error_type": type(exc).__name__,
+                            "violation_codes": violation_codes,
+                            "rejected_hypotheses": [
+                                item.model_dump(mode="json")
+                                for item in getattr(exc, "violations", [])
+                            ],
                             "candidate_task_ids": [item.task_id for item in candidates],
                             "task_db_changed": False,
                         },

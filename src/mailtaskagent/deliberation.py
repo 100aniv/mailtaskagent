@@ -27,11 +27,23 @@ from .models import (
     TaskRelation,
 )
 
-# Each relation admits exactly one action and one shape of target task id.
+# NEW_TASK and AMBIGUOUS admit exactly one action and carry no target id.
 _RELATION_CONTRACT: dict[TaskRelation, AgentAction] = {
     TaskRelation.NEW_TASK: AgentAction.CREATE_TASK,
     TaskRelation.AMBIGUOUS: AgentAction.ASK_USER,
 }
+
+# SAME_TASK names an existing task, so it admits the actions that operate on one.
+# Creating a task while claiming the mail belongs to an existing one contradicts
+# itself, and ignoring or asking are not statements about that task.
+_SAME_TASK_ACTIONS: frozenset[AgentAction] = frozenset(
+    {
+        AgentAction.UPDATE_TASK,
+        AgentAction.LINK_TO_TASK,
+        AgentAction.SET_WAITING,
+        AgentAction.MARK_COMPLETED,
+    }
+)
 
 
 class HypothesisContractError(ValueError):
@@ -109,6 +121,13 @@ def validate_generation(
                     RejectedHypothesis(
                         hypothesis_id=item.hypothesis_id,
                         violation=ContractViolation.OUTSIDE_CANDIDATE,
+                    )
+                )
+            if item.action not in _SAME_TASK_ACTIONS:
+                violations.append(
+                    RejectedHypothesis(
+                        hypothesis_id=item.hypothesis_id,
+                        violation=ContractViolation.INVALID_RELATION_ACTION,
                     )
                 )
         else:

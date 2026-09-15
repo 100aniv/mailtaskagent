@@ -16,6 +16,7 @@ from mailtaskagent.models import (
     HypothesisEvaluation,
     HypothesisGeneration,
     HypothesisSelection,
+    TaskHypothesis,
     TaskRelation,
 )
 
@@ -180,3 +181,61 @@ def test_margin_comes_from_the_evaluation_scores() -> None:
 def test_tied_evaluation_scores_give_a_zero_margin() -> None:
     selection = _selection({"H1": 0.6, "H2": 0.6}, "H1")
     assert selection_margin(selection.evaluations) == 0.0
+
+
+def test_same_task_rejects_actions_that_contradict_the_relation():
+    """Claiming the mail belongs to an existing task while creating a new one.
+
+    SAME_TASK used to be checked only for naming a candidate, so a hypothesis
+    could assert both that the mail continues TASK-001 and that a new task
+    should be created. The Guard downstream would very likely refuse it, but a
+    self-contradictory hypothesis should not reach the evaluation stage.
+    """
+    for action in (AgentAction.CREATE_TASK, AgentAction.IGNORE, AgentAction.ASK_USER):
+        hypotheses = [
+            TaskHypothesis(
+                hypothesis_id="H1",
+                relation=TaskRelation.SAME_TASK,
+                selected_task_id="TASK-001",
+                action=action,
+                supporting_evidence=["같은 업무로 보인다"],
+            ),
+            TaskHypothesis(
+                hypothesis_id="H2",
+                relation=TaskRelation.NEW_TASK,
+                selected_task_id=None,
+                action=AgentAction.CREATE_TASK,
+                supporting_evidence=["새 업무로 보인다"],
+            ),
+        ]
+        with pytest.raises(HypothesisContractError) as excinfo:
+            validate_generation(hypotheses, {"TASK-001"})
+        assert ContractViolation.INVALID_RELATION_ACTION in {
+            item.violation for item in excinfo.value.violations
+        }, f"SAME_TASK + {action.value} should breach the relation contract"
+
+
+def test_same_task_admits_the_actions_that_operate_on_a_task():
+    for action in (
+        AgentAction.UPDATE_TASK,
+        AgentAction.LINK_TO_TASK,
+        AgentAction.SET_WAITING,
+        AgentAction.MARK_COMPLETED,
+    ):
+        hypotheses = [
+            TaskHypothesis(
+                hypothesis_id="H1",
+                relation=TaskRelation.SAME_TASK,
+                selected_task_id="TASK-001",
+                action=action,
+                supporting_evidence=["같은 업무로 보인다"],
+            ),
+            TaskHypothesis(
+                hypothesis_id="H2",
+                relation=TaskRelation.NEW_TASK,
+                selected_task_id=None,
+                action=AgentAction.CREATE_TASK,
+                supporting_evidence=["새 업무로 보인다"],
+            ),
+        ]
+        validate_generation(hypotheses, {"TASK-001"})

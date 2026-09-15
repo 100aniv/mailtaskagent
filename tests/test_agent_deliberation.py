@@ -13,6 +13,7 @@ import pytest
 from mailtaskagent.config import Settings
 from mailtaskagent.models import (
     AgentAction,
+    ContractViolation,
     GuardVerdict,
     HypothesisDraft,
     HypothesisEvaluation,
@@ -27,7 +28,10 @@ from mailtaskagent.models import (
 )
 from mailtaskagent.deliberation import assign_hypothesis_ids
 from mailtaskagent.storage import SQLiteStorage
-from mailtaskagent.task_context_agent import AzureTaskContextAgent
+from mailtaskagent.task_context_agent import (
+    AzureTaskContextAgent,
+    DeliberationContractFailure,
+)
 from mailtaskagent.workflow import MailTaskWorkflow
 
 
@@ -193,7 +197,7 @@ class _DeliberatingAgent:
             ),
             generated_hypotheses=hypotheses,
             evaluations=evaluations,
-            llm_request_count=2,
+            application_llm_call_count=2,
             generation_duration_ms=11,
             evaluation_duration_ms=13,
             total_duration_ms=24,
@@ -245,7 +249,7 @@ def test_wide_margin_executes_and_records_both_stages(base_settings: Settings) -
 
     decision = _details(storage, "M-03 DELIBERATION_DECISION")
     assert decision["selection_margin"] == pytest.approx(0.58)
-    assert decision["llm_request_count"] == 2
+    assert decision["application_llm_call_count"] == 2
 
 
 def test_generation_event_keeps_evidence_and_no_raw_response(base_settings: Settings) -> None:
@@ -483,7 +487,7 @@ def test_live_agent_runs_two_stages_and_computes_margin(base_settings: Settings)
     result = agent.judge(*_judge_args(), retry_count=0)
 
     assert len(calls) == 2
-    assert result.llm_request_count == 2
+    assert result.application_llm_call_count == 2
     assert result.decision.selection_margin == pytest.approx(0.64)
     assert result.decision.selected_task_id == "TASK-001"
     # The generated ids are ours, never the model's.
@@ -499,7 +503,7 @@ def test_live_agent_retries_a_broken_generation_body(base_settings: Settings) ->
 
     assert len(calls) == 3
     assert result.generation_schema_retries == 1
-    assert result.llm_request_count == 3
+    assert result.application_llm_call_count == 3
 
 
 def test_live_agent_gives_up_after_repeated_contract_breaches(base_settings: Settings) -> None:
@@ -534,22 +538,110 @@ def test_live_agent_gives_up_after_repeated_contract_breaches(base_settings: Set
     assert "OUTSIDE_CANDIDATE" in str(excinfo.value)
 
 
+class _Clock:
+    """A clock the test moves on purpose.
+
+    Pinning monotonic to a fixed list of ticks made the test depend on how many
+    times the agent happens to read the clock, which changed the moment the
+    budget became a shared deadline.
+    """
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
 def test_live_agent_stops_when_the_time_budget_is_gone(
     base_settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     agent, calls = _azure_agent(base_settings, [_GOOD_GENERATION, _GOOD_SELECTION])
+    clock = _Clock()
+    monkeypatch.setattr("mailtaskagent.task_context_agent.time.monotonic", clock)
 
-    # Stall the clock past the budget once the generation call has returned.
-    ticks = iter([0.0, 0.0, 0.0, 600.0])
-    monkeypatch.setattr(
-        "mailtaskagent.task_context_agent.time.monotonic",
-        lambda: next(ticks, 600.0),
-    )
+    original = agent.client.chat.completions.create
+
+    def burn_the_budget(*args, **kwargs):
+        response = original(*args, **kwargs)
+        clock.advance(base_settings.agent_deliberation_budget_ms / 1000 + 1)
+        return response
+
+    agent.client.chat.completions.create = burn_the_budget
 
     with pytest.raises(TimeoutError, match="budget"):
         agent.judge(*_judge_args(), retry_count=0)
 
     assert len(calls) == 1, "the evaluation call must not be made after the budget is gone"
+
+
+def test_the_budget_is_not_refreshed_by_a_second_judgement(
+    base_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A query rewrite must not buy another full budget.
+
+    The budget used to restart inside every judge() call, so a mail that went
+    around the rewrite loop could spend it twice over.
+    """
+    agent, calls = _azure_agent(
+        base_settings,
+        [_GOOD_GENERATION, _GOOD_SELECTION, _GOOD_GENERATION, _GOOD_SELECTION],
+    )
+    clock = _Clock()
+    monkeypatch.setattr("mailtaskagent.task_context_agent.time.monotonic", clock)
+
+    agent.start_deliberation_budget()
+    agent.judge(*_judge_args(), retry_count=0)
+    assert len(calls) == 2
+
+    # Most of the budget is gone by the time the rewrite comes back.
+    clock.advance(base_settings.agent_deliberation_budget_ms / 1000 + 1)
+
+    with pytest.raises(TimeoutError, match="budget"):
+        agent.judge(*_judge_args(), retry_count=1)
+
+    assert len(calls) == 2, "the re-judgement must not call the model on an expired budget"
+
+
+def test_each_request_is_capped_by_the_time_left(
+    base_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A single call cannot be given longer than the budget still allows."""
+    agent, calls = _azure_agent(base_settings, [_GOOD_GENERATION, _GOOD_SELECTION])
+    clock = _Clock()
+    monkeypatch.setattr("mailtaskagent.task_context_agent.time.monotonic", clock)
+
+    timeouts: list[float] = []
+    original = agent.client.chat.completions.create
+    budget_seconds = base_settings.agent_deliberation_budget_ms / 1000
+    # Leave the second call less than one per-request timeout of budget, so the
+    # cap has to come from the deadline rather than from timeout_seconds.
+    remaining_after_first = base_settings.timeout_seconds / 2
+    burn = budget_seconds - remaining_after_first
+
+    def record_timeout(*args, **kwargs):
+        timeouts.append(kwargs["timeout"])
+        response = original(*args, **kwargs)
+        if len(timeouts) == 1:
+            # Only the first call is slow; the second must still fit in what is
+            # left rather than getting a fresh per-request timeout.
+            clock.advance(burn)
+        return response
+
+    agent.client.chat.completions.create = record_timeout
+
+    agent.start_deliberation_budget()
+    agent.judge(*_judge_args(), retry_count=0)
+
+    assert len(timeouts) == 2
+    assert timeouts[0] == base_settings.timeout_seconds
+    assert timeouts[1] < base_settings.timeout_seconds, (
+        "the second request should get only the time the first one left"
+    )
+    assert timeouts[1] == pytest.approx(remaining_after_first, abs=0.01)
 
 
 _LISTED_RISK_GENERATION = json.dumps(
@@ -658,3 +750,46 @@ def test_a_broken_evaluation_contract_is_also_retried(base_settings: Settings) -
 
     assert len(calls) == 3
     assert result.evaluation_schema_retries == 1
+
+
+def test_a_corrected_retry_still_records_what_the_first_attempt_broke(
+    base_settings: Settings,
+) -> None:
+    """The violation trace used to be empty whenever the retry succeeded.
+
+    rejected_hypotheses existed on the result and the workflow wrote it into the
+    event, but nothing ever assigned it, so a judgement that only worked on the
+    second attempt looked as though the first had been fine.
+    """
+    agent, calls = _azure_agent(
+        base_settings,
+        [_OUTSIDE_CANDIDATE_GENERATION, _GOOD_GENERATION, _GOOD_SELECTION],
+    )
+
+    result = agent.judge(*_judge_args(), retry_count=0)
+
+    assert len(calls) == 3, "the first generation should have been retried"
+    assert result.generation_schema_retries == 1
+    violations = {item.violation for item in result.rejected_hypotheses}
+    assert ContractViolation.OUTSIDE_CANDIDATE in violations, (
+        "the corrected attempt must still show what the first response broke"
+    )
+
+
+def test_a_final_contract_failure_carries_codes_not_model_text(
+    base_settings: Settings,
+) -> None:
+    """Nothing that can quote the model's input may reach the trace."""
+    agent, _ = _azure_agent(base_settings, [_OUTSIDE_CANDIDATE_GENERATION])
+
+    with pytest.raises(DeliberationContractFailure) as excinfo:
+        agent.judge(*_judge_args(), retry_count=0)
+
+    failure = excinfo.value
+    assert {item.violation for item in failure.violations} == {
+        ContractViolation.OUTSIDE_CANDIDATE
+    }
+    message = str(failure)
+    assert "OUTSIDE_CANDIDATE" in message
+    assert "TASK-999" not in message, "the offending value must not appear in the message"
+    assert "supporting_evidence" not in message, "no part of the response may leak"

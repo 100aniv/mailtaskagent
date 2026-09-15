@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -34,6 +35,11 @@ def main() -> None:
         analyzer = build_analyzer(settings)
         model = settings.model
     else:
+        # MOCK has to be deterministic and free, and swapping only the analyzer
+        # is not enough: the workflow picks its Task Context agent from
+        # settings.use_mock, so a MOCK run in a LIVE environment was still
+        # calling the real agent.
+        settings = replace(settings, use_mock=True)
         analyzer = MockMailAnalyzer()
         model = "deterministic-mock"
 

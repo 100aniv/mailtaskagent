@@ -211,6 +211,9 @@ class ContractViolation(StrEnum):
     UNKNOWN_HYPOTHESIS = "UNKNOWN_HYPOTHESIS"
     SELECTION_SCORE_MISMATCH = "SELECTION_SCORE_MISMATCH"
     TOO_FEW_HYPOTHESES = "TOO_FEW_HYPOTHESES"
+    # The response never reached the contract checks: malformed JSON or a body
+    # the schema rejected. Recorded as a code so no raw model output is stored.
+    SCHEMA_INVALID = "SCHEMA_INVALID"
 
 
 class RejectedHypothesis(BaseModel):
@@ -263,7 +266,7 @@ class TaskContextAgentResult(BaseModel):
     rejected_hypotheses: list[RejectedHypothesis] = Field(default_factory=list)
     generation_schema_retries: int = 0
     evaluation_schema_retries: int = 0
-    llm_request_count: int = 0
+    application_llm_call_count: int = 0
     generation_duration_ms: int = 0
     evaluation_duration_ms: int = 0
     total_duration_ms: int = 0
