@@ -244,6 +244,45 @@ def audit_consistency(version: str) -> None:
     ]
     check("문서에 옛 테스트 수치 없음", not stale, ", ".join(stale[:4]))
 
+    # --- documents must not point at a superseded deck or an old cut ---
+    prose = [
+        ROOT / "Docs/PRESENTATION/README.md",
+        ROOT / "Docs/IMPLEMENTATION/10_최종감사_및_제출진행.md",
+        ROOT / "Docs/IMPLEMENTATION/11_최종_제출가이드_충족점검.md",
+        ROOT / "Docs/USER_GUIDE/09285_백준현_AI_Master_제출및면접_체크리스트.md",
+        ROOT / "Docs/PRESENTATION/2. 최종/09285_백준현_최종시연_스크립트.md",
+    ]
+    older = [f"v{n}" for n in range(3, int(version.lstrip("v")))]
+    wrong_version = []
+    for path in prose:
+        if not path.exists():
+            continue
+        body = path.read_text(encoding="utf-8")
+        for tag in older:
+            # "작업 이력" lines legitimately list superseded versions.
+            for line in body.splitlines():
+                if f"최종발표자료_{tag}" in line and "작업 이력" not in line:
+                    wrong_version.append(f"{path.name}:{tag}")
+                elif f"4장 {tag} " in line:
+                    wrong_version.append(f"{path.name}:{tag}")
+    check("문서가 최신 발표자료를 가리킴", not wrong_version, ", ".join(sorted(set(wrong_version))[:4]))
+
+    qa_path = ROOT / "output/submission/09285_백준현_시연영상_검수.json"
+    if qa_path.exists():
+        qa = json.loads(qa_path.read_text(encoding="utf-8"))
+        seconds = qa["video"]["duration_seconds"]
+        current = f"{int(seconds // 60)}분 {seconds % 60:.1f}초"
+        stale_len = []
+        for path in prose:
+            if not path.exists():
+                continue
+            body = path.read_text(encoding="utf-8")
+            for match in re.finditer(r"(\d)분 (\d{1,2}\.\d)초", body):
+                if match.group(0) != current:
+                    stale_len.append(f"{path.name}:{match.group(0)}")
+        check("문서의 영상 길이가 현재 영상과 일치", not stale_len,
+              f"현재 {current} / 발견 {sorted(set(stale_len))[:3]}")
+
     # --- AI_MASTER heading order must match the official form ---
     form = ROOT / "Docs/AI_MASTER/기존 양식"
     if form.exists():
