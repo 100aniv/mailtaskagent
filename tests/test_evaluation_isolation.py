@@ -76,8 +76,23 @@ def test_mock_mode_never_constructs_the_company_agent(monkeypatch, tmp_path):
     )
 
 
-def test_live_mode_keeps_the_company_agent():
-    """The same guard must not quietly turn LIVE into a mock run."""
+def test_live_mode_keeps_the_company_agent(monkeypatch):
+    """The same guard must not quietly turn LIVE into a mock run.
+
+    Constructing the real agent needs an API key, which a clean checkout does
+    not have, so this asserts which class is selected rather than whether this
+    machine happens to be configured for it.
+    """
+    built: list[object] = []
+
+    def record(self, settings):
+        built.append(settings)
+
+    monkeypatch.setattr(AzureTaskContextAgent, "__init__", record)
+
     settings = load_settings()
     live = settings.__class__(**{**settings.__dict__, "use_mock": False})
-    assert isinstance(build_task_context_agent(live), AzureTaskContextAgent)
+    agent = build_task_context_agent(live)
+
+    assert isinstance(agent, AzureTaskContextAgent)
+    assert built, "the company agent should have been constructed for LIVE"

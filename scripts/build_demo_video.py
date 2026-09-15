@@ -132,8 +132,8 @@ CAPTIONS = [
     Caption(*_cmp[2], "실제 판단 | 차이 0.10이 기준 0.15에 미달해 Query Rewrite 후 재판단했지만 여전히 0.10이었습니다."),
     Caption(*_hitl[0], "Guard | PYTHON_GUARD가 WAITING으로 기록되고 ASK_USER로 이관됩니다. 실제 저장된 이벤트입니다."),
     Caption(*_hitl[1], "Human-in-the-loop | ASK_USER로 이관하고, 사용자 결정 전까지 Task DB를 바꾸지 않습니다."),
-    Caption(*_final[0], "반복 검증 | 회사 LLM Live 15/15 · Action 28/28 · pytest 214 passed"),
-    Caption(*_final[1], "Gmail E2E | 새 메일 3통 발송 → 숙고 전 경로 실행 → ASK_USER까지 실제 계정에서 검증"),
+    Caption(*_final[0], "반복 검증 | 회사 LLM Live 15/15 · Action 28/28 · pytest 224 passed"),
+    Caption(*_final[1], "Gmail E2E | 실제 계정으로 받은 새 메일 4건 처리 · 2건 Task 생성, 2건 ASK_USER"),
     Caption(*_final[2], "결론 | AI Master MVP 완료 · Outlook·사내 운영 전환은 Post-MVP"),
 ]
 
@@ -153,8 +153,8 @@ NARRATION = [
     Narration(MARKS["guard_handoff"] + 0.3, "근거가 부족하다고 판단해, 파이썬 가드가 자동 실행을 중단했습니다."),
     Narration(_hitl[1][0] + 0.3, "모호하거나 위험한 변경은 사용자 확인으로 이관하며, 승인 전에는 업무 데이터베이스를 바꾸지 않습니다."),
     Narration(MARKS["quality"] + 0.4, "세 번째, 최종 결과 확인입니다."),
-    Narration(MARKS["quality"] + TITLE_CARD_SECONDS + 0.3, "회사 엘엘엠 라이브 열다섯 건, 행동 단계 스물여덟 건, 전체 테스트 이백십사 건을 통과했습니다."),
-    Narration(_final[1][0] + 0.3, "실제 지메일로 새 메일 세 통을 보내 이 판단 경로를 처음부터 확인했습니다."),
+    Narration(MARKS["quality"] + TITLE_CARD_SECONDS + 0.3, "회사 엘엘엠 라이브 열다섯 건, 행동 단계 스물여덟 건, 전체 테스트 이백이십사 건을 통과했습니다."),
+    Narration(_final[1][0] + 0.3, "실제 지메일로 받은 새 메일 네 건을 처리해, 두 건은 업무 생성, 두 건은 사용자 확인으로 닫았습니다."),
     Narration(_final[2][0] + 0.3, "사내 아웃룩 운영 전환은 후속 과제로 남겨두었습니다."),
 ]
 
