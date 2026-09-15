@@ -114,7 +114,7 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 | Reply Planning Live | 3/3 |
 | 사용자 입력 기반 Draft 생성 | 1/1 |
 | 테스트 Gmail 사용자 승인 발송 | 실제 발송 1건 및 원본 Thread·History·`WAITING_REPLY` 확인 |
-| 전체 자동 테스트 | 214 passed |
+| 전체 자동 테스트 | 224 passed |
 | Gmail 재조회 | 2026-09-13 최종 E2E 33/33, 새 Root Mail 재검증 35/35 중복 차단 |
 | Windows Scheduler | 반복 실행 성공, `LastTaskResult=0` |
 | SQLite 무결성 | `quick_check=ok` |
@@ -145,7 +145,7 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 - Reply Agent의 7개 회신 방식 판단과 날짜·값·승인 등 필요한 사용자 입력 선택
 - 사용자 입력 기반 회사 LLM Draft 생성·수정과 사용자 승인 Gmail 발송
 - 원본 Thread·Allowlist 단일 수신자·중복 발송 Guard와 발송 후 `WAITING_REPLY`
-- 신규 RAG·Guard·Reply 평가 Evidence와 전체 pytest 214개 통과
+- 신규 RAG·Guard·Reply 평가 Evidence와 전체 pytest 224개 통과
 
 ### 사내 운영 전 추가로 필요한 것
 
@@ -183,7 +183,7 @@ Agent 제안과 사용자 최종 결정은 모두 History에 남는다.
 7. 운영 상태의 Agentic Workflow Trace에서 RAG 검색, 후보 관찰, 판단, Query Rewrite,
    Agent Action Proposal, Python Safety Guard와 실행 결과 관찰을 보여준다.
 8. AI 회신 준비에서 Reply Agent의 회신 방식, 필요한 사용자 입력, LLM Draft와 승인 발송 후 `WAITING_REPLY`를 보여준다.
-9. 마지막에 15/15, 28/28, Task Context Live 3/3, Reply Planning 3/3, Draft 1/1, Gmail 20/20, 사용자 승인 실제 발송, pytest 214 passed와 측정 한계를 설명한다.
+9. 마지막에 15/15, 28/28, Task Context Live 3/3, Reply Planning 3/3, Draft 1/1, Gmail 20/20, 사용자 승인 실제 발송, pytest 224 passed와 측정 한계를 설명한다.
 
 ## 12. 발표용 30초 결론
 

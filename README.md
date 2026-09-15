@@ -8,7 +8,7 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 제한 Gmail 개인 파�
 > Query Rewrite·재판단, Agent Action Proposal, Python Safety Guard, 실행 결과 재조회와 안전한
 > Agent Trace를 결합했다. 이어서 필요한 회신 방식·사용자 입력·초안을 만드는
 > Mail-to-Action Draft와 테스트 계정 대상 Gmail 사용자 승인 발송을 추가했다. Read/Send OAuth
-> Token도 분리했고 명시적 상대 날짜 정규화와 INBOUND/WAITING 의미 계약 재시도를 보강했으며 전체 pytest `214 passed`, Task Context Agent 회사 LLM
+> Token도 분리했고 명시적 상대 날짜 정규화와 INBOUND/WAITING 의미 계약 재시도를 보강했으며 전체 pytest `224 passed`, Task Context Agent 회사 LLM
 > Live 합성 검증 `3/3`, Reply Planning Live `3/3`과 Draft 생성 `1/1`을 통과했다.
 > 최신 회사 LLM Core 평가는 15/15 Case·28/28 Action·60.852초다. 승인된 두 테스트 계정의 실제
 > Gmail 5-message Lifecycle에서는 첫 Mail이 안전하게 `ASK_USER`로 이관된 뒤 승인 발송·기한 단축 승인·자료 도착 재개·완료 승인·33/33 중복 방지를 확인했다. 별도의 새 Gmail root Mail은 사용자 개입 없이 `CREATE_TASK`로 `TASK-010`·`TODO`·기한 `2026-09-16`을 생성했고 재조회 35/35 중복 방지를 확인해 앞선 첫 Mail의 한계를 해소했다.
