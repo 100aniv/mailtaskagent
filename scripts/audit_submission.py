@@ -31,12 +31,68 @@ PASSES: list[str] = []
 
 
 def check(name: str, ok: bool, detail: str = "") -> bool:
-    (PASSES if ok else FAILURES).append(f"{name}{' — ' + detail if detail else ''}")
+    (PASSES if ok else FAILURES).append(f"{name}{' | ' + detail if detail else ''}")
     return ok
 
 
 def warn(name: str, detail: str = "") -> None:
-    WARNINGS.append(f"{name}{' — ' + detail if detail else ''}")
+    WARNINGS.append(f"{name}{' | ' + detail if detail else ''}")
+
+
+
+def _project_python() -> Path:
+    """The interpreter this project's dependencies are installed into."""
+    if sys.platform == "win32":
+        return ROOT / ".venv" / "Scripts" / "python.exe"
+    return ROOT / ".venv" / "bin" / "python"
+
+
+def _ensure_project_environment() -> None:
+    """Re-exec under .venv when started from an interpreter that lacks the project.
+
+    Running the audit with a bare `python` picks up whichever interpreter is on
+    PATH. That one has no project dependencies, so pytest collects a fraction of
+    the suite and the audit reports failures that are about the environment
+    rather than the submission.
+    """
+    try:
+        import mailtaskagent  # noqa: F401
+        import pytest  # noqa: F401
+    except ModuleNotFoundError:
+        pass
+    else:
+        return
+
+    venv = _project_python()
+    if not venv.exists():
+        raise SystemExit(
+            "This audit needs the project virtualenv.\n"
+            f"Expected it at: {venv}\n"
+            "Create it, install requirements.txt, then run:\n"
+            f"  {venv} -m scripts.audit_submission"
+        )
+    if Path(sys.executable).resolve() == venv.resolve():
+        raise SystemExit(
+            f"Running under {venv} but the project still cannot be imported.\n"
+            "Install requirements.txt into that environment first."
+        )
+    completed = subprocess.run(
+        [str(venv), "-m", "scripts.audit_submission", *sys.argv[1:]], cwd=ROOT
+    )
+    raise SystemExit(completed.returncode)
+
+
+def _make_output_encodable() -> None:
+    """A cp949 console cannot print every character these checks may contain.
+
+    The script used to die on the first unencodable byte, after the checks had
+    run, which left the exit code describing the print and not the audit.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
 
 def slide_text(pptx: Path) -> list[str]:
@@ -120,7 +176,7 @@ def audit_deck(version: str) -> None:
     check("성과 수치 자동화율", "53.3%" in overview)
     check("자동화율 분모 명시", "15 Case" in overview, "분모 없이 쓰면 전체 성능으로 읽힘")
     if "미측정" in overview:
-        warn("사용자 체감 지표는 미측정", "측정 데이터가 없어 추정치도 쓰지 않음 — 의도적 선택")
+        warn("사용자 체감 지표는 미측정", "측정 데이터가 없어 추정치도 쓰지 않음. 의도적 선택")
 
     # --- guide: 실제 기술명 사용 ---
     architecture = slides[2]
@@ -181,7 +237,7 @@ def audit_video() -> None:
 
     intro = spans["scenario_intro"]
     if intro[1] - intro[0] > 40:
-        warn("시나리오 소개가 40초 초과", f"{intro[1]-intro[0]:.1f}s — 가이드 예시는 30초")
+        warn("시나리오 소개가 40초 초과", f"{intro[1]-intro[0]:.1f}s, 가이드 예시는 30초")
 
     console = qa["overlay_windows_seconds"]["processing_events_console"]
     check("읽히는 콘솔 구간 25초 이상", console[1] - console[0] >= 25,
@@ -333,6 +389,8 @@ def audit_repo() -> None:
 
 
 def main() -> int:
+    _ensure_project_environment()
+    _make_output_encodable()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--deck-version", default="v12")
     parser.add_argument("--skip-tests", action="store_true")
