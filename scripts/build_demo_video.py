@@ -215,6 +215,34 @@ def srt_time(seconds: float) -> str:
     return f"{hour:02d}:{minute:02d}:{second:02d},{ms:03d}"
 
 
+def section_cards() -> list[tuple[str, str, str, str]]:
+    """Number, title, flow and scope for each section card.
+
+    The subtitle track reads the flow line from here too, so the two cannot
+    drift apart the way they did when the flow gained its evaluation step.
+    """
+    return [
+        (
+            "01",
+            "시나리오 소개",
+            "실제 Gmail 입력 → Task 생성 → 회신 준비",
+            "이 구간 화면 대상: 실제 Gmail 메일에서 생성된 Task",
+        ),
+        (
+            "02",
+            "Agent 추론 로그",
+            "Observe → Retrieve → Generate → Evaluate → Guard → Act·Observe",
+            f"이 구간 Trace·콘솔 대상: {TRACE_MAIL_ID}",
+        ),
+        (
+            "03",
+            "최종 결과 확인",
+            "반복 테스트 · 실제 Gmail E2E · MVP 경계",
+            "모든 수치는 evidence 폴더의 실행 기록과 대응합니다",
+        ),
+    ]
+
+
 def write_subtitles() -> None:
     header = """[Script Info]
 ScriptType: v4.00+
@@ -233,11 +261,7 @@ Style: SectionSub,Malgun Gothic,22,&H00D8F7FF,&H00FFFFFF,&H0012253F,&HC012253F,0
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines = [header]
-    section_subs = [
-        "실제 Gmail 입력과 Task·회신 성공 기준",
-        "Observe → Retrieve → Decide → Guard → Act·Observe",
-        "Gmail E2E·반복 테스트·MVP 경계",
-    ]
+    section_subs = [card[2] for card in section_cards()]
     for section, subtitle in zip(SECTIONS, section_subs):
         lines.append(
             f"Dialogue: 2,{ass_time(section.start)},{ass_time(section.end)},Section,,0,0,0,,{section.text}\n"
@@ -284,26 +308,7 @@ def build_title_cards() -> list[Path]:
     subtitle_font = ImageFont.truetype(str(find_korean_font()), 29)
     brand_font = ImageFont.truetype(str(find_korean_font(bold=True)), 23)
     note_font = ImageFont.truetype(str(find_korean_font()), 24)
-    cards = [
-        (
-            "01",
-            "시나리오 소개",
-            "실제 Gmail 입력 → Task 생성 → 회신 준비",
-            "이 구간 화면 대상: 실제 Gmail 메일에서 생성된 Task",
-        ),
-        (
-            "02",
-            "Agent 추론 로그",
-            "Observe → Retrieve → Generate → Evaluate → Guard → Act·Observe",
-            f"이 구간 Trace·콘솔 대상: {TRACE_MAIL_ID}",
-        ),
-        (
-            "03",
-            "최종 결과 확인",
-            "반복 테스트 · 실제 Gmail E2E · MVP 경계",
-            "모든 수치는 evidence 폴더의 실행 기록과 대응합니다",
-        ),
-    ]
+    cards = section_cards()
     outputs: list[Path] = []
     for index, (number, title, subtitle, note) in enumerate(cards, 1):
         image = Image.new("RGB", (1600, 900), "#0b1f3a")
