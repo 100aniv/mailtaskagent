@@ -172,7 +172,7 @@ flowchart LR
 프로젝트 루트는 다음 위치다.
 
 ```text
-C:\Users\bback\Desktop\AI Master\MailTaskAgent
+<저장소를 내려받은 경로>\MailTaskAgent
 ```
 
 중요 폴더만 단순화하면 다음과 같다.

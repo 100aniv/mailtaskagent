@@ -12,8 +12,8 @@ from reportlab.lib.utils import ImageReader
 # Derived from this file's location so the build does not depend on where
 # the repository was cloned.
 ROOT = Path(__file__).resolve().parents[2]
-IMAGE_DIR = ROOT / "tmp" / "pdfs" / "presentation-v11"
-OUTPUT = ROOT / "Docs" / "PRESENTATION" / "2. 최종" / "09285_백준현_AI_Master_최종발표자료_v11.pdf"
+IMAGE_DIR = ROOT / "tmp" / "pdfs" / "presentation-v12"
+OUTPUT = ROOT / "Docs" / "PRESENTATION" / "2. 최종" / "09285_백준현_AI_Master_최종발표자료_v12.pdf"
 PAGE_SIZE = (960, 540)
 
 

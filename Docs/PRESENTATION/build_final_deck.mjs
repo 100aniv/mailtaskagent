@@ -106,14 +106,15 @@ function notes(slide, text, sources=[]) {
 // 2. Overview
 {
   const s=p.slides.add(); base(s,"프로젝트 개요",2);
-  txt(s,"메일함에서 놓치기 쉬운 요청을 Task Lifecycle로 관리",60,130,800,34,24,C.blue,true);
-  txt(s,"수작업 전환 누락과 후속 메일 추적 부담을 줄이고, 위험한 변경은 사용자 승인 뒤 반영합니다.",60,168,1110,40,18,C.muted,false);
+  txt(s,"같은 업무 요청이 여러 메일과 Thread에 흩어져 도착합니다",60,128,900,32,23,C.blue,true);
+  txt(s,"무엇이 새 업무이고 무엇이 기존 업무의 변경인지 사람이 매번 판단해야 합니다. 놓치면 기한을 넘기고, 잘못 붙이면 엉뚱한 업무가 바뀝니다.",60,164,1150,42,16,C.ink,false);
+  // The roles the code actually runs, in the order it runs them.
   const nodes=[
-    ["메일 관찰","Gmail 수신·발신\nThread와 참여자",60,C.blue],
-    ["의미 분석","요청·기한·Intent\n회사 LLM 구조화",300,C.cyan],
-    ["관계 판단","Task Context RAG\nAction Proposal",540,"#7657D6"],
-    ["안전 실행","Python Guard\n필요 시 회신·승인",780,C.amber],
-    ["결과 기억","Gmail 발송·후속 Mail\nTask·History·Trace",1020,C.green]
+    ["Mail Analyzer","의미·Intent·기한 구조화\ngpt-4.1-mini",60,C.blue],
+    ["Context Agent","가설 생성\n관계·대상·Action 후보 2~3개",300,C.cyan],
+    ["Context Agent","가설 평가\n지지도 산출 후 하나 선택",540,"#7657D6"],
+    ["Python Guard","후보·전이·중요 변경 검증\n미달 시 ASK_USER",780,C.amber],
+    ["Reply Agent","회신 방식 판단·초안\n승인 후 Gmail 발송",1020,C.green]
   ];
   for (let i=0;i<nodes.length;i++) { const [a,b,x,c]=nodes[i]; flowNode(s,a,b,x,250,190,c); if(i<4) arrow(s,x+198,296,28); }
   txt(s,"핵심 기술",60,405,150,28,20,C.navy,true);
@@ -127,7 +128,7 @@ function notes(slide, text, sources=[]) {
   txt(s,"위 수치는 정의된 Case 범위의 결과이며 실제 Mailbox 전체 성능이 아닙니다. 사용자 체감 시간은 미측정입니다.",60,578,1160,18,11.5,C.muted,false);
   box(s,60,602,1160,44,C.pale,"none",true);
   txt(s,"핵심 메시지  |  규칙으로 열거할 수 없는 \"이 메일이 어느 업무인가\"만 Agent가 판단하고, 실행 권한은 Python과 사용자가 가집니다.",82,611,1110,28,16,C.navy,true);
-  notes(s,"문제를 좁히면 이렇습니다. 하나의 업무가 여러 메일과 여러 Thread에 흩어져 도착하고, 기한 변경이나 자료 회신 같은 후속 메일은 표현이 매번 달라집니다. 사용자는 그때마다 과거 메일을 다시 찾아 이 메일이 새 업무인지 기존 업무의 변경인지 판단해야 합니다.\n\n가운데 흐름은 왼쪽부터 읽으시면 됩니다. 메일을 관찰하고, 의미를 구조화하고, 기존 업무와의 관계를 판단하고, 위험한 실행은 막고, 결과를 기억합니다. 이 다섯 단계가 뒤에 나올 M-01부터 M-05까지에 그대로 대응합니다.\n\n아래 수치는 분모가 서로 다르니 합쳐 읽지 말아 주십시오. 28/28은 회사 LLM Live 15개 Case에서 나온 Action 단계, 3/3은 Task Context Agent 전용 Live, 20/20은 테스트 Gmail의 비식별 합성 메일 수용시험, pytest는 코드 회귀입니다. 회사 메일함 전체 정확도가 아닙니다. 체감 시간은 신뢰할 Baseline을 얻지 못해 추정치 대신 미측정으로 적었습니다.",["Docs/AI_MASTER/02_문제정의및서비스기획.md","evidence/final_audit_live_2026-09-13_after_inbound_intent_guard.json","evidence/final_mvp_acceptance_2026-09-08.json"]);
+  notes(s,"문제부터 말씀드리겠습니다. 하나의 업무가 여러 메일과 여러 Thread에 흩어져 도착하고, 기한 변경이나 자료 회신 같은 후속 메일은 표현이 매번 달라집니다. 그래서 사용자는 메일이 올 때마다 과거 메일을 다시 찾아, 이게 새 업무인지 기존 업무의 변경인지 직접 판단해야 합니다. 놓치면 기한을 넘기고, 잘못 붙이면 엉뚱한 업무의 상태가 바뀝니다. 제가 풀려는 것은 이 판단입니다.\n\n가운데 다섯 상자는 실제로 도는 역할입니다. 메일 분석기가 의미와 의도를 구조화하고, 컨텍스트 에이전트가 관계와 대상, 행동 후보를 두세 개 만듭니다. 같은 에이전트를 한 번 더 부르는데 이번엔 평가만 시킵니다. 만드는 호출과 고르는 호출이 다릅니다. 그다음 파이썬 가드가 후보와 상태 전이, 중요 변경을 검증하고 기준에 못 미치면 사용자 확인으로 넘깁니다. 마지막이 회신 에이전트입니다. 엘엘엠이 판단하는 자리와 파이썬이 통제하는 자리가 이 그림에서 갈립니다.\n\n아래 수치는 분모가 서로 다르니 합쳐 읽지 말아 주십시오. 28/28은 회사 LLM Live 15개 Case에서 나온 Action 단계, 3/3은 Task Context Agent 전용 Live, 20/20은 테스트 Gmail의 비식별 합성 메일 수용시험, pytest는 코드 회귀입니다. 회사 메일함 전체 정확도가 아닙니다. 체감 시간은 신뢰할 Baseline을 얻지 못해 추정치 대신 미측정으로 적었습니다.",["Docs/AI_MASTER/02_문제정의및서비스기획.md","evidence/final_audit_live_2026-09-13_after_inbound_intent_guard.json","evidence/final_mvp_acceptance_2026-09-08.json"]);
 }
 
 // 3. Architecture
