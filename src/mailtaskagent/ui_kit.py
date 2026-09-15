@@ -415,6 +415,26 @@ html, body, [class*="css"]{
 [data-testid="stMarkdownContainer"]:has(> [data-testid="stHeadingWithActionElements"]){margin-bottom:0;}
 [data-testid="stCaptionContainer"]{margin-bottom:0; color:var(--ui-ink-2); font-size:var(--ui-fs-sm);}
 [data-testid="stCaptionContainer"] p:last-child{margin-bottom:0;}
+/* That same negative bottom margin applies to every block we render through
+   st.markdown, so a card ended up 16px taller than the column holding it and
+   pressed against whatever came next. Zero it wherever one of our own blocks
+   is the content. */
+[data-testid="stMarkdownContainer"]:has(> [class^="ui-"]){margin-bottom:0;}
+
+/* Cards placed side by side should read as one row. Without this the shorter
+   card stops early and leaves a ragged edge next to its neighbour. */
+[data-testid="stHorizontalBlock"]:has([data-testid="stColumn"] :is([class^="ui-card"],[class^="ui-empty"],[class^="ui-note"]))
+  > [data-testid="stColumn"]{display:flex; flex-direction:column;}
+[data-testid="stColumn"] > [data-testid="stVerticalBlock"]:has(:is([class^="ui-card"],[class^="ui-empty"],[class^="ui-note"])){flex:1 1 auto;}
+[data-testid="stColumn"] [data-testid="stElementContainer"]:has(:is([class^="ui-card"],[class^="ui-empty"],[class^="ui-note"])),
+[data-testid="stColumn"] [data-testid="stMarkdown"]:has(:is([class^="ui-card"],[class^="ui-empty"],[class^="ui-note"])),
+/* Streamlit puts an unnamed wrapper between stMarkdown and the container; it
+   defaults to flex:0 1 auto and would stop the stretch here. */
+[data-testid="stColumn"] [data-testid="stMarkdown"]:has(:is([class^="ui-card"],[class^="ui-empty"],[class^="ui-note"])) > div,
+[data-testid="stColumn"] [data-testid="stMarkdownContainer"]:has(> :is([class^="ui-card"],[class^="ui-empty"],[class^="ui-note"])){
+  flex:1 1 auto; display:flex; flex-direction:column;
+}
+[data-testid="stColumn"] :is([class^="ui-card"],[class^="ui-empty"],[class^="ui-note"]){flex:1 1 auto;}
 [class*="st-key-ui-"] [data-testid="stColumn"]{min-width:0;}
 [data-testid="stMainBlockContainer"] hr{
   border:0; border-top:1px solid var(--ui-line); margin:var(--ui-7) 0 var(--ui-6);
