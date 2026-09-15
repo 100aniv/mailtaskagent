@@ -1,0 +1,26 @@
+# Git guessed wrong on the submission PDF: reportlab writes no NUL in the first
+# 8000 bytes, so the heuristic called it text, normalised its line endings on
+# commit and re-inserted CRs on checkout. The checked-out file grew by 24 KB and
+# would not parse. Nothing below is ever line-ending converted.
+*.pdf   -text
+*.pptx  -text
+*.potx  -text
+*.docx  -text
+*.dotx  -text
+*.xlsx  -text
+*.zip   -text
+*.mp4   -text
+*.mov   -text
+*.webm  -text
+*.mp3   -text
+*.wav   -text
+*.png   -text
+*.jpg   -text
+*.jpeg  -text
+*.gif   -text
+*.ico   -text
+*.ttf   -text
+*.otf   -text
+*.woff  -text
+*.woff2 -text
+*.db    -text
