@@ -8,9 +8,13 @@ START
   -> Reason/Plan: exact thread 확인 또는 Task Context 검색 경로 선택
   -> Act/Tool: M-02 exact thread or retrieve ranked task contexts
   -> Observe Context: 후보 Task·최근 Mail·History·사용자 결정 확인
-  -> Reason: M-03 Task Context relation judgment when exact thread is unavailable
-     -> low confidence/ambiguous: rewrite query and retrieve exactly once
-     -> Observe Retry Result: 재검색 후보로 다시 판단
+  -> Generate: M-03 가설 생성 LLM이 가능한 관계 후보 2~3개를 근거와 함께 제시 (점수 없음)
+  -> Validate: Python이 후보 ID·관계·Action 계약을 검증
+     -> 위반이면 후보 하나만 버리지 않고 응답 전체를 재생성 요청
+  -> Evaluate: M-03 가설 평가 LLM이 후보별 support_score와 비교 근거를 산출하고 하나를 선택
+  -> Compute: Python이 상위 두 점수 차이로 selection_margin 계산
+     -> low confidence/ambiguous/low margin: rewrite query and retrieve exactly once
+     -> Observe Retry Result: 재검색 후보로 다시 생성·검증·평가
      -> still uncertain/error: ASK_USER fail-closed
   -> Proposal: STRUCTURED_RAG에서는 Task Context Agent가 Action 선택·제안
      -> Python Materializer가 실행 Payload 구성, Safety Guard가 승인 또는 ASK_USER 이관

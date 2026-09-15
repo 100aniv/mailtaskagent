@@ -26,6 +26,13 @@ Live로 상태 흐름과 세부 KPI를 검증했으며, 제한 Gmail 개인 파�
   top-k로 검색하는 Structured Task Context RAG
 - 별도 Task Context Agent의 `SAME_TASK`·`NEW_TASK`·`AMBIGUOUS` 관계 판단과 저신뢰 시
   최대 1회 Query Rewrite·재검색, 실패 시 `ASK_USER` Fail-closed
+- 가설 생성과 가설 평가를 서로 다른 LLM 호출로 나눈 Bounded Multi-Hypothesis Deliberation.
+  생성 단계는 관계·대상·Action 후보 2~3개를 근거와 함께 내고 점수는 매기지 않으며, Python이
+  후보 ID·관계·Action 계약을 검증한 뒤 평가 단계가 후보별 지지도와 비교 근거를 산출한다.
+  상위 두 지지도의 차이는 Python이 계산하고, 기준 미만이면 재검색 후에도 갈리지 않을 때
+  `ASK_USER`로 닫는다. 계약 위반은 후보 하나만 버리지 않고 응답 전체를 재생성한다.
+  `AGENT_DELIBERATION_ENABLED=false`로 기존 단일 결론 경로와 비교할 수 있다.
+  Tree of Thoughts를 구현한 것이 아니라 후보 수·평가·재검색을 각각 제한한 방식이다
 - Task Context Agent가 선택한 Action을 실행 Payload로 구성하고 승인·이관하는 Python Safety
   Guard, DB 반영 결과 재조회와 검증 가능한 Agent Trace
 - Task에 연결된 최신 수신 Mail·현재 Task·최근 History를 보고 `NO_REPLY`, `SIMPLE_ACK`,
@@ -166,6 +173,7 @@ Windows 예약 작업은 `.\scripts\manage_scheduler.ps1`로 관리한다. 현�
 
 ```powershell
 .venv\Scripts\python.exe -m mailtaskagent.evaluation_cli --mode LIVE
+.venv\Scripts\python.exe -m mailtaskagent.evaluation_cli --mode LIVE --suite deliberation
 ```
 
 최신 Live 증적은 `evidence/final_audit_live_2026-09-13_after_inbound_intent_guard.json`이며,

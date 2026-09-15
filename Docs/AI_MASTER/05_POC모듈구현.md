@@ -6,7 +6,7 @@
 
 * **구현 기능:** 합성 Mail 입력부터 의미 분석, Task 후보 검색, 7개 Action 결정, Validation, 사용자 확인, Task·History 저장까지 연결한 단일 Agent Workflow
 
-* **동작 원리:** M-01이 회사 LLM API로 Mail Intent와 요청사항·기한을 구조화하고, M-02가 `conversation_id`와 제목·요청자·요약을 이용해 기존 Task 후보를 찾습니다. 동일 Thread로 확정할 수 없는 `STRUCTURED_RAG` 경로에서는 Task Context Agent가 관계·대상 Task와 `CREATE_TASK`, `UPDATE_TASK`, `LINK_TO_TASK`, `SET_WAITING`, `MARK_COMPLETED`, `ASK_USER`, `IGNORE` 중 다음 Action을 선택해 제안합니다. Python M-03은 실행 Payload와 후보 범위·Intent·상태 전이·중요 변경을 검증하여 승인하거나 `ASK_USER`로 이관합니다. Pydantic Validation을 통과한 결과만 M-04가 SQLite에 반영하며, 중요하거나 불명확한 변경은 M-05 사용자 확인 이후 반영합니다. Streamlit 첫 화면에서는 실제 업무 모드와 MVP 시연 모드를 선택하고, 동일 Agent Core를 공유하되 실제 업무 DB와 시연 DB를 분리합니다.
+* **동작 원리:** M-01이 회사 LLM API로 Mail Intent와 요청사항·기한을 구조화하고, M-02가 `conversation_id`와 제목·요청자·요약을 이용해 기존 Task 후보를 찾습니다. 동일 Thread로 확정할 수 없는 `STRUCTURED_RAG` 경로에서는 가설 생성 Agent가 관계·대상 Task와 `CREATE_TASK`, `UPDATE_TASK`, `LINK_TO_TASK`, `SET_WAITING`, `MARK_COMPLETED`, `ASK_USER`, `IGNORE` 중 하나를 묶은 후보를 2~3개 만들고, Python이 후보 ID·관계·Action 계약을 검증한 뒤 별도 평가 Agent가 후보별 지지도를 매겨 하나를 선택합니다. 상위 두 지지도의 차이는 Python이 계산하며 기준 미만이면 재검색 후 그래도 갈리지 않으면 사용자 확인으로 넘깁니다. Python M-03은 실행 Payload와 후보 범위·Intent·상태 전이·중요 변경을 검증하여 승인하거나 `ASK_USER`로 이관합니다. Pydantic Validation을 통과한 결과만 M-04가 SQLite에 반영하며, 중요하거나 불명확한 변경은 M-05 사용자 확인 이후 반영합니다. Streamlit 첫 화면에서는 실제 업무 모드와 MVP 시연 모드를 선택하고, 동일 Agent Core를 공유하되 실제 업무 DB와 시연 DB를 분리합니다.
 
 * **주요 기술:** Python 3.12.14 최종 검증 환경, OpenAI Python SDK의 `AzureOpenAI` 호환 Client, 회사 LLM `gpt-4.1-mini`, Pydantic, SQLite, Streamlit
 
@@ -24,7 +24,7 @@
 
 * **동작 원리:** 한 건의 Mail을 처리하는 동안 동일 Thread의 선행 Mail, Mail 분석 결과, 후보 Task, 선택 Task의 최근 History, Action 제안, Validation과 실행 결과를 Pydantic 객체로 유지합니다. 처리가 끝나면 Task 현재 상태, 원본 Mail ID, 변경 전·후 값, 판단 근거, 신뢰도, 사용자 결정을 SQLite에 저장하고 다음 Mail 처리 시 필요한 Context만 다시 조회합니다. 동일 `mail_id`는 기존 결과를 반환하여 LLM과 DB 변경을 재실행하지 않습니다.
 
-* **주요 기술:** SQLite, Pydantic State Model, `conversation_id` Metadata 우선 검색, 설명 가능한 Token 기반 후보 점수, SQLite Task·Mail·History를 Source로 쓰는 경량 Task Context Agentic RAG와 최대 1회 Query Rewrite입니다. 사내 문서검색 RAG·Embedding·Vector DB는 Post-MVP로 유지합니다.
+* **주요 기술:** SQLite, Pydantic State Model, `conversation_id` Metadata 우선 검색, 설명 가능한 Token 기반 후보 점수, SQLite Task·Mail·History를 Source로 쓰는 경량 Task Context Agentic RAG, 가설 생성과 평가를 분리한 Bounded Multi-Hypothesis Deliberation과 최대 1회 Query Rewrite입니다. Tree of Thoughts를 구현한 것이 아니라 후보 수·평가·재검색을 각각 제한한 방식입니다. 사내 문서검색 RAG·Embedding·Vector DB는 Post-MVP로 유지합니다.
 
 * **최종 MVP Agentic 보강:** 동일 Thread로 확정할 수 없는 경우 top-k Task Context를 검색하고,
   별도 Task Context Agent가 `SAME_TASK`, `NEW_TASK`, `AMBIGUOUS` 관계·대상 Task와 7개 Action 중
