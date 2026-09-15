@@ -386,10 +386,16 @@ def audit_repo() -> None:
             "09285_백준현_시연영상.mp4" in names,
             ", ".join(sorted(n for n in names if n.endswith(".mp4"))),
         )
+        # OT p.7: 발표자료 PDF · 시연영상 · 소스코드(가능하신 분)
         check(
-            "제출 폴더에 발표자료 PPTX 존재",
-            any(n.endswith(".pptx") for n in names),
-            ", ".join(sorted(n for n in names if n.endswith(".pptx"))),
+            "제출 폴더 발표자료가 PDF",
+            "09285_백준현_최종발표자료.pdf" in names,
+            ", ".join(sorted(n for n in names if n.endswith((".pdf", ".pptx")))),
+        )
+        review = ROOT / "output/REVIEW_ONLY"
+        check(
+            "PPTX는 편집·백업용으로 REVIEW_ONLY에 보존",
+            (review / "09285_백준현_최종발표자료.pptx").exists(),
         )
         check(
             "제출 폴더에 소스 ZIP 존재",
