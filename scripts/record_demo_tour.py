@@ -25,7 +25,6 @@ import time
 from pathlib import Path
 
 from playwright.sync_api import Page, sync_playwright
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 
 ROOT = Path(__file__).resolve().parents[1]

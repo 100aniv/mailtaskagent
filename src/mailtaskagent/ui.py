@@ -45,7 +45,6 @@ from mailtaskagent.models import (
 )
 from mailtaskagent.operations import MailSyncService
 from mailtaskagent.priority import (
-    PRIORITY_PRESENTATION,
     PriorityLevel,
     PriorityRuleType,
     calculate_task_priority,

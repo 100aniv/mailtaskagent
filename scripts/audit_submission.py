@@ -79,6 +79,15 @@ def audit_deck(version: str) -> None:
     if not check("발표자료 PPTX 존재", pptx.exists(), str(pptx.name)):
         return
     check("발표자료 PDF 존재", pdf.exists(), pdf.name)
+    if pdf.exists():
+        # The PDF is built from exported PNGs, so it silently goes stale when the
+        # deck is rebuilt and the slides are not re-exported. This caught exactly
+        # that once.
+        check(
+            "PDF가 PPTX보다 최신",
+            pdf.stat().st_mtime >= pptx.stat().st_mtime,
+            "PPTX를 다시 빌드한 뒤 슬라이드를 다시 내보내지 않았습니다",
+        )
 
     slides = slide_text(pptx)
     notes = notes_text(pptx)
