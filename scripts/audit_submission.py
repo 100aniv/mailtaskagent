@@ -378,7 +378,7 @@ def audit_repo() -> None:
     check("임시·참고 바이너리 미추적", not junk, ", ".join(junk[:3]))
 
     # --- guide: 파일명 규칙은 실제로 올리는 파일에 적용된다 ---
-    submit_dir = ROOT / "output/SUBMIT_ONLY"
+    submit_dir = ROOT / "output/01_제출"
     if submit_dir.exists():
         names = {path.name for path in submit_dir.iterdir() if path.is_file()}
         check(
@@ -392,10 +392,24 @@ def audit_repo() -> None:
             "09285_백준현_최종발표자료.pdf" in names,
             ", ".join(sorted(n for n in names if n.endswith((".pdf", ".pptx")))),
         )
-        review = ROOT / "output/REVIEW_ONLY"
+        present = ROOT / "output/02_발표_시연"
         check(
-            "PPTX는 편집·백업용으로 REVIEW_ONLY에 보존",
-            (review / "09285_백준현_최종발표자료.pptx").exists(),
+            "PPTX는 발표용으로 02_발표_시연에 보존",
+            (present / "09285_백준현_최종발표자료.pptx").exists(),
+        )
+        check(
+            "공식 템플릿판도 함께 보존",
+            (present / "09285_백준현_최종발표자료_공식템플릿.pdf").exists(),
+        )
+        study = ROOT / "output/03_학습_면접"
+        check(
+            "학습자료 PDF 보존",
+            (study / "09285_백준현_이해와시연가이드.pdf").exists(),
+        )
+        check(
+            "제출 폴더에 군더더기 없음",
+            len(names) == 3,
+            ", ".join(sorted(names)),
         )
         check(
             "제출 폴더에 소스 ZIP 존재",
