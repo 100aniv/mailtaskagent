@@ -1,3 +1,15 @@
+이번 PoC 단계의 목표는 메일 한 건이 들어와 Task로 반영되기까지의 경로를 **끊김 없이 한 번
+돌리는 것**입니다.
+
+* **목표:** 메일 분석 → 후보 검색 → Action 결정 → Python Guard → 사용자 확인 → DB 반영을
+  단일 Agent Workflow로 연결하고, 각 단계의 판단 근거를 추적 가능하게 남깁니다.
+* **범위:** 합성·비식별 Mail과 별도 테스트 Gmail, 7개 Task Action, 5개 Task 상태,
+  SQLite 저장과 Streamlit 확인 화면.
+* **비범위:** 사내 Outlook·Graph 연동, 다중 사용자·SSO, Embedding·Vector DB 기반 문서검색 RAG,
+  Mail 1건에서 복수 요청을 자동 분해하는 기능. 모두 Post-MVP로 남겼습니다.
+* **해석 범위:** 아래 수치는 정의된 합성·비식별 테스트셋과 제한적 Live 증적 기준이며
+  실제 Mailbox 전체 성능으로 일반화하지 않습니다.
+
 ### 핵심 구현 내용
 
 이번 PoC 단계에서 실제 코드로 구현된 핵심 기능들을 **동작 원리**와 **사용 기술** 중심으로 상세히 기술합니다.
@@ -34,6 +46,13 @@
   기한 단축 승인 Gate를 검증합니다. Agent 실행 과정은 `processing_events`와 Streamlit의 Agentic
   Workflow Trace에서 Agent Proposal, Python Guard, Final Action으로 구분해 확인할 수 있습니다.
 
+**이번 PoC에서 구현을 마친 것과 후속으로 남긴 것**
+
+| 구분 | 항목 |
+|---|---|
+| **구현 완료** | SQLite Task Context 검색(top-k, 최근 Mail 3건·History 5건), 가설 생성과 평가를 분리한 Bounded Multi-Hypothesis Deliberation, 최대 1회 Query Rewrite, 7개 Action 결정, Python Safety Guard와 `ASK_USER` Fail-closed, 완료·취소·기한 단축 승인 Gate, Transaction 저장과 실행 결과 재조회, Gmail 읽기 Adapter와 사용자 승인 발송, Processing Event 기반 Agent Trace |
+| **후속 과제(Post-MVP)** | Embedding·Vector DB, 사내 문서·첨부파일 검색 RAG, Outlook·Microsoft Graph Adapter, 다중 사용자와 SSO, Mail 1건의 복수 요청 자동 분해, Push Notification 기반 수집 |
+
 ### 주요 문제 해결 및 기술 리서치
 
 구현 과정에서 마주친 기술적 문제와 이를 해결하기 위해 **찾아본 자료(리서치)** 및 **적용한 방법**을 기록합니다.
@@ -47,6 +66,16 @@
 | **운영 추적** | 결과만 보면 어느 단계에서 실패했는지 알 수 없음 | **리서치:** 단계별 Event Logging과 Secret Redaction 방식을 검토했습니다. **적용:** Mail 입력부터 DB 반영까지 단계·시각·처리시간·오류를 SQLite Processing Event와 Streamlit 운영 로그에 표시하고 Secret을 저장 전에 마스킹했습니다. |
 | **운영 안정성** | Dashboard와 1분 주기 Gmail Scheduler가 동시에 SQLite에 쓰면 잠금 충돌이나 비정상 종료 위험이 있음 | **리서치:** SQLite WAL·Busy Timeout·동기화 수준과 Process 단일 실행 잠금을 검토했습니다. **적용:** WAL, 30초 Busy Timeout, `synchronous=FULL`, OS 단일 실행 잠금과 Online Backup·무결성 점검을 적용했습니다. |
 
+**현재 구성의 한계와 트레이드오프**
+
+* **SQLite 선택:** 단일 사용자 PoC에서 설치·백업·무결성 점검이 단순해 선택했습니다. 대신
+  Dashboard와 1분 주기 Scheduler가 동시에 쓰면 잠금 경합이 생기므로 WAL·Busy Timeout·단일 실행
+  잠금으로 막았습니다. 다중 사용자 동시 쓰기는 이 구성으로 감당하지 않습니다.
+* **Gmail Live 검증 규모:** 별도 테스트 계정의 비식별 합성 Mail 20건과 실제 Thread 5-message
+  E2E가 전부입니다. 실제 업무 메일함의 다양성과 규모를 대표하지 않습니다.
+* **합성 중심 검증:** 기대값을 미리 정의할 수 있어야 자동 평가가 가능하므로 대부분의 Case가
+  합성입니다. 사람이 쓴 실제 문장의 모호함은 이 방식으로 충분히 재현되지 않습니다.
+
 ### 핵심 동작 검증
 
 위에서 구현한 기능이 의도대로 동작하는지 보여주는 **대표적인 실행 결과**를 첨부합니다.
@@ -55,22 +84,42 @@
 
 * **입력:** `MAIL-001` “DDC 서버 4대의 패치 적용 여부를 이번 주 금요일까지 확인해 주세요.” 이후 동일 Thread의 `MAIL-002` “다음 주 월요일까지 공유해도 됩니다.”
 
-* **에이전트 동작:**
+* **에이전트 동작 (입력 → 중간 판단 → 최종 Action → 저장 결과):**
 
-  1. M-01이 `MAIL-001`을 `NEW_TASK`, 기한 `2026-08-21`로 구조화
+| 단계 | 무엇이 들어왔나 | Agent가 무엇을 보고 판단했나 | 결정 |
+|---|---|---|---|
+| 1 | `MAIL-001` 원문 | M-01이 업무 요청으로 분류하고 “이번 주 금요일”을 `occurred_at` 기준으로 `2026-08-21`로 해석 | `NEW_TASK`·기한 확정 |
+| 2 | 위 분석 결과 | M-02가 동일 `conversation_id`와 유사 Task를 찾았으나 **후보 0건** | 연결할 기존 Task 없음 |
+| 3 | 후보 없음 | 새로 만들 근거는 충분하고 되돌리기 어려운 변경이 아니므로 승인 불필요 | `CREATE_TASK` |
+| 4 | 실행 결과 | M-04가 저장 후 DB를 다시 조회해 실제 상태 확인 | `TASK-001` · `TODO` 저장, 생성 History 기록 |
+| 5 | `MAIL-002` 원문 | M-02가 동일 `conversation_id`를 발견해 **점수 1.0**으로 `TASK-001` 확정. Metadata로 확정되므로 top-k 검색과 Agent 판단을 호출하지 않음 | 대상 Task 확정 |
+| 6 | 확정된 Task + 새 기한 | **기한이 뒤로 밀리는 변경**이라 승인 Gate 대상이 아니고, 기존 Task의 상태를 훼손하지 않으므로 신규 생성보다 갱신이 맞다고 판단 | `UPDATE_TASK` · 기한 `2026-08-21 → 2026-08-24` |
+| 7 | 실행 결과 | Pydantic 검증 통과 후 동일 Task 갱신, 변경 전·후 값 기록 | `TASK-001` 유지, 기한 `2026-08-24`, 변경 History 저장 |
 
-  2. M-02가 기존 후보 없음 확인 → M-03이 `CREATE_TASK` 결정
-
-  3. M-04가 `TASK-001 / TODO`와 생성 History 저장
-
-  4. `MAIL-002`에서 동일 `conversation_id`의 `TASK-001`을 점수 1.0으로 매칭
-
-  5. M-03이 `UPDATE_TASK`와 기한 `2026-08-21 → 2026-08-24` 결정
-
-  6. Validation 후 동일 Task 갱신 및 변경 전·후 History 저장
+  6단계가 이 시나리오의 핵심입니다. **기한 단축이었다면** 되돌리기 어려운 중요 변경이므로
+  같은 경로에서 `ASK_USER`로 전환됩니다. 자동 반영 여부를 가른 것은 Action의 종류가 아니라
+  변경의 위험도입니다.
 
 * **최종 결과:**
 
 `TASK-001` 한 건만 유지되며 기한은 `2026-08-24`로 변경됩니다. Agent Action, 판단 근거, 원본 Mail ID, 변경 전·후 값과 처리 시각은 Dashboard의 Task History와 운영 로그에서 확인할 수 있습니다. 복수 후보를 구분할 근거가 부족하거나 신뢰도가 낮은 Case, 모호한 기한, 완료·취소 Case는 자동 변경하지 않고 사용자 확인으로 전환됩니다.
 
-최종 회귀 검증은 2026-09-15 최종 격리 보강을 포함한 `pytest 228 passed`다(2026-09-13 최종 감사 기준선 179 passed, 2026-09-09 UI 기준선 `171 passed`). 회사 LLM Mail 분석 Live는 15/15 실행 단위·28/28 Action 단계·60.852초이며, Task Context Agent Live 합성 검증 3/3, Agent Action Proposal·Python Safety Guard 회귀, 별도 테스트 Gmail 비식별 합성 Mail 20/20 수용시험, Windows Scheduler 반복 실행과 SQLite 무결성 `ok`를 확인했습니다. 최종 MVP의 Mail-to-Action은 Reply Planning Live 3/3, 사용자 입력 기반 Draft 생성 1/1과 Streamlit 판단→입력→초안→승인 흐름을 통과했습니다. 2026-09-13 실제 Gmail 5-message E2E의 첫 Mail은 `ASK_USER`로 안전하게 이관됐고, 사용자 확정 뒤 원본 발신자·Thread 잠금, Send Allowlist, 승인 발송, `WAITING_REPLY`, 기한 단축 승인, 자료 도착 후 `IN_PROGRESS`, 완료 승인 후 `COMPLETED`, 33/33 중복 재조회 방지를 확인했습니다. 이후 별도의 새 Gmail root Mail은 무개입 `CREATE_TASK`로 `TASK-010`·`TODO`·기한 `2026-09-16`을 저장했고 35/35 중복 재조회 방지를 확인했습니다. Read-only 동기화와 승인 발송의 OAuth Token은 서로 분리합니다.
+**검증 수치와 각각이 확인한 것**
+
+| 수치 | 무엇을 검증했나 | 성공 기준 |
+|---|---|---|
+| `pytest 228 passed` | 저장소의 자동 회귀 테스트 전체 (2026-09-15 최종 격리 보강 포함) | 실패 0건. 기준선은 2026-09-13 179 passed, 2026-09-09 UI 171 passed |
+| 회사 LLM Live **15/15 실행 단위** | 합성·비식별 Mail 15건에서 분리한 대표 처리 실행 | 기대 Action·상태·후보 수·Task/History 수 전부 일치 |
+| **28/28 Action 단계** | 위 15개 실행이 거치는 개별 Action 결정 지점 | 각 지점의 선택이 기대값과 일치 |
+| **60.852초** | 위 15개 실행 단위를 한 번 도는 배치 시간 | 기준선 비교용이며 사용자 체감 응답시간이 아님 |
+| Task Context Agent Live **3/3** | 다른 Thread·다른 표현의 후속 Mail 관계 판단 전용 합성 Case | 관계·대상 Task·Action이 기대값과 일치 |
+| 테스트 Gmail **20/20 수용시험** | 별도 테스트 계정의 비식별 합성 Mail 20건 | 수신·분석·Task 반영 성공, 재조회 중복 차단, 실패 0건 |
+| Reply Planning **3/3**, Draft **1/1** | 회신 방식 판단과 사용자 입력 기반 초안 생성 | 판단→입력→초안→승인 흐름 통과 |
+| 실제 Gmail **33/33 → 35/35** | 이미 처리한 Mail을 다시 읽었을 때의 중복 재조회 차단 | 재처리 0건 |
+
+2026-09-13 실제 Gmail 5-message E2E의 첫 Mail은 `ASK_USER`로 안전하게 이관됐고, 사용자 확정 뒤
+원본 발신자·Thread 잠금, Send Allowlist, 승인 발송, `WAITING_REPLY`, 기한 단축 승인, 자료 도착 후
+`IN_PROGRESS`, 완료 승인 후 `COMPLETED`, 33/33 중복 재조회 방지를 확인했습니다. 이후 별도의 새
+Gmail root Mail은 무개입 `CREATE_TASK`로 `TASK-010`·`TODO`·기한 `2026-09-16`을 저장했고 35/35
+중복 재조회 방지를 확인했습니다. Windows Scheduler 반복 실행과 SQLite 무결성 `ok`도 함께
+확인했습니다. Read-only 동기화와 승인 발송의 OAuth Token은 서로 분리합니다.
