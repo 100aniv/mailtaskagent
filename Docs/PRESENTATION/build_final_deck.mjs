@@ -100,6 +100,7 @@ function notes(slide, text, sources=[]) {
   txt(s,"백준현  |  09285",72,430,420,40,22,C.white,true);
   txt(s,"AI Master 7기  |  멘토 이유경",72,474,520,34,18,"#B9C9DD",false);
   txt(s,"최종 발표",72,610,300,32,18,C.cyan,true);
+  txt(s,"발표 10분 이내  |  시연 영상 별도 제출 5분 이내",72,646,600,26,14,"#7E93AC",false);
   notes(s,"[시간 배분] 문제·기능 2분, 아키텍처 3분, 핵심 기술 과제 4분으로 약 9분이다. 10분 제한에 1분 여유를 남긴 배분이므로 슬라이드를 넘기기 전에 시간을 확인한다.",["Docs/PRESENTATION/2. 최종/09285_백준현_최종시연_스크립트.md"]);
 }
 
@@ -154,11 +155,17 @@ function notes(slide, text, sources=[]) {
   txt(s,"Reply Agent 판단  →  사용자 입력  →  LLM 초안  →  승인 Gmail 발송  →  WAITING_REPLY",205,398,980,28,15,C.green,true);
   txt(s,"기술 선택 이유",60,450,180,28,20,C.navy,true);
   const choices=[
-    ["gpt-4.1-mini","메일 의미와 관계를 Pydantic Schema로 구조화\n모델 간 우월성 비교는 수행하지 않음"],
-    ["SQLite Task Context RAG","개인 MVP의 활성 Task·최근 Mail 3건·History 5건·사용자 결정만 제한 검색\nVector DB와 외부 Embedding은 사용하지 않는 Structured Retrieval"],
-    ["Python + Pydantic Guard","LangGraph 없이 단일 Agent + 결정론 Guard 구성\n후보 ID·상태 전이·중요 변경을 Python이 검증"]
+    ["gpt-4.1-mini",
+     "선택 이유  |  메일 의미와 Task 관계는 규칙으로 열거할 수 없지만 출력은 고정 Schema여야 합니다",
+     "핵심 활용  |  관계·Action을 Pydantic 계약으로 받고, 계약 위반은 재시도 루프 안에서 재생성"],
+    ["SQLite Task Context RAG",
+     "선택 이유  |  찾을 대상이 외부 문서가 아니라 내 활성 Task·최근 Mail·History·과거 결정입니다",
+     "핵심 성과  |  제한 top-k 검색으로 Live 15 Case Action 28/28. Vector DB는 쓰지 않았습니다"],
+    ["Python + Pydantic Guard",
+     "선택 이유  |  LLM이 DB를 직접 바꾸면 비용이 업무 데이터 오변경입니다. 상태가 닫혀 있어 LangGraph 없이 충분했습니다",
+     "구현 포인트  |  후보 ID·상태 전이·중요 변경을 검증하고 완료·취소·기한 단축은 항상 승인"]
   ];
-  choices.forEach(([t,d],i)=>{ const x=60+i*386; txt(s,t,x,486,348,26,17,i===1?"#7657D6":C.blue,true); txt(s,d,x,518,348,54,14,C.muted,false); });
+  choices.forEach(([t,why,how],i)=>{ const x=60+i*386; txt(s,t,x,484,348,24,17,i===1?"#7657D6":C.blue,true); txt(s,why,x,512,348,38,13,C.muted,false); txt(s,how,x,552,348,38,13,C.muted,false); });
   box(s,60,590,1160,44,"#EEF9F5","none",true);
   txt(s,"M-01은 모든 Mail 의미를 LLM으로 구조화하고, 관계·Action 선택은 STRUCTURED_RAG 경로에만 적용합니다.",82,598,1110,27,16,C.navy,true);
   notes(s,"가장 중요한 설계 결정부터 말씀드리겠습니다. 모든 메일을 Agent에게 맡기지 않았습니다. 경로가 셋으로 갈립니다. 같은 Thread에 활성 업무가 정확히 하나면 규칙이 바로 연결하고 검색과 Agent 판단을 아예 호출하지 않습니다. 관련 업무를 찾아야 할 때만 RAG 경로로 가고, 업무 요청이 아니면 기존 규칙 경로로 처리합니다. 입력에 따라 호출 자체가 달라지는 것이 고정 Workflow와의 차이입니다.\n\n엠 영이가 이 프로젝트의 알에이지입니다. 외부 문서를 찾는 지식 알에이지가 아니라, 판단에 필요한 과거 업무 맥락을 제 에스큐엘라이트에서 찾아오는 태스크 컨텍스트 알에이지입니다. 활성 업무 다섯 건, 각 업무의 최근 메일 세 건과 변경 이력 다섯 건, 사용자가 과거에 확정한 결정을 함께 가져옵니다. 지난 결정이 다음 판단의 근거로 다시 들어갑니다.\n\n네 용어의 역할이 다릅니다. 알에이지는 맥락을 가져오는 단계, 리액트는 그 맥락을 관찰해 행동을 정하고 실행 결과를 다시 관찰하는 바깥 루프, 셀프 커렉션은 그 루프 안에서 확신이 부족할 때 검색어를 바꿔 한 번 다시 찾고 다시 판단하는 부분입니다. 파이썬 가드는 에이전트의 판단을 대신하는 자리가 아니라 그 판단을 실행해도 되는지 확인하는 경계입니다. 흐름으로 읽으면 관찰, 검색, 판단, 실행, 재관찰입니다.\n\n벡터 디비를 쓰지 않은 이유는 개인의 활성 업무가 수십 건 규모라 에스큐엘라이트 조회만으로 충분했고 구성요소를 늘리는 비용이 더 컸기 때문입니다. 대신 검색이 어휘 겹침에 의존한다는 한계가 남습니다. 모델 간 비교 실험은 하지 않았으므로 최적이라고 주장하지 않습니다.\n\n랭그래프도 쓰지 않았습니다. 에이전트가 하나이고 상태가 Task 다섯 개와 Action 일곱 개로 닫혀 있어, 파이썬 상태와 가드만으로 검증이 더 쉬웠습니다. 분기와 중단, 재개가 복잡해지는 시점에 다시 검토하겠습니다.\n\n세 번째가 가장 오래 고민한 Python Guard입니다. LLM은 제안만 하고 데이터베이스를 직접 바꾸지 않습니다. Guard는 고른 업무 ID가 검색 후보 안에 있는지, 메일 의도와 Action이 맞는지, 생성에 필요한 값이 있는지를 확인하고, 하나라도 어긋나면 사용자 확인으로 올립니다. 완료·취소·기한 단축은 신뢰도와 무관하게 항상 승인을 거칩니다.",["Docs/AI_MASTER/04_상세설계및개발환경.md","src/mailtaskagent/workflow.py","src/mailtaskagent/task_context_agent.py","src/mailtaskagent/deliberation.py","src/mailtaskagent/decision.py"]);
@@ -168,7 +175,7 @@ function notes(slide, text, sources=[]) {
 {
   const s=p.slides.add(); base(s,"핵심 기술 과제와 검증",4);
   txt(s,"왜 고정 규칙과 단일 결론 Agent만으로 부족했는가",60,132,700,30,21,C.red,true);
-  txt(s,"Agent가 결론 하나만 내면 후보를 견준 것인지 설명을 붙인 것인지 알 수 없습니다. 멘토 피드백도 \"Rule Base처럼 보인다\"였습니다.",60,166,1150,44,17,C.ink,false);
+  txt(s,"Agent가 결론 하나만 내면 후보를 견준 것인지 설명을 붙인 것인지 알 수 없습니다. 멘토 피드백도 \"Rule Base처럼 보인다\"였습니다. 왜 이 접근인가 — 틀렸을 때 비용이 업무 데이터 오변경이라, 넓게 펼치는 대신 후보를 제한하고 Guard와 사용자 승인으로 막았습니다.",60,160,1150,56,17,C.ink,false);
   box(s,60,228,1160,2,C.line,"none");
   txt(s,"실제 Agent 판단 흐름",60,246,260,28,20,C.navy,true);
   // Two explicit lines rather than one that wraps and orphans a syllable.

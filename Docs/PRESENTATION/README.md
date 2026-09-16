@@ -2,10 +2,19 @@
 
 ## 파일 구성
 
-- **제출본**: `2. 최종/09285_백준현_AI_Master_최종발표자료_v12.pptx` / `_v12.pdf`
-  4장 발표자료와 발표자 노트. 이전 판 v3~v11은 프로젝트 옆
-  `MailTaskAgent_ARCHIVE_2026-09-15/presentation_versions/`로 옮겨 두었으므로 이 폴더에는
-  제출본만 남아 있다.
+발표자료는 같은 내용을 담은 두 판이 있다. 어느 쪽을 낼지는 멘토 확인 후 정한다.
+
+- **자체 제작판(기본 제출본)**: `2. 최종/09285_백준현_AI_Master_최종발표자료_v12.pptx` / `_v12.pdf`
+  1280x720 자체 레이아웃. 4장 발표자료와 발표자 노트. 이전 판 v3~v11은 프로젝트 옆
+  `MailTaskAgent_ARCHIVE_2026-09-15/presentation_versions/`로 옮겨 두었다.
+- **공식 템플릿판**: `2. 최종/09285_백준현_AI_Master_최종발표자료_공식템플릿_v1.pptx` / `.pdf`
+  배포된 `AI_Master_Project_최종발표_멘티명_사번.pptx`(720x405)의 레이아웃·색·항목 순서를 그대로 두고
+  자리표시자만 채운 판. 포털이나 멘토가 제공 템플릿을 요구할 때 쓴다.
+  `scripts/build_architecture_diagram.py` → `scripts/build_template_deck.py` 순서로 만든다.
+
+두 판은 같은 수치와 같은 한계 표기를 쓴다. 템플릿 항목과 대조해 자체 제작판에 없던 세 가지
+(표지의 제출 시간 안내, 기술 선택마다의 `선택 이유`/`핵심 활용·성과·구현 포인트` 구분,
+`왜 이 접근이 필요했는가`)는 자체 제작판에도 반영했다.
 - `build_final_deck.mjs`: v12를 다시 만드는 Builder. 장표 문구와 발표자 노트의 단일 출처이며,
   PPTX를 직접 편집하면 다음 빌드에서 조용히 되돌아간다.
   `PRESENTATION_SKILL_DIR`, `PRESENTATION_PYTHON`, `RUNTIME_NODE_MODULES`가 필요하다.
