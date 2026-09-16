@@ -85,6 +85,16 @@ function flowNode(slide, title, sub, x, y, w, accent=C.blue) {
 function arrow(slide, x, y, w=34) {
   slide.shapes.add({ geometry:"rightArrow", position:{left:x,top:y,width:w,height:24}, fill:C.blue, line:{fill:"none",width:0} });
 }
+// A loop back under the node row: down from the source, left, then up into the
+// target with a head. Drawn rather than described, because the forward row of
+// boxes is what makes this look like a one-pass pipeline when it is not.
+function feedback(slide, fromX, toX, depth, color) {
+  const top = 322, bottom = top + depth;
+  box(slide, fromX - 1, top, 2, depth, color, "none");
+  box(slide, toX, bottom - 1, fromX - toX, 2, color, "none");
+  box(slide, toX - 1, top + 9, 2, depth - 9, color, "none");
+  slide.shapes.add({ geometry:"triangle", position:{left:toX - 7, top:top, width:14, height:10}, fill:color, line:{fill:"none",width:0} });
+}
 function notes(slide, text, sources=[]) {
   slide.speakerNotes.textFrame.setText(`${text}\n\n[근거]\n${sources.map(s=>`- ${s}`).join("\n")}`);
 }
@@ -135,7 +145,8 @@ function notes(slide, text, sources=[]) {
 // 3. Architecture
 {
   const s=p.slides.add(); base(s,"기술 아키텍처와 Agent 판단 구조",3);
-  txt(s,"M-01~M-05 Workflow는 안전한 실행 뼈대, 규칙으로 확정할 수 없는 관계·대상·Action은 Agent가 판단",60,126,1150,30,19,C.blue,true);
+  txt(s,"M-01~M-05 Workflow는 안전한 실행 뼈대, 규칙으로 확정할 수 없는 관계·대상·Action은 Agent가 판단",60,124,1150,30,19,C.blue,true);
+  txt(s,"제한적 ReAct  |  Observe → Retrieve → Reason → Act → Observe",60,158,1160,22,14,"#7657D6",true);
   const xs=[60,250,440,630,820,1010];
   const ns=[
     ["M-01","Mail Analyzer","의미·Intent·기한"],
@@ -146,14 +157,17 @@ function notes(slide, text, sources=[]) {
     ["M-05","Review·Trace","사용자 확인 화면"]
   ];
   ns.forEach(([id,t,d],i)=>{ box(s,xs[i],190,160,132,i===2?"#F3EFFF":C.white,i===2?"#7657D6":C.line,true); pill(s,id,xs[i]+18,204,90,i===2?"#7657D6":C.blue,i===2?"#EDE6FF":C.pale); txt(s,t,xs[i]+14,246,136,28,17,C.navy,true); txt(s,d,xs[i]+14,276,136,36,13,C.muted,false); if(i<5) arrow(s,xs[i]+166,242,20); });
-  txt(s,"제한적 ReAct  |  Observe → Retrieve → Reason → Act → Observe   (저신뢰·모호하면 Query Rewrite 후 재검색·재판단 최대 1회)",60,330,1160,20,13,"#7657D6",true);
-  box(s,60,354,1160,80,C.pale,"none",true);
-  txt(s,"Task 관계",82,360,120,28,16,C.navy,true);
-  txt(s,"동일 Thread는 Metadata 규칙",205,360,260,28,15,C.muted,false);
-  txt(s,"다른 Thread·다른 표현은 후보 2~3개를 비교해 관계·대상·Action 선택",475,360,710,28,15,"#7657D6",true);
-  txt(s,"회신 실행",82,398,120,28,16,C.navy,true);
-  txt(s,"Reply Agent 판단  →  사용자 입력  →  LLM 초안  →  승인 Gmail 발송  →  WAITING_REPLY",205,398,980,28,15,C.green,true);
-  txt(s,"기술 선택 이유",60,450,180,28,20,C.navy,true);
+  feedback(s,500,330,14,"#7657D6");
+  txt(s,"Self-Correction  |  Query Rewrite 후 재검색, 최대 1회",912,322,308,17,11,"#7657D6",true);
+  feedback(s,900,550,30,"#0F8A99");
+  txt(s,"Act → Observe  |  저장 결과를 다시 조회",912,341,308,17,11,"#0F8A99",true);
+  box(s,60,362,1160,80,C.pale,"none",true);
+  txt(s,"Task 관계",82,368,120,28,16,C.navy,true);
+  txt(s,"동일 Thread는 Metadata 규칙",205,368,260,28,15,C.muted,false);
+  txt(s,"다른 Thread·다른 표현은 후보 2~3개를 비교해 관계·대상·Action 선택",475,368,710,28,15,"#7657D6",true);
+  txt(s,"회신 실행",82,406,120,28,16,C.navy,true);
+  txt(s,"Reply Agent 판단  →  사용자 입력  →  LLM 초안  →  승인 Gmail 발송  →  WAITING_REPLY",205,406,980,28,15,C.green,true);
+  txt(s,"기술 선택 이유",60,458,180,28,20,C.navy,true);
   const choices=[
     ["gpt-4.1-mini",
      "선택 이유  |  메일 의미와 Task 관계는 규칙으로 열거할 수 없지만 출력은 고정 Schema여야 합니다",
@@ -165,9 +179,9 @@ function notes(slide, text, sources=[]) {
      "선택 이유  |  LLM이 DB를 직접 바꾸면 비용이 업무 데이터 오변경입니다. 상태가 닫혀 있어 LangGraph 없이 충분했습니다",
      "구현 포인트  |  후보 ID·상태 전이·중요 변경을 검증하고 완료·취소·기한 단축은 항상 승인"]
   ];
-  choices.forEach(([t,why,how],i)=>{ const x=60+i*386; txt(s,t,x,484,348,24,17,i===1?"#7657D6":C.blue,true); txt(s,why,x,512,348,38,13,C.muted,false); txt(s,how,x,552,348,38,13,C.muted,false); });
-  box(s,60,590,1160,44,"#EEF9F5","none",true);
-  txt(s,"M-01은 모든 Mail 의미를 LLM으로 구조화하고, 관계·Action 선택은 STRUCTURED_RAG 경로에만 적용합니다.",82,598,1110,27,16,C.navy,true);
+  choices.forEach(([t,why,how],i)=>{ const x=60+i*386; txt(s,t,x,492,348,24,17,i===1?"#7657D6":C.blue,true); txt(s,why,x,520,348,38,13,C.muted,false); txt(s,how,x,560,348,38,13,C.muted,false); });
+  box(s,60,604,1160,44,"#EEF9F5","none",true);
+  txt(s,"M-01은 모든 Mail 의미를 LLM으로 구조화하고, 관계·Action 선택은 STRUCTURED_RAG 경로에만 적용합니다.",82,612,1110,27,16,C.navy,true);
   notes(s,"가장 중요한 설계 결정부터 말씀드리겠습니다. 모든 메일을 Agent에게 맡기지 않았습니다. 경로가 셋으로 갈립니다. 같은 Thread에 활성 업무가 정확히 하나면 규칙이 바로 연결하고 검색과 Agent 판단을 아예 호출하지 않습니다. 관련 업무를 찾아야 할 때만 RAG 경로로 가고, 업무 요청이 아니면 기존 규칙 경로로 처리합니다. 입력에 따라 호출 자체가 달라지는 것이 고정 Workflow와의 차이입니다.\n\n엠 영이가 이 프로젝트의 알에이지입니다. 외부 문서를 찾는 지식 알에이지가 아니라, 판단에 필요한 과거 업무 맥락을 제 에스큐엘라이트에서 찾아오는 태스크 컨텍스트 알에이지입니다. 활성 업무 다섯 건, 각 업무의 최근 메일 세 건과 변경 이력 다섯 건, 사용자가 과거에 확정한 결정을 함께 가져옵니다. 지난 결정이 다음 판단의 근거로 다시 들어갑니다.\n\n네 용어의 역할이 다릅니다. 알에이지는 맥락을 가져오는 단계, 리액트는 그 맥락을 관찰해 행동을 정하고 실행 결과를 다시 관찰하는 바깥 루프, 셀프 커렉션은 그 루프 안에서 확신이 부족할 때 검색어를 바꿔 한 번 다시 찾고 다시 판단하는 부분입니다. 파이썬 가드는 에이전트의 판단을 대신하는 자리가 아니라 그 판단을 실행해도 되는지 확인하는 경계입니다. 흐름으로 읽으면 관찰, 검색, 판단, 실행, 재관찰입니다.\n\n벡터 디비를 쓰지 않은 이유는 개인의 활성 업무가 수십 건 규모라 에스큐엘라이트 조회만으로 충분했고 구성요소를 늘리는 비용이 더 컸기 때문입니다. 대신 검색이 어휘 겹침에 의존한다는 한계가 남습니다. 모델 간 비교 실험은 하지 않았으므로 최적이라고 주장하지 않습니다.\n\n랭그래프도 쓰지 않았습니다. 에이전트가 하나이고 상태가 Task 다섯 개와 Action 일곱 개로 닫혀 있어, 파이썬 상태와 가드만으로 검증이 더 쉬웠습니다. 분기와 중단, 재개가 복잡해지는 시점에 다시 검토하겠습니다.\n\n세 번째가 가장 오래 고민한 Python Guard입니다. LLM은 제안만 하고 데이터베이스를 직접 바꾸지 않습니다. Guard는 고른 업무 ID가 검색 후보 안에 있는지, 메일 의도와 Action이 맞는지, 생성에 필요한 값이 있는지를 확인하고, 하나라도 어긋나면 사용자 확인으로 올립니다. 완료·취소·기한 단축은 신뢰도와 무관하게 항상 승인을 거칩니다.",["Docs/AI_MASTER/04_상세설계및개발환경.md","src/mailtaskagent/workflow.py","src/mailtaskagent/task_context_agent.py","src/mailtaskagent/deliberation.py","src/mailtaskagent/decision.py"]);
 }
 
