@@ -121,8 +121,9 @@ def main() -> None:
     for suffix in (".pdf", ".docx"):
         shutil.copy2(GUIDE_DIR / f"09285_백준현_MailTaskAgent_이해와시연가이드{suffix}",
                      STUDY / f"09285_백준현_이해와시연가이드{suffix}")
-    shutil.copy2(GUIDE_DIR / "09285_백준현_AI_Master_제출및면접_체크리스트.md",
-                 STUDY / "09285_백준현_제출및면접_체크리스트.md")
+    for suffix in (".md", ".pdf"):
+        shutil.copy2(GUIDE_DIR / f"09285_백준현_AI_Master_제출및면접_체크리스트{suffix}",
+                     STUDY / f"09285_백준현_제출및면접_체크리스트{suffix}")
     shutil.copy2(ROOT / "Docs/LEARNING/MailTaskAgent_초보자_기술학습가이드.md",
                  STUDY / "MailTaskAgent_초보자_기술학습가이드.md")
 
@@ -182,8 +183,9 @@ def main() -> None:
         "  09285_백준현_이해와시연가이드.pdf / .docx",
         "    프로젝트 전체를 처음부터 설명하는 12쪽 학습자료.",
         "    5장이 '왜 단순 Workflow가 아니라 Agentic AI인가'이고, 30초 답변이 5.5절에 있습니다.",
-        "  09285_백준현_제출및면접_체크리스트.md",
-        "    제출 전 확인 목록과 AI 면접 예상 문답.",
+        "  09285_백준현_제출및면접_체크리스트.pdf / .md",
+        "    제출 전 확인 목록과 면접 예상 문답.",
+        "    Part 1은 구조를 아는 사람이 파고들 때, Part 2는 발표자료만 보고 묻는 AI 면접 대비입니다.",
         "  MailTaskAgent_초보자_기술학습가이드.md",
         "    코드까지 따라갈 때 보는 상세 기술 문서.",
         "",
