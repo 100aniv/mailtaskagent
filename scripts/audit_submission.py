@@ -256,7 +256,7 @@ def audit_video() -> None:
 def audit_consistency(version: str) -> None:
     pptx = ROOT / "Docs/PRESENTATION/2. 최종" / f"09285_백준현_AI_Master_최종발표자료_{version}.pptx"
     srt = ROOT / "output/submission/09285_백준현_시연영상.srt"
-    script = ROOT / "Docs/PRESENTATION/2. 최종/09285_백준현_최종시연_스크립트.md"
+    script = ROOT / "Docs/STUDY/04_발표_시연_대본.md"
 
     counts: dict[str, set[str]] = {}
     if pptx.exists():
@@ -302,7 +302,7 @@ def audit_consistency(version: str) -> None:
         ROOT / "Docs/PRESENTATION/README.md",
         ROOT / "Docs/IMPLEMENTATION/10_최종감사_및_제출진행.md",
         ROOT / "Docs/IMPLEMENTATION/11_최종_제출가이드_충족점검.md",
-        ROOT / "Docs/USER_GUIDE/09285_백준현_AI_Master_제출및면접_체크리스트.md",
+        ROOT / "Docs/STUDY/03_면접_예상문답.md",
         ROOT / "Docs/PRESENTATION/2. 최종/09285_백준현_최종시연_스크립트.md",
     ]
     older = [f"v{n}" for n in range(3, int(version.lstrip("v")))]

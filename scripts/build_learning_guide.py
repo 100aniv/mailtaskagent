@@ -17,7 +17,7 @@ from docx.shared import Cm, Pt, RGBColor
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "Docs" / "USER_GUIDE" / "09285_백준현_MailTaskAgent_이해와시연가이드.docx"
+OUT = ROOT / "Docs" / "STUDY" / "02_이해와시연가이드.docx"
 BLUE = "173B67"
 LIGHT_BLUE = "EAF2FA"
 PALE = "F6F8FB"

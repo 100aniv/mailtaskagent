@@ -32,9 +32,9 @@ from xml.sax.saxutils import escape
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "Docs" / "USER_GUIDE" / "09285_백준현_MailTaskAgent_이해와시연가이드.docx"
-OUT_DIR = ROOT / "Docs" / "USER_GUIDE"
-OUTPUT = OUT_DIR / "09285_백준현_MailTaskAgent_이해와시연가이드.pdf"
+SOURCE = ROOT / "Docs" / "STUDY" / "02_이해와시연가이드.docx"
+OUT_DIR = ROOT / "Docs" / "STUDY"
+OUTPUT = OUT_DIR / "02_이해와시연가이드.pdf"
 
 
 def iter_blocks(document):

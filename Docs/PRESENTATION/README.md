@@ -20,11 +20,11 @@
   `PRESENTATION_SKILL_DIR`, `PRESENTATION_PYTHON`, `RUNTIME_NODE_MODULES`가 필요하다.
 - `build_presentation_pdf.py`: `tmp/pdfs/presentation-v12/`의 슬라이드 PNG 4장을 제출용 PDF로
   합친다. `reportlab`이 필요하다.
-- `2. 최종/09285_백준현_최종시연_스크립트.md`: 실제 Gmail 중심 5분 시연 대사와 장애 대응
+- `../STUDY/04_발표_시연_대본.md`: 실제 Gmail 중심 5분 시연 대사와 장애 대응
 - `../../output/submission/09285_백준현_시연영상.mp4`: 실제 Gmail 업무·후보 비교·Self-Correction·Guard 증적을 담은 2분 38.6초 자막·한국어 Neural 음성 제출 영상
 - `../../output/submission/09285_백준현_시연영상_검수.json`: 시간·해상도·용량·전체 디코딩·개인정보·시각 QA 기록
 - `AI_MASTER_최종_이해_및_시연가이드.md`: 최종 MVP 구현 범위와 사용자 학습·시연 설명 자료
-- `../USER_GUIDE/09285_백준현_MailTaskAgent_이해와시연가이드.docx` / `.pdf`: 발표자용 학습자료.
+- `../STUDY/02_이해와시연가이드.docx` / `.pdf`: 발표자용 학습자료.
   `scripts/build_learning_guide.py`로 DOCX를, `scripts/build_learning_guide_pdf.py`로 PDF를 만든다.
   DOCX를 Word에서 직접 고치면 다음 빌드에서 되돌아간다.
 - `2026-09-02_멘토시연_이해자료_및_스크립트.md`: 2026-09-02 당시 멘토 시연 기록

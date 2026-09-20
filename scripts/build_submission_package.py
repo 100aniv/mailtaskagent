@@ -35,7 +35,7 @@ STUDY = OUT / "03_학습_면접"
 
 DECK_DIR = ROOT / "Docs/PRESENTATION/2. 최종"
 VIDEO_DIR = ROOT / "output/submission"
-GUIDE_DIR = ROOT / "Docs/USER_GUIDE"
+GUIDE_DIR = ROOT / "Docs/STUDY"
 
 # 7기 OT p.7: 발표자료 PDF · 시연영상 · 소스코드(가능하신 분)
 SOURCE_ZIP = SUBMIT / "09285_백준현_소스코드.zip"
@@ -111,7 +111,7 @@ def main() -> None:
     for suffix in (".pdf", ".pptx"):
         shutil.copy2(DECK_DIR / f"09285_백준현_AI_Master_최종발표자료_공식템플릿_v1{suffix}",
                      PRESENT / f"09285_백준현_최종발표자료_공식템플릿{suffix}")
-    shutil.copy2(DECK_DIR / "09285_백준현_최종시연_스크립트.md",
+    shutil.copy2(GUIDE_DIR / "04_발표_시연_대본.md",
                  PRESENT / "09285_백준현_최종시연_스크립트.md")
     shutil.copy2(VIDEO_DIR / "09285_백준현_시연영상.srt",
                  PRESENT / "09285_백준현_시연영상.srt")
@@ -119,12 +119,12 @@ def main() -> None:
                  PRESENT / "09285_백준현_시연영상_검수.json")
 
     for suffix in (".pdf", ".docx"):
-        shutil.copy2(GUIDE_DIR / f"09285_백준현_MailTaskAgent_이해와시연가이드{suffix}",
+        shutil.copy2(GUIDE_DIR / f"02_이해와시연가이드{suffix}",
                      STUDY / f"09285_백준현_이해와시연가이드{suffix}")
     for suffix in (".md", ".pdf"):
-        shutil.copy2(GUIDE_DIR / f"09285_백준현_AI_Master_제출및면접_체크리스트{suffix}",
+        shutil.copy2(GUIDE_DIR / f"03_면접_예상문답{suffix}",
                      STUDY / f"09285_백준현_제출및면접_체크리스트{suffix}")
-    shutil.copy2(ROOT / "Docs/LEARNING/MailTaskAgent_초보자_기술학습가이드.md",
+    shutil.copy2(GUIDE_DIR / "05_기술_심화_학습가이드.md",
                  STUDY / "MailTaskAgent_초보자_기술학습가이드.md")
 
     qa = json.loads((VIDEO_DIR / "09285_백준현_시연영상_검수.json").read_text(encoding="utf-8"))
