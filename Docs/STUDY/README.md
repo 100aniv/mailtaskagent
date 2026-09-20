@@ -61,6 +61,7 @@
 ```bash
 python scripts/build_study_book.py          # 01 통합본 (md·docx·pdf)
 python scripts/build_study_docs.py          # 03·06 (docx·pdf)
+python scripts/check_interview_coverage.py  # 발표자료의 모든 항목에 답변이 있는지 대조
 python scripts/build_learning_guide.py      # 02 docx
 python scripts/build_learning_guide_pdf.py  # 02 pdf
 ```
